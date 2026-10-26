@@ -1,17 +1,19 @@
 # Roadmap and verification gates
 
-## Milestone 0 — Foundation (current PR)
+## Milestone 0 — Foundation (merged)
 - [x] GitHub repository initial scaffold
 - [x] Rig-first blueprint -> generation job list
 - [x] Technical rig QA and tests
 - [x] Constitution/rights/security boundaries
-- [ ] Confirm CI green and main branch merged
+- [x] Confirm CI green and main branch merged
 
 ## Milestone 1 — Mac art pipeline
 - [ ] Import asset metadata from local ComfyUI and previous Godot proofs (no model weights, rights docs or raw images in public repo)
-- [ ] Implement a **configurable localhost ComfyUI adapter** and job queue; never auto-download checkpoints or spend money
-- [ ] Generate isolated layers, with registration marks/overlap and consistent model provenance
-- [ ] Rig QA animated contact-sheet test and visual-review decision loop
+- [x] Implement checksum-pinned localhost ComfyUI job submission and sequential part collection (requires a pre-approved transparency workflow on Mac); no model auto-download or paid inference
+- [ ] Validate isolated layers, identity conditioning and real rendered joint overlaps on the Mac (batch code in place; live art unverified)
+- [x] Layer-based GIF/contact-sheet evidence generator (deterministic)
+- [x] Optional local AI vision reviewer: independent decision, evidence hashes, PASS/REVISE/FAIL gate (requires real Mac validation)
+- [ ] Automated bounded repair/retry loop with model evaluation and cost caps
 - [ ] Export a Godot rig scene from manifest
 - [ ] Benchmarks on actual Mac M3 Max and 48 GB shared memory
 
