@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "character_id": "bunny_proto_v02",
+  "canvas": {
+    "width": 1024,
+    "height": 1024
+  },
+  "identity_prompt": "An original pastel peach-pink friendly young cartoon bunny for ages four to six; simple clean vector-like outlines, dark brown eyes, cream heart-shaped chest patch, consistent front-view proportions, minimal soft shading. An internal KidsStudio character design, not an imitation of existing media.",
+  "parts": [
+    {
+      "id": "body",
+      "pivot": [
+        512,
+        720
+      ],
+      "z": 0,
+      "instruction": "torso and pelvis only, with a complete uninterrupted shoulder/neck silhouette under the head and limbs"
+    },
+    {
+      "id": "leg_left",
+      "pivot": [
+        463,
+        795
+      ],
+      "z": 1,
+      "instruction": "viewer-left leg and foot, joint-safe upper section concealed under body"
+    },
+    {
+      "id": "leg_right",
+      "pivot": [
+        562,
+        795
+      ],
+      "z": 2,
+      "instruction": "viewer-right leg and foot, joint-safe upper section concealed under body"
+    },
+    {
+      "id": "arm_left",
+      "pivot": [
+        402,
+        570
+      ],
+      "z": 3,
+      "instruction": "viewer-left arm and paw, with shoulder overlap hidden beneath head/torso"
+    },
+    {
+      "id": "arm_right",
+      "pivot": [
+        621,
+        570
+      ],
+      "z": 4,
+      "instruction": "viewer-right arm and paw, with shoulder overlap hidden beneath head/torso"
+    },
+    {
+      "id": "head",
+      "pivot": [
+        512,
+        550
+      ],
+      "z": 5,
+      "instruction": "head and cheeks with complete hidden neck connection, WITHOUT attached ears, eyes or mouth"
+    },
+    {
+      "id": "ear_left",
+      "pivot": [
+        437,
+        275
+      ],
+      "z": 6,
+      "instruction": "viewer-left separate long bunny ear and full hidden root"
+    },
+    {
+      "id": "ear_right",
+      "pivot": [
+        590,
+        275
+      ],
+      "z": 7,
+      "instruction": "viewer-right separate long bunny ear and full hidden root"
+    },
+    {
+      "id": "eyes",
+      "pivot": [
+        512,
+        410
+      ],
+      "z": 8,
+      "instruction": "pair of identical dark-brown eyes, isolated facial-feature layer aligned to face"
+    },
+    {
+      "id": "mouth",
+      "pivot": [
+        512,
+        480
+      ],
+      "z": 9,
+      "instruction": "small neutral smile as isolated mouth layer, no other features"
+    }
+  ]
+}
