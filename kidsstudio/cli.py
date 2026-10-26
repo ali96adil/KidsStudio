@@ -9,6 +9,8 @@ from pathlib import Path
 from .planner import make_rig_plan
 from .comfy import ComfySafetyError, prepare_submission, queue_on_local_comfy
 from .rigqa import check_rig
+from .factory import build_character, FactoryError
+from .motion import create_motion_evidence
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +30,19 @@ def main(argv: list[str] | None = None) -> int:
     comfy.add_argument("--base-url", default="http://127.0.0.1:8188")
     comfy.add_argument("--submit", action="store_true",
                        help="Explicitly queue a validated job on local ComfyUI")
+    factory = commands.add_parser("build-character", help="Generate rig-first parts with local ComfyUI")
+    factory.add_argument("blueprint")
+    factory.add_argument("--workflow", required=True)
+    factory.add_argument("--profile", required=True)
+    factory.add_argument("--out", required=True)
+    factory.add_argument("--timeout", type=int, default=900)
+    factory.add_argument("--preview-side", type=int, default=384)
+    factory.add_argument("--execute", action="store_true",
+                         help="Required: queue all part-generation jobs in local ComfyUI")
+    motion = commands.add_parser("motion-preview", help="Render visual evidence for a separated rig")
+    motion.add_argument("manifest")
+    motion.add_argument("--out", required=True)
+    motion.add_argument("--preview-side", type=int, default=384)
     args = parser.parse_args(argv)
 
     try:
@@ -45,13 +60,34 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(json.dumps(result, indent=2))
             return 0
+        if args.command == "build-character":
+            if not args.execute:
+                print("ERROR: Explicit --execute required for actual ComfyUI generation.", file=sys.stderr)
+                return 2
+            result = build_character(
+                args.blueprint, args.workflow, args.profile, args.out,
+                timeout_seconds=args.timeout, preview_side=args.preview_side,
+            )
+            print(json.dumps({
+                "status": result["status"], "character_id": result["character_id"],
+                "part_jobs": len(result["jobs"]), "technical_pass": result["technical_pass"],
+                "visual_review_required": result["visual_review_required"],
+                "report": str(Path(args.out).resolve() / "factory_report.json"),
+            }, indent=2))
+            return 0 if result["technical_pass"] else 1
+        if args.command == "motion-preview":
+            result = create_motion_evidence(
+                args.manifest, args.out, side=args.preview_side
+            )
+            print(json.dumps(result, indent=2))
+            return 0
         if args.command == "plan-rig":
             result = make_rig_plan(args.blueprint)
             success = True
         else:
             result = check_rig(args.manifest)
             success = bool(result["passed"])
-    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

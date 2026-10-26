@@ -22,7 +22,8 @@ AI-powered bilingual educational animation studio for children.
 1. A typed, versioned rig specification with a **local asset generation plan**.
 2. A deterministic **technical rig QA** tool checking input safety, geometry, separate transparent parts and required parts.
 3. Tests and a GitHub Actions workflow.
-4. A checksum-approved **local-only ComfyUI API bridge** for explicit opt-in job submission (not a full automatic asset worker yet).
+4. A checksum-approved **local-only ComfyUI API bridge** for explicit opt-in job submission.
+5. **Character Factory v0.1:** sequential ComfyUI jobs for each isolated part, validated alpha, versioned rig and provenance, six animated motion previews/contact sheet, and a fail-closed technical review report. A visual reviewer is still required.
 
 This initial QA does **not** judge artistic quality, seams, motion, IP originality or child safety. Technical approval is **not** final asset approval.
 
@@ -50,7 +51,7 @@ The QA tool returns exit code 0 when **technical** checks pass and a nonzero exi
 - Cutting arms out of a flat PNG produced visible seams; **rejected as the long-term production method**.
 - Next: generate head/body/arms/legs/ears/face as separate rig-first source layers and automate an animated contact-sheet QA.
 
-See docs/ARCHITECTURE.md, docs/STUDIO_CONSTITUTION.md, docs/COMFYUI_ADAPTER.md and docs/ROADMAP.md.
+See docs/ARCHITECTURE.md, docs/STUDIO_CONSTITUTION.md, docs/COMFYUI_ADAPTER.md, docs/CHARACTER_FACTORY.md and docs/ROADMAP.md.
 
 ## Privacy / licensing
 
