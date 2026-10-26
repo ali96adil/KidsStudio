@@ -218,3 +218,35 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# KidsStudio: protect source artwork, generated media, weights, voice samples and secrets
+.env
+.env.*
+!.env.example
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.gguf
+*.bin
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.psd
+*.blend
+*.wav
+*.mp3
+*.mp4
+*.mov
+*.avi
+*.gif
+renders/
+artifacts/
+ComfyUI-Shared/
+ComfyUI-Installs/
+private-assets/
+secrets/
+.venv/
+.godot/
