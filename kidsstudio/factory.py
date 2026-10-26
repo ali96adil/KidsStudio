@@ -22,6 +22,7 @@ from .comfy import prepare_submission, validate_local_base_url
 from .motion import create_motion_evidence
 from .planner import make_rig_plan
 from .rigqa import check_rig
+from .reviewer import review_rig
 
 MAX_IMAGE_BYTES = 25_000_000
 MAX_API_BYTES = 2_000_000
@@ -157,6 +158,8 @@ def build_character(
     client: Any | None = None,
     timeout_seconds: int = 900,
     preview_side: int = 384,
+    review_model: str | None = None,
+    vision_client: Any | None = None,
 ) -> dict[str, Any]:
     """Execute a new batch; refuses to overwrite any existing output."""
     plan = make_rig_plan(blueprint_file)
@@ -166,7 +169,8 @@ def build_character(
     out = Path(output_directory).expanduser().resolve()
     if out.exists():
         raise FileExistsError("Output directory already exists; choose a new version.")
-    if any(parent.name == ".git" for parent in out.parents):
+    # Refuse any directory inside an actual Git working tree.
+    if any((parent / ".git").exists() for parent in (out, *out.parents)):
         raise FactoryError("Character production assets must not be saved inside Git.")
     # Check all target jobs *before* the first remote generation.
     prepared_jobs = [
@@ -242,6 +246,14 @@ def build_character(
                 "motions": evidence["motions"],
             }
             state["status"] = "NEEDS_INDEPENDENT_VISUAL_REVIEW"
+            if review_model is not None:
+                decision = review_rig(
+                    manifest, out / "review" / "motion_evidence.json",
+                    out / "visual_review.json", model=review_model,
+                    client=vision_client
+                )
+                state["visual_review"] = decision
+                state["status"] = decision["status"]
         _json_atomic(state_file, state)
     except Exception as exc:
         state["status"] = "FAILED"

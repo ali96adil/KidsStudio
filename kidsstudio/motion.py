@@ -6,6 +6,7 @@ No Godot is needed for this first review renderer; production uses Godot later.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 from pathlib import Path
 from typing import Any
@@ -120,12 +121,21 @@ def create_motion_evidence(
     sheet_file = out / "motion_contact_sheet.png"
     sheet.save(sheet_file)
 
+    source = Path(manifest_path).resolve()
+    source_data = json.loads(source.read_text(encoding="utf-8"))
+    source_hashes = {"rig.json": hashlib.sha256(source.read_bytes()).hexdigest()}
+    for part in source_data["parts"]:
+        path = source.parent / part["file"]
+        source_hashes[part["file"]] = hashlib.sha256(path.read_bytes()).hexdigest()
+
     result: dict[str, Any] = {
         "status": "MOTION_EVIDENCE_READY_PENDING_VISUAL_REVIEW",
         "manifest": str(Path(manifest_path).resolve()),
         "contact_sheet": str(sheet_file),
         "motions": list(MOTIONS),
         "visual_review_required": True,
+        "source_hashes": source_hashes,
+        "contact_sheet_sha256": hashlib.sha256(sheet_file.read_bytes()).hexdigest(),
     }
 
     if gif:

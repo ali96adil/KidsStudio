@@ -21,10 +21,16 @@ generate copyrighted/reference artwork in the public repo.
 7. Stops with an explicit failure report when inputs are missing/unsafe,
    ComfyUI fails, transparency fails or the technical QA fails.
 
-**Technical success = NEEDS_INDEPENDENT_VISUAL_REVIEW.**
-It is not an artistic PASS. There is no automatic artistic agent approval yet.
-Visual reviewer must examine the actual seams, limbs, face and motion. This
-prevents the old shoulder-cut artefact from being silently accepted.
+**Technical success = NEEDS_INDEPENDENT_VISUAL_REVIEW**, unless the optional
+independent **local vision-model reviewer** is explicitly configured.
+Visual review uses a separate multimodal model through local Ollama
+(`http://127.0.0.1:11434`), examines the motion contact sheet, optionally
+compares a canonical character image, and returns PASS / REVISE / FAIL with
+reasons, confidence and evidence. It cannot override technical QA, and checks
+hashes to reject stale snapshots. A low-confidence PASS or any medium/high
+reported defect is automatically downgraded to REVISE. Publication still
+requires human owner approval. Visual model evaluations are probabilistic and
+can miss defects; no model has been installed or validated on the Mac yet.
 
 ## First real Mac run (not necessary before complete integration review)
 
@@ -70,3 +76,22 @@ to re-render evidence if manifest or parts are intentionally revised.
 Use identity-conditioned generation and a verified transparent-output workflow;
 add retry/repair bounded by quality evaluation and budget caps; then add a
 genuinely independent visual QA agent using the rendered preview and evidence.
+
+## Optional independent visual reviewer
+
+After producing a successful rig, with an **already installed** local
+multimodal Ollama model (no models are downloaded automatically):
+
+    kidsstudio visual-review /local/characters/bunny/v02/rig.json \
+      --evidence /local/characters/bunny/v02/review/motion_evidence.json \
+      --reference /local/characters/bunny/v01/bunny_neutral_v01.png \
+      --model YOUR_INSTALLED_VISION_MODEL \
+      --out /local/characters/bunny/v02/visual_review.json \
+      --execute
+
+Or supply `--review-model YOUR_INSTALLED_VISION_MODEL` to `build-character`
+to invoke this reviewer after rendering the contact sheet, in the same run.
+
+In the case of any review service failure or invalid model response the
+pipeline FAILS CLOSED, preserves the collected assets, and records the failure.
+Regenerate visual evidence after any edit to layer images.

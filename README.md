@@ -23,7 +23,7 @@ AI-powered bilingual educational animation studio for children.
 2. A deterministic **technical rig QA** tool checking input safety, geometry, separate transparent parts and required parts.
 3. Tests and a GitHub Actions workflow.
 4. A checksum-approved **local-only ComfyUI API bridge** for explicit opt-in job submission.
-5. **Character Factory v0.1:** sequential ComfyUI jobs for each isolated part, validated alpha, versioned rig and provenance, six animated motion previews/contact sheet, and a fail-closed technical review report. A visual reviewer is still required.
+5. **Character Factory v0.1:** sequential ComfyUI jobs for each isolated part, validated alpha, versioned rig and provenance, six animated motion previews/contact sheet, and a fail-closed technical review report. An optional independent local multimodal reviewer can return PASS / REVISE / FAIL with an auditable report; it requires a separately installed vision model and has **not** been tested against actual art yet.
 
 This initial QA does **not** judge artistic quality, seams, motion, IP originality or child safety. Technical approval is **not** final asset approval.
 

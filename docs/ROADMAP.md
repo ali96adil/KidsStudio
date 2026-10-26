@@ -12,7 +12,8 @@
 - [x] Implement checksum-pinned localhost ComfyUI job submission and sequential part collection (requires a pre-approved transparency workflow on Mac); no model auto-download or paid inference
 - [ ] Validate isolated layers, identity conditioning and real rendered joint overlaps on the Mac (batch code in place; live art unverified)
 - [x] Layer-based GIF/contact-sheet evidence generator (deterministic)
-- [ ] Independent AI vision reviewer and automated bounded REVISE/FAIL loop
+- [x] Optional local AI vision reviewer: independent decision, evidence hashes, PASS/REVISE/FAIL gate (requires real Mac validation)
+- [ ] Automated bounded repair/retry loop with model evaluation and cost caps
 - [ ] Export a Godot rig scene from manifest
 - [ ] Benchmarks on actual Mac M3 Max and 48 GB shared memory
 
