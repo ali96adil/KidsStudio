@@ -21,8 +21,12 @@ jobs:
       - name: Install Python code and native FFmpeg
         run: |
           python -m pip install -e .
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq unzip ffmpeg libfontconfig1 xvfb libgl1-mesa-dri libgl1
+          # GitHub Ubuntu runners normally include these utilities already.
+          # Avoid repeated apt index downloads unless a tool is actually missing.
+          if ! command -v ffmpeg >/dev/null || ! command -v xvfb-run >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq unzip ffmpeg libfontconfig1 xvfb libgl1-mesa-dri libgl1
+          fi
       - name: Download official Godot 4.7.2 (SHA-256 verified)
         shell: bash
         run: |
