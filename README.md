@@ -177,3 +177,17 @@ offline. With explicit `--connect`, it reads local `/object_info` and
 checkpoint dropdowns without uploading artwork, queuing GPU jobs or
 downloading models. It can write a private **unapproved** profile skeleton
 and redacted report; see [Mac readiness guide](docs/MAC_READINESS.md).
+
+## Full Mac art-station preflight in one command
+
+`kidsstudio mac-doctor` combines the ComfyUI graph/node/model checks
+with original bunny reference integrity, Mac Godot/FFmpeg CLI versions,
+local Ollama reviewer registration, and available private output disk.
+By default it runs **offline**, and with explicit `--connect` it makes
+only read-only loopback GET metadata calls. No ComfyUI job, GPU inference,
+image upload, remote API key use or model download.
+
+Run with the explicit Mac-local paths and save a private diagnostic report.
+The only success state is `READY_TO_REQUEST_MANUAL_TWO_PART_PROBE`, which
+still does **not** authorize automatic production. See
+[Mac readiness](docs/MAC_READINESS.md).

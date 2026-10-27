@@ -18,6 +18,7 @@ from .comfy import (
     _walk_model_names, validate_local_base_url,
 )
 from .workflow_audit import audit_character_workflow
+from .factory import FactoryError
 
 MAX_OBJECT_INFO_BYTES = 24_000_000
 MAX_STATS_BYTES = 150_000
@@ -285,7 +286,7 @@ def inspect_mac_comfy(
                 )
                 result["checks"]["approved_graph"] = "PASS"
                 result["approved_graph_sha256"] = audit["workflow_sha256"]
-            except (ComfySafetyError, ValueError, OSError, KeyError,
+            except (ComfySafetyError, FactoryError, ValueError, OSError, KeyError,
                     TypeError, json.JSONDecodeError):
                 result["checks"]["approved_graph"] = "FAIL"
                 result["issues"].append("APPROVED_GRAPH_AUDIT_FAILED")
