@@ -17,6 +17,7 @@ from .reviewer import VisionReviewError, review_rig
 from .cycle import CycleError, run_character_cycle
 from .workflow_audit import audit_character_workflow
 from .part_probe import ProbeError, run_two_part_probe
+from .probe_review import review_two_part_probe
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -111,9 +112,36 @@ def main(argv: list[str] | None = None) -> int:
     probe.add_argument("--preview-side", type=int, default=512)
     probe.add_argument("--execute", action="store_true",
                        help="Required: run two local ComfyUI diffusion jobs")
+    probe_review = commands.add_parser(
+        "review-bunny-probe",
+        help="Independent local AI review of existing two-part bunny evidence"
+    )
+    probe_review.add_argument("--probe-dir", required=True)
+    probe_review.add_argument("--reference", required=True)
+    probe_review.add_argument("--model", required=True)
+    probe_review.add_argument("--execute", action="store_true",
+                              help="Required: invoke installed local Ollama vision model")
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "review-bunny-probe":
+            if not args.execute:
+                print("ERROR: Explicit --execute required for local visual review.",
+                      file=sys.stderr)
+                return 2
+            result = review_two_part_probe(
+                args.probe_dir, args.reference, model=args.model
+            )
+            print(json.dumps({
+                "status": result["status"],
+                "verdict": result["verdict"],
+                "confidence": result["confidence"],
+                "issues": result["issues"],
+                "report": str(Path(args.probe_dir).resolve() /
+                              "probe_visual_review.json"),
+                "full_rig_generation_authorized": False,
+            }, ensure_ascii=False, indent=2))
+            return 0 if result["status"] == "PROBE_PRELIMINARY_ART_PASS" else 1
         if args.command == "probe-bunny":
             if not args.execute:
                 print("ERROR: --execute required; probe calls local ComfyUI twice.",

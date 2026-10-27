@@ -59,6 +59,7 @@ def joint_overlap(
         arm_count = b.histogram()[255]
         return {
             "pivot": [int(x), int(y)], "radius": radius,
+            "alpha_threshold": alpha_threshold,
             "body_pixels": body_count, "arm_pixels": arm_count,
             "overlap_pixels": shared,
             "overlap_ratio_of_smaller_part": round(
@@ -81,23 +82,44 @@ def _checker(size: tuple[int, int], tile: int = 32) -> Image.Image:
     return img.convert("RGBA")
 
 
-def _make_evidence(body: Path, arm: Path, destination: Path, side: int) -> str:
-    with Image.open(body) as a, Image.open(arm) as b:
-        parts = [a.convert("RGBA"), b.convert("RGBA")]
-    images = []
-    for view in (parts[0], parts[1], Image.alpha_composite(parts[0], parts[1])):
+def _make_evidence(
+    body: Path, arm: Path, destination: Path, side: int,
+    pivot: list[int],
+) -> str:
+    """Render five honest partial-rig views including two rotating-arm poses."""
+    with Image.open(body) as source_body, Image.open(arm) as source_arm:
+        torso = source_body.convert("RGBA")
+        limb = source_arm.convert("RGBA")
+    if torso.size != limb.size:
+        raise ProbeError("Probe source canvas dimensions differ.")
+    neutral = Image.alpha_composite(torso, limb)
+    # Rotate the FULL transparent canvas about the exact approved shoulder
+    # pivot. This is only an image-based motion diagnostic, not a Godot test.
+    up = Image.alpha_composite(
+        torso, limb.rotate(35, resample=Image.Resampling.BICUBIC,
+                           center=tuple(pivot), expand=False)
+    )
+    down = Image.alpha_composite(
+        torso, limb.rotate(-35, resample=Image.Resampling.BICUBIC,
+                           center=tuple(pivot), expand=False)
+    )
+    frames = [
+        ("BODY", torso), ("ARM RIGHT", limb),
+        ("NEUTRAL", neutral), ("ARM +35 DEG", up), ("ARM -35 DEG", down),
+    ]
+    images: list[Image.Image] = []
+    for label, view in frames:
         bg = _checker(view.size)
         bg.alpha_composite(view)
         bg.thumbnail((side, side), Image.Resampling.LANCZOS)
         images.append(bg.convert("RGB"))
     width = max(image.width for image in images)
     height = max(image.height for image in images)
-    sheet = Image.new("RGB", (width * 3, height + 44), (245, 246, 247))
+    sheet = Image.new("RGB", (width * len(images), height + 44),
+                      (245, 246, 247))
     draw = ImageDraw.Draw(sheet)
-    for i, (label, image) in enumerate(zip(
-        ("BODY", "ARM RIGHT", "NEUTRAL OVERLAP"), images
-    )):
-        x = width * i
+    for index, ((label, _), image) in enumerate(zip(frames, images)):
+        x = width * index
         draw.text((x + 12, 14), label, fill=(20, 24, 28))
         sheet.paste(image, (x, 44))
     sheet.save(destination, "PNG")
@@ -164,6 +186,10 @@ def run_two_part_probe(
         "approved_workflow_sha256": preflight["workflow_sha256"],
         "reference_sha256": preflight["reference_sha256"],
         "part_order": ["body", "arm_right"],
+        "evidence_panels": [
+            "BODY", "ARM RIGHT", "NEUTRAL", "ARM +35 DEG", "ARM -35 DEG"
+        ],
+        "shoulder_pivot": jobs["arm_right"]["pivot"],
         "jobs": [],
         "qa": {},
     }
@@ -212,7 +238,8 @@ def run_two_part_probe(
         report["qa"]["shoulder_neutral"] = overlap
         evidence = out / "probe_contact_sheet.png"
         report["qa"]["contact_sheet_sha256"] = _make_evidence(
-            body, arm, evidence, preview_side
+            body, arm, evidence, preview_side,
+            jobs["arm_right"]["pivot"],
         )
         report["status"] = (
             "PROBE_READY_FOR_VISUAL_INSPECTION"

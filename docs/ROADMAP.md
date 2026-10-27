@@ -13,6 +13,7 @@
 - [x] Strict anatomical placement/coverage/duplicate-art QA enforced for bunny blueprint, with **early abort before the next diffusion job** (offline synthetic tests)
 - [x] Strict offline production graph audit: reference image conditioning + part text both feed sampler; sampler output passes through pinned alpha/matting stage to SaveImage, exact node-ID output collection (synthetic tests)
 - [x] Two-part Mac art qualification command (body + right arm), alpha/placement early gating, neutral shoulder overlap and immutable contact-sheet/report (offline mock tests)
+- [x] Five-panel partial arm rotation evidence and independent SHA-verified local visual evaluator with immutable PASS/REVISE/FAIL preliminary report (offline mock tests)
 - [ ] Validate actual isolated layers, identity-conditioned generation and seamless rendered joint overlaps on Mac (live art unverified)
 - [x] Layer-based GIF/contact-sheet evidence generator (deterministic)
 - [x] Optional local AI vision reviewer: independent decision, evidence hashes, PASS/REVISE/FAIL gate (requires real Mac validation)

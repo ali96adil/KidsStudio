@@ -158,3 +158,12 @@ Use `kidsstudio audit-character-workflow` to verify the approved ComfyUI graph c
 ## Before full character generation
 
 Use `kidsstudio probe-bunny ... --execute` on the Mac once an approved local ComfyUI reference-conditioned/matting workflow is available. It renders only **body + right arm**, checks alpha/geometry and neutral shoulder overlap, and saves a comparison sheet. A passing result requires visual inspection, not 10-part automatic production. See [two-part qualification](docs/WORKFLOW_READINESS.md).
+
+## Independent partial-rig visual qualification
+
+After `probe-bunny` creates valid two-part body/arm artwork, the operator
+may run `kidsstudio review-bunny-probe ... --execute` with an installed
+local Ollama multimodal model. It checks five body/arm rotation panels
+against the canonical reference and saves an immutable SHA-tied verdict.
+Even PASS is **PROBE_PRELIMINARY_ART_PASS**, never permission to generate
+all parts unattended or publish. See [workflow readiness](docs/WORKFLOW_READINESS.md).

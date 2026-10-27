@@ -120,3 +120,47 @@ publishing path exists in this step.
 The CLI runs only when `--execute` is passed on the Mac. The Pi remote
 worker cannot dispatch this exploratory probe. It remains owner-controlled
 until we see and calibrate real FLUX layers.
+
+## Second gate: independent vision assessment (no ComfyUI regeneration)
+
+The earlier two-part probe now creates **five diagnostic panels**:
+BODY, ARM RIGHT, NEUTRAL, ARM +35 DEG and ARM -35 DEG. The last two are
+Pillow rotations about the approved shoulder pivot, **not** Godot renders
+or a full animation. They expose obvious gaps/ghosting during a basic
+arm movement while retaining an inexpensive, partial-rig qualification.
+
+After the local ComfyUI probe reports `PROBE_READY_FOR_VISUAL_INSPECTION`,
+run a separate local vision-model review:
+
+```sh
+kidsstudio review-bunny-probe \
+  --probe-dir /local/private/qualifications/bunny_probe_001 \
+  --reference /local/private/bunny_neutral_v01.png \
+  --model YOUR_INSTALLED_LOCAL_OLLAMA_VISION_MODEL \
+  --execute
+```
+
+It checks the source PNG hashes, original identity-reference SHA256,
+contact-sheet hash and measured shoulder overlap **before sending images**
+to an installed localhost-only multimodal model. There is no repeat
+ComfyUI generation, remote API fallback or automatic model download.
+The model must explicitly examine style/palette/arm completeness/shoulder
+seams and the two simple rotations, not invent defects in absent
+head/eyes/legs, which are intentionally not in the probe.
+
+Outputs `probe_visual_review.json` (no overwrite) with typed verdict:
+
+- `PROBE_PRELIMINARY_ART_PASS`: AI sees no specific issues with confidence
+  at least 0.90. Still requires human scrutiny and full-rig motion QA.
+- `PROBE_ART_REVISION_REQUIRED`: issue(s) seen or confidence insufficient.
+  Review instructions and evidence; **no automatic full-rig generation**.
+- `PROBE_ART_REJECTED`: serious mismatch or malformed design.
+  Avoid wasting more full-character GPU cycles.
+
+Passing **does not** set `full_rig_generation_authorized` or
+`public_release_authorized`. Both remain false. Reports are explicitly
+tied to input files. Use a new probe directory for a new run.
+
+Note: a local AI visual reviewer can be mistaken. These two art layers
+are insufficient to prove 10-part coherent character motion. Quality
+is not proven until real ComfyUI art passes multiple full-rig animations.
