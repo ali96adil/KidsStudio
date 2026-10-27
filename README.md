@@ -117,3 +117,18 @@ approved provider and stores its unverified review.
 
 No autonomous public release, and no remote Mac/Pi transport. Details in
 [AI Router and Worker](docs/AI_ROUTER_WORKER.md).
+
+## Secure Pi-to-Mac prototype (editorial work only)
+
+A Mac can now initiate a **TLS-validated HTTPS** connection to the Pi
+Studio Brain. The coordinator authenticates a per-worker secret from a
+local environment variable and enforces its allowlisted editorial job
+capabilities. The Mac receives only an authorized `script_draft` or
+`editorial_review`, may heartbeat, and returns text to a private Pi artifact
+vault. Atomic draft→review is supported without exposing SQLite to the Mac.
+
+See [Pi↔Mac secured transport](docs/REMOTE_TRANSPORT.md). This is a
+**development prototype**, not an installed always-running Pi/Mac service;
+no SSH/firewall change, agent autostart or paid API has been enabled on
+the owner's devices. Mac ComfyUI/Godot rendering remains a separate future
+worker capability.

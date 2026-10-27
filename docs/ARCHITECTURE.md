@@ -52,3 +52,23 @@ The default export is `PREVIEW_ONLY_UNAPPROVED`. With
 `--require-reviewed` an independent local AI PASS, fresh motion evidence,
 and hashes of the exact current part files are required before **internal**
 asset export. The owner still approves publication.
+
+## Pi HTTPS coordinator (prototype)
+
+The Pi keeps the authoritative SQLite control-plane and a private
+`0600` editorial artifact vault. The Mac initiates HTTPS requests, using
+a standard CA-verified certificate (or operator-installed trusted self-signed
+certificate) and a per-worker environment-backed bearer token. The Pi
+authenticates the worker **before reading the JSON body**, enforces a
+capability allowlist and bounded message sizes, and uses the existing
+SQLite generation-fenced leases. Exactly one linked editorial review
+inherits its original provider ID and SHA-256 of the immutable Pi text.
+
+This is intentionally restricted to script_draft/editorial_review — no
+remote shell, model download, arbitrary filesystem action, YouTube
+publication, image generation or video rendering. A Mac provider may be
+a free or local OpenAI-compatible chat endpoint, but the remote worker
+never opts into a paid route. TLS and bearer token only; production
+hardening (mTLS/token rotation, firewalls, rate limiting, device enrollment,
+clock health, execution side-effect dedupe) remains before unattended
+LAN/Internet deployment.

@@ -26,7 +26,8 @@
 - [x] Single-shot local worker for script_draft/editorial_review with persistent SQLite job acknowledgement (mock-tested)
 - [x] Atomic draft-to-independent-review followup with private artifact SHA256, lineage verification and no copy of draft text in child queue payload (mock-tested)
 - [ ] Independent structured child-development, factual, Arabic and English review decisions tied to one approved script revision
-- [ ] Studio Director decision-making agent, signed authenticated Pi-to-Mac remote worker transport and durable external-side-effect deduplication
+- [x] Authenticated TLS Pi coordinator with outbound-initiated Mac editorial client, role-limited leases, Pi private text vault and atomic review handoff (CI test only)
+- [ ] Studio Director decision-making agent, deployed Pi↔Mac credentials/firewall and Mac ComfyUI/Godot worker with durable external-side-effect deduplication
 - [ ] Independent bilingual editorial review committee
 - [ ] Telegram private command bot with allowlisted IDs and emergency stop
 
