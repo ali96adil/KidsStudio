@@ -24,6 +24,8 @@
 - [ ] Persistent episode/script editorial schemas and linked revisions
 - [x] Explicit per-role OpenAI-compatible multi-provider AI Chat router, env-only credentials, no paid/failover without opt-in (mock-tested)
 - [x] Single-shot local worker for script_draft/editorial_review with persistent SQLite job acknowledgement (mock-tested)
+- [x] Atomic draft-to-independent-review followup with private artifact SHA256, lineage verification and no copy of draft text in child queue payload (mock-tested)
+- [ ] Independent structured child-development, factual, Arabic and English review decisions tied to one approved script revision
 - [ ] Studio Director decision-making agent, signed authenticated Pi-to-Mac remote worker transport and durable external-side-effect deduplication
 - [ ] Independent bilingual editorial review committee
 - [ ] Telegram private command bot with allowlisted IDs and emergency stop
