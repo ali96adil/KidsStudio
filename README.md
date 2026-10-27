@@ -191,3 +191,15 @@ Run with the explicit Mac-local paths and save a private diagnostic report.
 The only success state is `READY_TO_REQUEST_MANUAL_TWO_PART_PROBE`, which
 still does **not** authorize automatic production. See
 [Mac readiness](docs/MAC_READINESS.md).
+
+## One-command first original bunny art trial
+
+`kidsstudio first-bunny-run --config /private/bunny_station.json
+--run-name bunny_trial_001 --execute` runs one strict Mac preflight,
+generates **only body + right arm** using local approved ComfyUI, stages
+the five-panel evidence and invokes one local independent vision-model
+review if geometry passes. Output/partial failures are journaled in a
+private, non-overwritable run directory, with **no automated rerun**,
+paid cloud inference, full-rig approval or YouTube publishing.
+See [first bunny trial](docs/FIRST_BUNNY_RUN.md). The first actual Mac
+FLUX artistic-quality check has not been performed in CI.
