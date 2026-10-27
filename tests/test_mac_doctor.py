@@ -215,6 +215,27 @@ class StationTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][1:], ["--version"])
         self.assertFalse(run.call_args.kwargs.get("shell", False))
 
+    def test_bad_reference_with_real_graph_audit_is_safe_blocked_report(self):
+        self.reference.write_bytes(b"invalid-image-bytes")
+        with (
+            patch("kidsstudio.mac_doctor._tool_info",
+                  side_effect=self.tool_success),
+            patch("kidsstudio.mac_doctor._disk_info",
+                  side_effect=self.disk_success),
+        ):
+            result = inspect_mac_station(
+                workflow_file=self.workflow,
+                reference_file=self.reference,
+                blueprint_file=self.blueprint,
+                profile_file=self.profile,
+                output_root=self.private,
+                connect=False,
+            )
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("CANONICAL_REFERENCE", result["blockers"])
+        self.assertEqual(result["comfy"]["checks"]["approved_graph"], "FAIL")
+        self.assertNotIn("invalid-image-bytes", json.dumps(result))
+
     def test_bad_loopback_url_refused(self):
         with self.assertRaises(ValueError):
             inspect_mac_station(

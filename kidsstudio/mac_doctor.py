@@ -20,7 +20,7 @@ from PIL import Image, UnidentifiedImageError
 
 from .comfy import validate_local_base_url
 from .comfy_inspector import inspect_mac_comfy
-from .factory import inspect_reference_image
+from .factory import inspect_reference_image, FactoryError
 from .planner import make_rig_plan
 from .reviewer import MODEL_RE
 
@@ -106,7 +106,7 @@ def _reference_info(reference_file: str | Path) -> dict[str, Any]:
             source.load()
             dims = [source.width, source.height]
             rgb = source.mode
-    except (OSError, ValueError, UnidentifiedImageError):
+    except (OSError, ValueError, UnidentifiedImageError, FactoryError):
         return {"state": "BLOCKED", "issue": "CANONICAL_REFERENCE_INVALID"}
     return {
         "state": "PASS", "sha256": digest,
