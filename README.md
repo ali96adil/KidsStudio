@@ -52,7 +52,7 @@ The QA tool returns exit code 0 when **technical** checks pass and a nonzero exi
 - Cutting arms out of a flat PNG produced visible seams; **rejected as the long-term production method**.
 - Next: generate head/body/arms/legs/ears/face as separate rig-first source layers and automate an animated contact-sheet QA.
 
-See docs/ARCHITECTURE.md, docs/STUDIO_CONSTITUTION.md, docs/COMFYUI_ADAPTER.md, docs/CHARACTER_FACTORY.md, docs/GODOT_RIG_PLAYER.md and docs/ROADMAP.md.
+See docs/ARCHITECTURE.md, docs/STUDIO_CONSTITUTION.md, docs/COMFYUI_ADAPTER.md, docs/CHARACTER_FACTORY.md, docs/GODOT_RIG_PLAYER.md, docs/STUDIO_QUEUE.md and docs/ROADMAP.md.
 
 ## Privacy / licensing
 
@@ -78,3 +78,17 @@ regenerating only the rejected ones. An ambiguous defect, explicit FAIL,
 missing reviewer, broken alpha, invalid provenance or exhausted retry
 limit stops rather than approving/submitting unreviewed art.
 Full details: [bounded production cycle](docs/PRODUCTION_CYCLE.md).
+
+## Studio Brain v0.1 — durable queue
+
+A dedicated **local SQLite** control plane can now persist approved job types,
+allocate work to a Mac/Pi worker via time-limited leases and fencing tokens,
+retain an audit log, pause new dispatch or revoke a claim. It has no network
+server and cannot execute a job or call a paid model by itself. Each
+worker-side activity will require a separate explicitly approved adapter.
+
+    studioctl --db /private/local/studio.sqlite init
+    studioctl --db /private/local/studio.sqlite status
+
+See [Studio Queue operations](docs/STUDIO_QUEUE.md). All state and full logs
+remain outside public Git and outside the NAS transactional data share.
