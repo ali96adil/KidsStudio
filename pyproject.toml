@@ -14,6 +14,7 @@ dependencies = [
 [project.scripts]
 kidsstudio = "kidsstudio.cli:main"
 studioctl = "kidsstudio.studio_cli:main"
+studio-worker = "kidsstudio.local_worker:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
