@@ -53,6 +53,5 @@ jobs:
           set -euo pipefail
           xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
             python scripts/ci_godot_smoke.py "$RUNNER_TEMP/kidsstudio-native-smoke"
-          ffmpeg -hide_banner -loglevel error \
-            -i "$RUNNER_TEMP/kidsstudio-native-smoke/movie/character_preview.mp4" \
-            -frames:v 1 -f null -
+          # The smoke script itself decodes the MP4 and verifies the Pi
+          # journal, SHA256, owner release gate, and successful TLS ack.

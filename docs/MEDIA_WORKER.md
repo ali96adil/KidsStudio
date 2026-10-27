@@ -113,6 +113,14 @@ valid media metadata, wrong/forbidden public status, cancelled leases,
 single executor call on ambiguous STARTED, remote ack-loss recovery using
 new lease generations, and journal state across calls.
 
+The **native Godot CI smoke** additionally creates original synthetic
+RGBA layers, exports a Godot rig, starts an **actual loopback HTTPS Pi**
+coordinator, queues a media job, uses the Mac media-worker adapter to
+render with the real installed Godot/FFmpeg, and verifies the Pi
+completion receipt matches the output MP4 SHA256. The media is
+3 frames and synthetic only. This does **not** validate that the user's
+FLUX workflow can generate appealing transparent bunny limbs.
+
 Even a correct MP4 is `VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW`.
 Approval of actual child education value, audio, narration, safety,
 YouTube upload and monetization compliance remain separate, with the
