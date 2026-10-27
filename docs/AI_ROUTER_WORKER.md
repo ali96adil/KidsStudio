@@ -125,3 +125,32 @@ Only then will autonomous overnight Mac rendering be safe to deploy.
 The Studio Director is still not an autonomous LLM authority: the queue
 and local worker provide **execution scaffolding**, not a running
 self-directed agent or a public YouTube publisher.
+
+## Opt-in automatic handoff to an independent reviewer
+
+The original draft task may opt in by adding `"auto_review": true`
+to its local payload:
+
+    {"language":"ar", "topic":"الألوان", "auto_review":true}
+
+On success the writer stores the draft in private local storage, and one
+**atomic SQLite transaction** changes the draft to COMPLETED while
+inserting a single editorial_review child job. The child contains
+`source_job_id`, SHA256 and true `original_provider_id`, *not the
+entire draft*. Before calling the reviewer, the worker confirms the parent
+job is completed, that the child ID matches the parent's authoritative
+record, and that the private original source text has the same digest.
+Wrong language, forged parent/provider claims, tampering or missing files
+cause a hard failure. Review requires a distinct provider and preserves
+`publication_approved=false`.
+
+Use `studio-worker ... --once` again to process the next job. This is a
+**deterministic two-stage local workflow**, not a daemon and not multi-agent
+continuous autonomy. For `auto_review=false` (default), the original
+single-stage draft behavior is unchanged.
+
+A model's textual PASS/REVISE/BLOCK opinion is still not a structured
+studio-level editorial approval. Future work adds distinct age-safety,
+language, fact/pedagogy reviewers tied to a versioned script hash and a
+typed decision aggregation policy. Public YouTube release remains blocked
+until owner approval.

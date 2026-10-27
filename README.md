@@ -105,3 +105,15 @@ providers may be assigned to writer and reviewer.
 See [AI Router and Worker](docs/AI_ROUTER_WORKER.md). The Pi-to-Mac
 authenticated remote channel is **not deployed** yet; never share the SQLite
 file over a NAS or assume a Mac on another host can safely claim it.
+
+## Atomic draft → independent review handoff
+
+For `script_draft` requests with `"auto_review": true`, the local worker
+saves the exact text/hash and atomically completes the draft + queues one
+`editorial_review` job. The child stores **no copy of the entire draft**;
+it references the verified private local artifact. A second single-shot worker
+invocation claims the review job, verifies provenance, selects a different
+approved provider and stores its unverified review.
+
+No autonomous public release, and no remote Mac/Pi transport. Details in
+[AI Router and Worker](docs/AI_ROUTER_WORKER.md).

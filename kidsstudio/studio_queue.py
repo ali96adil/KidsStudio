@@ -7,6 +7,7 @@ A later allowlisted worker adapter will perform permitted task types.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -280,6 +281,74 @@ class StudioQueue:
                 WHERE job_id=?
             """, (packed, now, job_id))
             self._event(db, job_id, "COMPLETED", {})
+            return dict(db.execute(
+                "SELECT * FROM jobs WHERE job_id=?", (job_id,)
+            ).fetchone())
+
+    def complete_draft_and_enqueue_review(
+        self, *, job_id: str, worker_id: str, generation: int,
+        result: dict[str, Any], language: str
+    ) -> dict[str, Any]:
+        """Atomically complete one draft and create one independent review job.
+
+        Only a successfully leased script_draft can authorize this handoff.
+        The child stores a source hash/reference, NEVER the text itself.
+        """
+        if language not in ("ar", "en"):
+            raise QueueError("Invalid review language.")
+        if (not isinstance(result, dict) or
+            result.get("status") != "DRAFTED_UNREVIEWED" or
+            result.get("publication_approved") is not False):
+            raise QueueError("Cannot hand off an unverified/non-draft result.")
+        provider = result.get("provider_id")
+        sha = result.get("artifact_sha256")
+        if (not isinstance(provider, str) or not SAFE_KEY.fullmatch(provider)
+                or not isinstance(sha, str) or
+                len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha)):
+            raise QueueError("Review handoff needs trusted provider and SHA256 provenance.")
+        packed = _json_object(result, "draft result")
+        now = self.clock()
+        review_key = "review:" + hashlib.sha256(
+            job_id.encode("utf-8")).hexdigest()
+        with self._connection(write=True) as db:
+            current = self._guard_current(db, job_id, worker_id, generation, now)
+            if current["kind"] != "script_draft":
+                raise QueueError("Only a script draft may launch editorial review.")
+            parent_payload = json.loads(current["payload"])
+            if parent_payload.get("language") != language:
+                raise QueueError("Review and draft languages disagree.")
+            if db.execute(
+                "SELECT 1 FROM jobs WHERE request_key=?", (review_key,)
+            ).fetchone():
+                raise QueueError("This draft already has a review job.")
+            child_id = uuid4().hex
+            child_payload = _json_object({
+                "language": language,
+                "source_job_id": job_id,
+                "source_answer_sha256": sha,
+                "original_provider_id": provider,
+            }, "review payload")
+            db.execute("""
+                INSERT INTO jobs (
+                    job_id,request_key,kind,payload,state,max_attempts,
+                    available_at,created_at,updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?)
+            """, (
+                child_id, review_key, "editorial_review", child_payload,
+                "QUEUED", 2, now, now, now,
+            ))
+            parent_result = dict(result)
+            parent_result["next_review_job_id"] = child_id
+            packed = _json_object(parent_result, "draft handoff result")
+            db.execute("""
+                UPDATE jobs SET state='COMPLETED',result_json=?,
+                    worker_id=NULL,lease_expires=NULL,updated_at=?
+                WHERE job_id=?
+            """, (packed, now, job_id))
+            self._event(db, job_id, "COMPLETED_AND_REVIEW_QUEUED",
+                        {"next_review_job_id": child_id})
+            self._event(db, child_id, "ENQUEUED_BY_DRAFT",
+                        {"source_job_id": job_id})
             return dict(db.execute(
                 "SELECT * FROM jobs WHERE job_id=?", (job_id,)
             ).fetchone())

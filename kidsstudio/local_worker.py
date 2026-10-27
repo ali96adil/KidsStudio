@@ -90,6 +90,35 @@ class LocalAIWorker:
         self.worker_id = worker_id
         self.allow_paid = allow_paid
 
+    def _resolve_linked_review(
+        self, job_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Read exact source text for this review from private immutable artifacts."""
+        source_id = payload.get("source_job_id")
+        if not isinstance(source_id, str) or not re.fullmatch(r"[a-f0-9]{32}", source_id):
+            raise WorkerError("Invalid source draft job ID.")
+        parent = self.queue.get(source_id)
+        if parent["kind"] != "script_draft" or parent["state"] != "COMPLETED":
+            raise WorkerError("Linked review requires a completed draft.")
+        result = json.loads(parent["result_json"])
+        if (result.get("next_review_job_id") != job_id or
+            result.get("status") != "DRAFTED_UNREVIEWED" or
+            result.get("provider_id") != payload.get("original_provider_id") or
+            result.get("artifact_sha256") != payload.get("source_answer_sha256")):
+            raise WorkerError("Review source does not match draft provenance.")
+        manifest_path = Path(result["artifact_manifest"]).resolve()
+        if not manifest_path.is_relative_to(self.root):
+            raise WorkerError("Review source is outside private artifact root.")
+        answer_file = manifest_path.parent / "answer.txt"
+        if not answer_file.is_file() or answer_file.stat().st_size > 50_000:
+            raise WorkerError("Linked draft text missing or oversized.")
+        data = answer_file.read_bytes()
+        if hashlib.sha256(data).hexdigest() != payload["source_answer_sha256"]:
+            raise WorkerError("Linked draft content changed after queue handoff.")
+        resolved = dict(payload)
+        resolved["script_text"] = data.decode("utf-8")
+        return resolved
+
     def run_once(self) -> dict[str, Any]:
         """Claim at most one job; never loops or silently launches a daemon."""
         claimed = self.queue.claim(
@@ -106,6 +135,10 @@ class LocalAIWorker:
 
         try:
             payload = json.loads(claimed["payload"])
+            if role == "editorial_review" and "source_job_id" in payload:
+                payload = self._resolve_linked_review(job_id, payload)
+            if role == "script_draft" and type(payload.get("auto_review", False)) is not bool:
+                raise WorkerError("auto_review must be a boolean.")
             system, prompt, different_from = _prompts(role, payload)
             # Write once per generation. A completed artifact from a stale
             # generation remains immutable, never adopted without matching role.
@@ -133,17 +166,24 @@ class LocalAIWorker:
                 output.write(
                     json.dumps(response_record, indent=2, ensure_ascii=False) + "\n"
                 )
+            completion = {
+                "status": "DRAFTED_UNREVIEWED" if role == "script_draft"
+                          else "EDITORIAL_REVIEW_UNVERIFIED",
+                "provider_id": result["provider_id"],
+                "model": result["model"],
+                "artifact_sha256": result["answer_sha256"],
+                "artifact_manifest": str(manifest),
+                "publication_approved": False,
+            }
+            if role == "script_draft" and payload.get("auto_review", False):
+                return self.queue.complete_draft_and_enqueue_review(
+                    job_id=job_id, worker_id=self.worker_id,
+                    generation=generation, result=completion,
+                    language=payload["language"],
+                )
             return self.queue.complete(
                 job_id=job_id, worker_id=self.worker_id,
-                generation=generation, result={
-                    "status": "DRAFTED_UNREVIEWED" if role == "script_draft"
-                              else "EDITORIAL_REVIEW_UNVERIFIED",
-                    "provider_id": result["provider_id"],
-                    "model": result["model"],
-                    "artifact_sha256": result["answer_sha256"],
-                    "artifact_manifest": str(manifest),
-                    "publication_approved": False,
-                },
+                generation=generation, result=completion,
             )
         except (AIRouterError, QueueError, WorkerError, ValueError,
                 OSError) as exc:
