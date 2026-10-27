@@ -134,7 +134,7 @@ def first_bunny_run(
         "run_name": run_name,
         "workflow_approved_for_probe": False,
         "local_gpu_part_budget": 2,
-        "parts_attempted": [],
+        "parts_planned": ["body", "arm_right"],
         "local_vision_review_attempted": False,
         "full_rig_generation_authorized": False,
         "public_release_authorized": False,
@@ -163,7 +163,6 @@ def first_bunny_run(
 
         info["workflow_approved_for_probe"] = True
         info["status"] = "GENERATION_IN_PROGRESS"
-        info["parts_attempted"] = ["body", "arm_right"]  # planned cap, not verified actual submissions
         _journal(report_path, info)
         active_comfy = comfy_client if comfy_client is not None else LocalComfyClient(
             base_url=cfg.get("comfy_url", "http://127.0.0.1:8188")
