@@ -30,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     comfy.add_argument("--profile", required=True)
     comfy.add_argument("--prompt", required=True)
     comfy.add_argument("--prefix", required=True)
+    comfy.add_argument("--reference-name", help="Already uploaded local ComfyUI reference PNG filename")
     comfy.add_argument("--base-url", default="http://127.0.0.1:8188")
     comfy.add_argument("--submit", action="store_true",
                        help="Explicitly queue a validated job on local ComfyUI")
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     factory.add_argument("--out", required=True)
     factory.add_argument("--timeout", type=int, default=900)
     factory.add_argument("--preview-side", type=int, default=384)
+    factory.add_argument("--reference", help="Canonical local PNG to upload into approved reference-conditioned workflow")
     factory.add_argument("--review-model",
                          help="Optional installed local multimodal Ollama model for independent QA")
     factory.add_argument("--execute", action="store_true",
@@ -77,7 +79,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "comfy-prepare":
             prepared = prepare_submission(
                 args.workflow, args.profile,
-                prompt_text=args.prompt, filename_prefix=args.prefix
+                prompt_text=args.prompt, filename_prefix=args.prefix,
+                reference_image_name=args.reference_name,
             )
             # Avoid dumping full prompts/workflows to logs.
             result = (
@@ -124,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.blueprint, args.workflow, args.profile, args.out,
                 timeout_seconds=args.timeout, preview_side=args.preview_side,
                 review_model=args.review_model,
+                reference_image=args.reference,
             )
             print(json.dumps({
                 "status": result["status"], "character_id": result["character_id"],

@@ -17,6 +17,10 @@ class FakeClient:
         self.payload = payload
         self.calls = []
 
+    def upload_reference(self, payload, filename):
+        self.uploaded_reference = (payload, filename)
+        return filename
+
     def queue(self, prepared):
         self.calls.append(prepared["prompt"]["1"]["inputs"]["text"])
         return "test-" + str(len(self.calls))
@@ -80,6 +84,59 @@ class FactoryTests(unittest.TestCase):
         self.assertTrue((dest / "review" / "motion_contact_sheet.png").exists())
         self.assertTrue((dest / "review" / "motion_preview.gif").exists())
         self.assertTrue((dest / "factory_report.json").exists())
+
+    def test_canonical_reference_is_uploaded_once_and_recorded(self):
+        self.workflow_data = json.loads(self.workflow.read_text())
+        self.workflow_data["3"] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": "placeholder.png"},
+        }
+        self.workflow_data["2"]["inputs"]["images"] = ["3", 0]
+        workflow_bytes = json.dumps(self.workflow_data).encode()
+        self.workflow.write_bytes(workflow_bytes)
+        profile = json.loads(self.profile.read_text())
+        profile["approved_workflow_sha256"] = hashlib.sha256(workflow_bytes).hexdigest()
+        profile["allowed_node_classes"].append("LoadImage")
+        profile["reference_node_id"] = "3"
+        self.profile.write_text(json.dumps(profile))
+        reference = self.root / "canonical_bunny.png"
+        reference.write_bytes(self.valid_png)
+        client = FakeClient(self.valid_png)
+        state = build_character(
+            self.blueprint, self.workflow, self.profile,
+            self.root / "ref_batch", client=client,
+            preview_side=96, reference_image=reference,
+        )
+        self.assertEqual(state["status"], "NEEDS_INDEPENDENT_VISUAL_REVIEW")
+        self.assertTrue(state["reference_conditioned"])
+        self.assertEqual(state["canonical_reference_sha256"],
+                         hashlib.sha256(self.valid_png).hexdigest())
+        self.assertEqual(len(client.calls), 6)
+        self.assertEqual(client.uploaded_reference[0], self.valid_png)
+        for part_prompt in client.calls:
+            self.assertIn("Original character:", part_prompt)
+
+    def test_reference_upload_uses_real_multipart_crlf(self):
+        from kidsstudio.factory import LocalComfyClient
+        client = LocalComfyClient()
+        class Response:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+            def read(self, *args):
+                return b'{"name":"KidsStudio_reference_abc.png","subfolder":"","type":"input"}'
+        class Opener:
+            def open(self, request, timeout):
+                self.req = request
+                return Response()
+        fake = Opener()
+        client.opener = fake
+        result = client.upload_reference(
+            self.valid_png, "KidsStudio_reference_abc.png")
+        self.assertEqual(result, "KidsStudio_reference_abc.png")
+        self.assertIn(b"\r\n", fake.req.data)
+        self.assertIn(b'Content-Disposition: form-data; name="image"', fake.req.data)
 
     def test_opaque_png_fails_closed_before_second_job(self):
         img = Image.new("RGB", (64, 64), (255, 255, 255))

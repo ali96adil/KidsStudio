@@ -25,6 +25,26 @@ from .rigqa import check_rig
 from .reviewer import review_rig
 
 MAX_IMAGE_BYTES = 25_000_000
+
+MAX_REFERENCE_BYTES = 15_000_000
+
+
+def inspect_reference_image(source: str | Path) -> tuple[bytes, str, str]:
+    """Validate source PNG; return bytes, deterministic name, SHA256."""
+    path = Path(source).expanduser().resolve()
+    payload = path.read_bytes()
+    if not 1 <= len(payload) <= MAX_REFERENCE_BYTES:
+        raise FactoryError("Reference PNG is empty or exceeds 15 MB.")
+    try:
+        with Image.open(BytesIO(payload)) as image:
+            image.load()
+            if image.format != "PNG" or min(image.size) < 16 or max(image.size) > 4096:
+                raise FactoryError("Reference must be a valid PNG within 16..4096 pixels.")
+    except (OSError, UnidentifiedImageError, ValueError) as exc:
+        raise FactoryError(f"Invalid reference PNG: {exc}") from exc
+    digest = hashlib.sha256(payload).hexdigest()
+    return payload, "KidsStudio_reference_" + digest[:16] + ".png", digest
+
 MAX_API_BYTES = 2_000_000
 SAFE_ID = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 
@@ -102,6 +122,38 @@ class LocalComfyClient:
             time.sleep(poll_seconds)
         raise TimeoutError(f"ComfyUI job did not complete within {timeout_seconds}s.")
 
+    def upload_reference(self, payload: bytes, filename: str) -> str:
+        """Upload only a vetted local PNG to this loopback ComfyUI instance."""
+        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,100}\.png", filename):
+            raise FactoryError("Unsafe uploaded reference filename.")
+        if not 1 <= len(payload) <= MAX_REFERENCE_BYTES:
+            raise FactoryError("Invalid reference payload length.")
+        boundary = "KidsStudioReferenceBoundary"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'
+            "Content-Type: image/png\r\n\r\n"
+        ).encode("utf-8") + payload + (
+            f"\r\n--{boundary}\r\n"
+            'Content-Disposition: form-data; name="overwrite"\r\n\r\n'
+            f"true\r\n--{boundary}--\r\n"
+        ).encode("utf-8")
+        req = request.Request(
+            self.base + "/upload/image", data=body,
+            headers={"Content-Type": "multipart/form-data; boundary=" + boundary},
+            method="POST",
+        )
+        with self.opener.open(req, timeout=60) as response:
+            raw = response.read(MAX_API_BYTES + 1)
+        if len(raw) > MAX_API_BYTES:
+            raise FactoryError("Reference upload response exceeds safety limit.")
+        response = json.loads(raw)
+        returned = response.get("name")
+        if (returned != filename or response.get("subfolder", "") != ""
+                or response.get("type", "input") != "input"):
+            raise FactoryError("ComfyUI reference was not stored under approved input name.")
+        return returned
+
     def download_png(self, image_ref: dict[str, str]) -> bytes:
         name, subfolder = image_ref.get("filename"), image_ref.get("subfolder", "")
         if (
@@ -160,6 +212,7 @@ def build_character(
     preview_side: int = 384,
     review_model: str | None = None,
     vision_client: Any | None = None,
+    reference_image: str | Path | None = None,
 ) -> dict[str, Any]:
     """Execute a new batch; refuses to overwrite any existing output."""
     plan = make_rig_plan(blueprint_file)
@@ -172,12 +225,20 @@ def build_character(
     # Refuse any directory inside an actual Git working tree.
     if any((parent / ".git").exists() for parent in (out, *out.parents)):
         raise FactoryError("Character production assets must not be saved inside Git.")
+    reference_bytes: bytes | None = None
+    reference_name: str | None = None
+    reference_digest: str | None = None
+    if reference_image is not None:
+        reference_bytes, reference_name, reference_digest = inspect_reference_image(
+            reference_image
+        )
     # Check all target jobs *before* the first remote generation.
     prepared_jobs = [
         (job, prepare_submission(
             workflow_file, profile_file,
             prompt_text=job["prompt"],
             filename_prefix=f"KidsStudio/{char_id}/{job['part_id']}",
+            reference_image_name=reference_name,
         ))
         for job in plan["jobs"]
     ]
@@ -194,6 +255,8 @@ def build_character(
             Path(blueprint_file).read_bytes()).hexdigest(),
         "approved_workflow_sha256": prepared_jobs[0][1]["workflow_sha256"],
         "models": prepared_jobs[0][1]["models"],
+        "canonical_reference_sha256": reference_digest,
+        "reference_conditioned": reference_name is not None,
         "jobs": [],
         "technical_pass": False,
         "visual_review_required": True,
@@ -202,6 +265,10 @@ def build_character(
     _json_atomic(state_file, state)
 
     try:
+        if reference_bytes is not None and reference_name is not None:
+            actual_name = active.upload_reference(reference_bytes, reference_name)
+            if actual_name != reference_name:
+                raise FactoryError("Reference upload did not preserve the approved name.")
         for job, prepared in prepared_jobs:
             entry: dict[str, Any] = {
                 "part_id": job["part_id"],
@@ -250,7 +317,8 @@ def build_character(
                 decision = review_rig(
                     manifest, out / "review" / "motion_evidence.json",
                     out / "visual_review.json", model=review_model,
-                    client=vision_client
+                    client=vision_client,
+                    reference_file=reference_image,
                 )
                 state["visual_review"] = decision
                 state["status"] = decision["status"]

@@ -95,3 +95,25 @@ to invoke this reviewer after rendering the contact sheet, in the same run.
 In the case of any review service failure or invalid model response the
 pipeline FAILS CLOSED, preserves the collected assets, and records the failure.
 Regenerate visual evidence after any edit to layer images.
+
+## Locking original character identity
+
+For the next bunny production run, add a canonical reference image in the
+ComfyUI workflow with an approved `LoadImage` node feeding the final output,
+then include `reference_node_id` in the local profile. Run:
+
+    kidsstudio build-character examples/bunny_blueprint.json \\
+      --workflow /safe/local/reference_workflow_api.json \\
+      --profile /safe/local/reference_profile.json \\
+      --reference /safe/local/bunny_neutral_v01.png \\
+      --review-model YOUR_INSTALLED_LOCAL_VISION_MODEL \\
+      --out /safe/local/characters/bunny/v02 \\
+      --execute
+
+This submits the original character PNG only to the local ComfyUI process,
+records its hash and feeds the same reference into all individual jobs.
+The independent local vision reviewer also receives this reference and
+must flag visible inconsistent proportions, expression and colors.
+
+Both the reference workflow and local multimodal reviewer still require real
+Mac setup before autonomous art production can be claimed.

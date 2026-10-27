@@ -98,6 +98,45 @@ class ComfySafetyTests(unittest.TestCase):
                 prompt_text="hi", filename_prefix="../secrets"
             )
 
+    def test_connected_reference_is_required_and_patched(self):
+        self.workflow["4"] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": "existing.png"}
+        }
+        self.workflow["3"]["inputs"]["images"] = ["4", 0]
+        self._write()
+        self.profile["allowed_node_classes"].append("LoadImage")
+        self.profile["reference_node_id"] = "4"
+        self.profile_file.write_text(json.dumps(self.profile))
+        with self.assertRaises(ComfySafetyError):
+            self.run_prepare()
+        from kidsstudio.comfy import prepare_submission
+        prepared = prepare_submission(
+            self.workflow_file, self.profile_file,
+            prompt_text="One isolated original bunny paw",
+            filename_prefix="KidsStudio/test/paw",
+            reference_image_name="KidsStudio_reference_0123456789abcdef.png",
+        )
+        self.assertEqual(prepared["prompt"]["4"]["inputs"]["image"],
+                         "KidsStudio_reference_0123456789abcdef.png")
+
+    def test_disconnected_reference_is_rejected(self):
+        self.workflow["4"] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": "existing.png"}
+        }
+        self._write()
+        self.profile["allowed_node_classes"].append("LoadImage")
+        self.profile["reference_node_id"] = "4"
+        self.profile_file.write_text(json.dumps(self.profile))
+        from kidsstudio.comfy import prepare_submission
+        with self.assertRaises(ComfySafetyError):
+            prepare_submission(
+                self.workflow_file, self.profile_file,
+                prompt_text="paw", filename_prefix="KidsStudio/paw",
+                reference_image_name="KidsStudio_reference_0123456789abcdef.png",
+            )
+
     def test_nonlocal_endpoint_rejected(self):
         for url in ("https://127.0.0.1:8188", "http://example.com:8188",
                     "http://127.0.0.1:8188/path", "http://localhost"):
