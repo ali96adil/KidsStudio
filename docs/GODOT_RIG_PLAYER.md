@@ -63,3 +63,17 @@ video upload is part of this flow.
   Python generator and mock images, not live installed Godot runtime.
 - The local vision model can still overlook subtle defects, and an AI PASS is
   not a guarantee of artistic correctness.
+
+## Native CI proof (synthetic artwork only)
+
+`.github/workflows/godot-smoke.yml` installs the **official Godot 4.7.2**
+Linux binary with a pinned SHA-256. It generates a temporary multi-layer
+synthetic bunny (all art created in-memory by Pillow), exports a real
+Godot project, starts the actual Godot process headlessly, renders
+three fixed-fps frames, encodes an MP4 with FFmpeg, and validates
+its size and codec. No ComfyUI, user art, models, secrets or cloud API
+credentials are involved.
+
+This replaces the assumption that Python unit tests alone prove GDScript
+syntax and runtime behavior. The Mac's actual M3 Max renderer and real
+FLUX rig artwork must still receive a separate integrated validation.

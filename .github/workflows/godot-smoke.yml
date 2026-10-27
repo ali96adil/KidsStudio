@@ -1,0 +1,46 @@
+name: Real Godot smoke
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    name: Godot 4.7.2 native smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python code and native FFmpeg
+        run: |
+          python -m pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq unzip ffmpeg libfontconfig1
+      - name: Download official Godot 4.7.2 (SHA-256 verified)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            'https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip' \
+            -o "$RUNNER_TEMP/godot.zip"
+          printf '%s  %s\n' \
+            'cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4' \
+            "$RUNNER_TEMP/godot.zip" | sha256sum -c -
+          unzip -p "$RUNNER_TEMP/godot.zip" > "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/godot" --version
+      - name: Export a synthetic multi-part rig with the audited Godot player and render it
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci_godot_smoke.py "$RUNNER_TEMP/kidsstudio-native-smoke"
+          ffprobe -v error -show_entries stream=codec_name,width,height \
+            -of default=noprint_wrappers=1 "$RUNNER_TEMP/kidsstudio-native-smoke/movie/character_preview.mp4"
