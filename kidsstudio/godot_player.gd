@@ -78,11 +78,18 @@ func _ready() -> void:
         layer.name = "Artwork"
         layer.centered = false
         layer.position = -pivot
-        layer.texture = load("res://assets/" + part_id + ".png") as Texture2D
-        if layer.texture == null:
+        # Read PNG bytes directly: a newly exported Godot project may not have
+        # an imported resource database yet. ImageTexture avoids editor/import
+        # prerequisites for automated offline renders and native CI.
+        var layer_image: Image = Image.new()
+        var load_status: Error = layer_image.load(
+            "res://assets/" + part_id + ".png"
+        )
+        if load_status != OK:
             push_error("RIG_LAYER_MISSING: " + part_id)
             get_tree().quit(1)
             return
+        layer.texture = ImageTexture.create_from_image(layer_image)
         joint.add_child(layer)
 
     queue_redraw()

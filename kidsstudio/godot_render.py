@@ -103,13 +103,24 @@ def render_godot_project(
     }
     _write_status(status_file, status)
     try:
-        subprocess.run([
-            godot, "--headless", "--path", str(project),
+        # A true movie with ImageTexture sprites must use a real renderer.
+        # Godot's --headless dummy texture storage may crash when movie capture
+        # requests painted textures. Linux CI runs this under Xvfb/Mesa instead.
+        completed = subprocess.run([
+            godot, "--path", str(project),
+            "--rendering-method", "gl_compatibility",
             "--write-movie", str(avi),
             "--fixed-fps", str(fps),
             "--quit-after", str(frames),
         ], check=True, capture_output=True, text=True,
            timeout=timeout_seconds)
+        output_log = ((getattr(completed, "stdout", "") or "") + "\\n" +
+                      (getattr(completed, "stderr", "") or ""))
+        if "SCRIPT ERROR:" in output_log or "ERROR:" in output_log:
+            raise GodotRenderError(
+                "Godot reported a script or rendering error: " +
+                output_log[-1600:]
+            )
         if not avi.is_file() or avi.stat().st_size == 0:
             raise GodotRenderError("Godot completed without writing AVI frames.")
         subprocess.run([
@@ -134,9 +145,18 @@ def render_godot_project(
         status["status"] = "RENDER_FAILED"
         status["error_type"] = type(exc).__name__
         status["error"] = str(exc)[:2000]
+        std_err = getattr(exc, "stderr", None) or ""
+        std_out = getattr(exc, "stdout", None) or ""
+        if isinstance(std_err, bytes):
+            std_err = std_err.decode("utf-8", errors="replace")
+        if isinstance(std_out, bytes):
+            std_out = std_out.decode("utf-8", errors="replace")
+        diagnostic = (str(std_out) + "\\n" + str(std_err))[-6000:]
+        status["renderer_log_tail"] = diagnostic
         _write_status(status_file, status)
         raise GodotRenderError(
-            f"Local renderer failed. Inspect {status_file} and local logs."
+            f"Local renderer failed. Inspect {status_file}. "
+            f"Renderer output: {diagnostic[-2000:]}"
         ) from exc
     _write_status(status_file, status)
     return status

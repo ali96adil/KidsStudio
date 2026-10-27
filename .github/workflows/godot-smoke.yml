@@ -1,0 +1,58 @@
+name: Real Godot smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: godot-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    name: Godot 4.7.2 native smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prepare preinstalled Xvfb and bundled FFmpeg
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e . imageio-ffmpeg==0.6.0
+          command -v xvfb-run
+          command -v unzip
+          FFMPEG_EXE="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          "$FFMPEG_EXE" -hide_banner -encoders | grep libx264
+          ln -s "$FFMPEG_EXE" "$RUNNER_TEMP/ffmpeg"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Download official Godot 4.7.2 (SHA-256 verified)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            'https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip' \
+            -o "$RUNNER_TEMP/godot.zip"
+          printf '%s  %s\n' \
+            'cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4' \
+            "$RUNNER_TEMP/godot.zip" | sha256sum -c -
+          unzip -p "$RUNNER_TEMP/godot.zip" > "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/godot" --version
+      - name: Export a synthetic multi-part rig with the audited Godot player and render it
+        shell: bash
+        run: |
+          set -euo pipefail
+          xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
+            python scripts/ci_godot_smoke.py "$RUNNER_TEMP/kidsstudio-native-smoke"
+          ffmpeg -hide_banner -loglevel error \
+            -i "$RUNNER_TEMP/kidsstudio-native-smoke/movie/character_preview.mp4" \
+            -frames:v 1 -f null -
