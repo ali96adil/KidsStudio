@@ -20,7 +20,8 @@
 - [ ] Benchmarks on actual Mac M3 Max and 48 GB shared memory
 
 ## Milestone 2 — Studio brain
-- [ ] Persistent episodes/scripts/job state and audit journal
+- [x] Durable SQLite production-job state, audit journal, worker leases/fencing, crash recovery and local Studio Director CLI (offline integration tests)
+- [ ] Persistent episode/script editorial schemas and linked revisions
 - [ ] Studio Director agent with allowlisted tool permissions, quotas and rollback
 - [ ] Independent bilingual editorial review committee
 - [ ] Telegram private command bot with allowlisted IDs and emergency stop
