@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image, UnidentifiedImageError
+from .riggeometry import (
+    validate_geometry_policy, measure_part_geometry, pixel_fingerprint
+)
 
 MINIMUM_PARTS = frozenset(
     {"body", "head", "arm_left", "arm_right", "leg_left", "leg_right"}
@@ -33,6 +36,8 @@ def check_rig(manifest_path: str | Path) -> dict[str, Any]:
         "errors": [],
         "warnings": [],
         "parts_checked": 0,
+        "anatomical_checks_enabled": False,
+        "part_geometry": {},
         "visual_review_required": True,
     }
     try:
@@ -65,6 +70,17 @@ def check_rig(manifest_path: str | Path) -> dict[str, Any]:
     if not isinstance(parts, list) or not (1 <= len(parts) <= MAX_PARTS):
         _fail(report, f"parts must be a list of 1 to {MAX_PARTS} entries.")
         return report
+
+    try:
+        policy = validate_geometry_policy(
+            data.get("qa_policy"), width, height, parts
+        )
+    except ValueError as exc:
+        _fail(report, f"Invalid rig geometry policy: {exc}")
+        return report
+    strict = policy["strict_parts"]
+    report["anatomical_checks_enabled"] = strict
+    seen_fingerprints: dict[str, str] = {}
 
     ids: set[str] = set()
     files: set[Path] = set()
@@ -122,12 +138,52 @@ def check_rig(manifest_path: str | Path) -> dict[str, Any]:
                 if img.size != (width, height):
                     _fail(report, f"{label}: image dimensions differ from canvas.")
                     continue
+                if strict and policy["reject_identical_layers"]:
+                    fingerprint = pixel_fingerprint(img)
+                    if fingerprint in seen_fingerprints:
+                        _fail(
+                            report,
+                            f"{label}: identical RGBA artwork reused from "
+                            f"{seen_fingerprints[fingerprint]}, not an independent layer."
+                        )
+                    else:
+                        seen_fingerprints[fingerprint] = label
+
                 alpha = img.getchannel("A")
                 extrema = alpha.getextrema()
                 if extrema is None or extrema[1] == 0:
                     _fail(report, f"{label}: image contains no visible pixels.")
                 if extrema is None or extrema[0] != 0:
                     _fail(report, f"{label}: image has no fully transparent pixels.")
+                rect = part.get("expected_region")
+                if strict and rect is not None:
+                    measures = measure_part_geometry(
+                        img, rect, alpha_threshold=policy["alpha_threshold"]
+                    )
+                    report["part_geometry"][label] = {
+                        "expected_region": rect,
+                        **measures
+                    }
+                    if measures["visible_pixels"] == 0:
+                        _fail(report, f"{label}: no sufficiently opaque artwork.")
+                    elif (
+                        measures["outside_fraction"] >
+                        policy["max_outside_fraction"] + 1e-6
+                    ):
+                        _fail(
+                            report,
+                            f"{label}: artwork is outside anatomical region "
+                            f"({measures['outside_fraction']:.1%} of visible pixels)."
+                        )
+                    if (
+                        measures["inside_fill_fraction"] + 1e-6 <
+                        policy["min_inside_fill_fraction"]
+                    ):
+                        _fail(
+                            report,
+                            f"{label}: too little artwork inside expected region "
+                            f"({measures['inside_fill_fraction']:.2%} fill)."
+                        )
                 bbox = alpha.getbbox()
                 if bbox:
                     px, py = pivot
@@ -148,6 +204,7 @@ def check_rig(manifest_path: str | Path) -> dict[str, Any]:
         report["passed"] = True
         report["status"] = "TECHNICAL_PASS_PENDING_VISUAL_REVIEW"
         report["warnings"].append(
-            "No seam, overlap, stylistic consistency or motion rendering check performed."
+            "Anatomical bounds, when enabled, are not a guarantee of seamless "
+            "overlap, consistent art, good acting, or correct animation."
         )
     return report

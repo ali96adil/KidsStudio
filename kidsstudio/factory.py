@@ -23,6 +23,7 @@ from .comfy import prepare_submission, validate_local_base_url
 from .motion import create_motion_evidence
 from .planner import make_rig_plan
 from .rigqa import check_rig
+from .riggeometry import measure_part_geometry, pixel_fingerprint
 from .reviewer import review_rig
 
 MAX_IMAGE_BYTES = 25_000_000
@@ -202,6 +203,45 @@ def _store_rgba_png(image_bytes: bytes, file: Path, canvas: tuple[int, int]) -> 
     return hashlib.sha256(file.read_bytes()).hexdigest()
 
 
+def _early_part_geometry_gate(
+    png_path: Path,
+    job: dict[str, Any],
+    policy: dict[str, Any],
+    previous_fingerprints: dict[str, str],
+) -> dict[str, Any] | None:
+    """Reject a misplaced or duplicated new part BEFORE spending on later parts."""
+    if not policy.get("strict_parts", False):
+        return None
+    rect = job.get("expected_region")
+    if rect is None:
+        raise FactoryError(f"{job['part_id']}: missing expected region in strict mode.")
+    with Image.open(png_path) as img:
+        img.load()
+        measures = measure_part_geometry(
+            img, rect, alpha_threshold=policy["alpha_threshold"]
+        )
+        if policy["reject_identical_layers"]:
+            fingerprint = pixel_fingerprint(img)
+            other = previous_fingerprints.get(fingerprint)
+            if other is not None:
+                raise FactoryError(
+                    f"GEOMETRY_DUPLICATE: {job['part_id']} duplicates {other}."
+                )
+            previous_fingerprints[fingerprint] = job["part_id"]
+    if (
+        measures["visible_pixels"] == 0
+        or measures["outside_fraction"] > policy["max_outside_fraction"] + 1e-6
+        or measures["inside_fill_fraction"] + 1e-6 <
+            policy["min_inside_fill_fraction"]
+    ):
+        raise FactoryError(
+            f"GEOMETRY_FAIL: {job['part_id']} has "
+            f"{measures['outside_fraction']:.1%} paint outside its permitted "
+            f"region and {measures['inside_fill_fraction']:.2%} inside fill."
+        )
+    return measures
+
+
 def build_character(
     blueprint_file: str | Path,
     workflow_file: str | Path,
@@ -323,6 +363,8 @@ def build_character(
 
     out.mkdir(parents=True, exist_ok=False)
     (out / "assets").mkdir()
+    policy = plan["rig_manifest_template"].get("qa_policy", {})
+    previous_fingerprints: dict[str, str] = {}
     state: dict[str, Any] = {
         "character_id": char_id,
         "status": "GENERATING",
@@ -355,6 +397,9 @@ def build_character(
                 src = previous / job["target_png"]
                 dst = out / job["target_png"]
                 shutil.copyfile(src, dst)
+                _early_part_geometry_gate(
+                    dst, job, policy, previous_fingerprints
+                )
                 digest = hashlib.sha256(dst.read_bytes()).hexdigest()
                 state["jobs"].append({
                     "part_id": job["part_id"],
@@ -385,6 +430,9 @@ def build_character(
             digest = _store_rgba_png(
                 image_bytes, target,
                 (plan["canvas"]["width"], plan["canvas"]["height"])
+            )
+            entry["geometry"] = _early_part_geometry_gate(
+                target, job, policy, previous_fingerprints
             )
             entry.update({
                 "status": "COLLECTED",
