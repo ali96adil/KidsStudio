@@ -16,3 +16,6 @@ kidsstudio = "kidsstudio.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
+
+[tool.setuptools.package-data]
+kidsstudio = ["*.gd"]

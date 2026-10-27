@@ -24,6 +24,7 @@ AI-powered bilingual educational animation studio for children.
 3. Tests and a GitHub Actions workflow.
 4. A checksum-approved **local-only ComfyUI API bridge** for explicit opt-in job submission.
 5. **Character Factory v0.1:** sequential ComfyUI jobs for each isolated part, validated alpha, versioned rig and provenance, six animated motion previews/contact sheet, and a fail-closed technical review report. An optional independent local multimodal reviewer can return PASS / REVISE / FAIL with an auditable report; it requires a separately installed vision model and has **not** been tested against actual art yet.
+6. **Godot 4 rig project exporter:** real Sprite2D layers and pivot Node2D joints, hierarchical head/ears/face, deterministic JSON action beats, and a strict freshness gate for reviewed assets. Preview exports are explicitly unapproved.
 
 This initial QA does **not** judge artistic quality, seams, motion, IP originality or child safety. Technical approval is **not** final asset approval.
 
@@ -51,7 +52,7 @@ The QA tool returns exit code 0 when **technical** checks pass and a nonzero exi
 - Cutting arms out of a flat PNG produced visible seams; **rejected as the long-term production method**.
 - Next: generate head/body/arms/legs/ears/face as separate rig-first source layers and automate an animated contact-sheet QA.
 
-See docs/ARCHITECTURE.md, docs/STUDIO_CONSTITUTION.md, docs/COMFYUI_ADAPTER.md, docs/CHARACTER_FACTORY.md and docs/ROADMAP.md.
+See docs/ARCHITECTURE.md, docs/STUDIO_CONSTITUTION.md, docs/COMFYUI_ADAPTER.md, docs/CHARACTER_FACTORY.md, docs/GODOT_RIG_PLAYER.md and docs/ROADMAP.md.
 
 ## Privacy / licensing
 
