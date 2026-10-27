@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -148,19 +149,27 @@ def main(argv: list[str] | None = None) -> int:
                 blueprint_file=args.blueprint,
                 reference_file=args.reference,
             )
-            for location, contents in (
-                (args.report, result), (args.draft_profile, draft)
-            ):
-                if location is None:
-                    continue
+            destinations = [
+                (location.expanduser().resolve(), contents)
+                for location, contents in (
+                    (args.report, result), (args.draft_profile, draft)
+                ) if location is not None
+            ]
+            if len({path for path, _ in destinations}) != len(destinations):
+                raise ReadinessError("Report and unapproved draft need separate paths.")
+            for path, contents in destinations:
                 if contents is None:
                     raise ReadinessError("Cannot draft a profile for invalid workflow format.")
-                path = location.expanduser().resolve()
                 if any((parent / ".git").exists()
                        for parent in (path.parent, *path.parents)):
                     raise ReadinessError("Diagnostic files must not be written inside public Git.")
+                if path.exists():
+                    raise FileExistsError("Diagnostic already exists; choose a new version.")
+            for path, contents in destinations:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                with path.open("x", encoding="utf-8") as out:
+                # Owner-private regardless of shell umask. O_EXCL avoids races.
+                fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as out:
                     json.dump(contents, out, ensure_ascii=False, indent=2)
                     out.write("\n")
             print(json.dumps(result, ensure_ascii=False, indent=2))

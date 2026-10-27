@@ -229,6 +229,37 @@ class InspectMacComfyTests(unittest.TestCase):
             json.loads(draft.read_text())["prompt_node_id"], "1"
         )
 
+    def test_private_report_permissions(self):
+        import os
+        report = self.root / "report_private.json"
+        profile = self.root / "draft_private.json"
+        self.assertEqual(kidsstudio_main([
+            "inspect-mac-comfy", "--workflow", str(self.workflow_file),
+            "--report", str(report), "--draft-profile", str(profile),
+        ]), 0)
+        if os.name == "posix":
+            self.assertEqual(report.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(profile.stat().st_mode & 0o777, 0o600)
+
+    def test_unverified_dynamic_model_blocks_ready_status(self):
+        nodes = ReadOnlyOpener().nodes.copy()
+        nodes["CheckpointLoaderSimple"] = {
+            "input": {"required": {"ckpt_name": ["STRING", {}]}}
+        }
+        with patch("kidsstudio.comfy_inspector.audit_character_workflow",
+                   return_value={"workflow_sha256": "a" * 64}):
+            report, _ = self.inspect(
+                connect=True,
+                profile_file=self.root / "profile.json",
+                blueprint_file=self.root / "blueprint.json",
+                reference_file=self.root / "reference.png",
+                opener=ReadOnlyOpener(nodes),
+            )
+        self.assertIn("MODEL_INSTALLATION_NOT_PROVEN", report["issues"])
+        self.assertNotEqual(
+            report["status"], "READY_FOR_TWO_PART_PROBE_NOT_GENERATED"
+        )
+
     def test_existing_diagnostic_report_is_not_overwritten(self):
         output = self.root / "out.json"
         output.write_text("keep-me")
