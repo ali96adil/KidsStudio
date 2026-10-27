@@ -75,7 +75,11 @@ class LocalVisionClient:
         self.base = f"http://127.0.0.1:{parsed.port}"
         self.opener = request.build_opener(request.ProxyHandler({}), _NoRedirect())
 
-    def review(self, model: str, images_b64: list[str]) -> dict[str, Any]:
+    def review(
+        self, model: str, images_b64: list[str], *,
+        rubric: str = RUBRIC,
+        instruction: str | None = None,
+    ) -> dict[str, Any]:
         if not isinstance(model, str) or not MODEL_RE.fullmatch(model):
             raise VisionReviewError("Invalid local vision model name.")
         payload = {
@@ -84,11 +88,13 @@ class LocalVisionClient:
             "format": "json",
             "options": {"temperature": 0, "num_predict": 1400},
             "messages": [
-                {"role": "system", "content": RUBRIC},
+                {"role": "system", "content": rubric},
                 {"role": "user",
-                 "content": "Review this motion contact sheet for animation defects. "
-                            "If a second image is provided it is the approved identity "
-                            "reference. Answer JSON only.",
+                 "content": instruction if instruction is not None else (
+                     "Review this motion contact sheet for animation defects. "
+                     "If a second image is provided it is the approved identity "
+                     "reference. Answer JSON only."
+                 ),
                  "images": images_b64},
             ],
         }
