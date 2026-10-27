@@ -180,6 +180,7 @@ def prepare_submission(
         "status": "READY_NOT_SUBMITTED",
         "workflow_sha256": checksum,
         "node_count": len(result),
+        "save_node_id": prefix_node,
         "models": sorted(set().union(*[
             _walk_model_names(node["inputs"]) for node in result.values()
         ])),

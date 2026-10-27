@@ -92,10 +92,13 @@ class LocalComfyClient:
             raise FactoryError("ComfyUI reported node validation errors.")
         return result
 
-    def await_image(self, prompt_id: str, *, timeout_seconds: int = 900,
+    def await_image(self, prompt_id: str, *, save_node_id: str,
+                    timeout_seconds: int = 900,
                     poll_seconds: float = 3.0) -> dict[str, str]:
         if not SAFE_ID.fullmatch(prompt_id):
             raise FactoryError("Unsafe prompt ID.")
+        if not isinstance(save_node_id, str) or not SAFE_ID.fullmatch(save_node_id):
+            raise FactoryError("Unsafe configured SaveImage node ID.")
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
             history = json.loads(self._read("/history/" + quote(prompt_id, safe="")))
@@ -104,23 +107,28 @@ class LocalComfyClient:
                 status = item.get("status", {})
                 if isinstance(status, dict) and status.get("status_str") == "error":
                     raise FactoryError("ComfyUI execution failed; inspect local ComfyUI logs.")
-                outputs = item.get("outputs", {})
-                if isinstance(outputs, dict):
-                    images = []
-                    for node in outputs.values():
-                        if isinstance(node, dict) and isinstance(node.get("images"), list):
-                            images.extend(node["images"])
-                    candidates = [i for i in images if isinstance(i, dict)
-                                  and i.get("type", "output") == "output"]
-                    if candidates:
-                        candidate = candidates[0]
-                        return {
-                            "filename": candidate.get("filename"),
-                            "subfolder": candidate.get("subfolder", ""),
-                            "type": "output",
-                        }
+                # ComfyUI history indexes outputs by node ID. Only the
+                # approved SaveImage node is authoritative for rig art:
+                # previews, mask helpers or unrelated saves are not accepted.
                 if isinstance(status, dict) and status.get("completed") is True:
-                    raise FactoryError("ComfyUI job completed without output images.")
+                    outputs = item.get("outputs", {})
+                    node = outputs.get(save_node_id) if isinstance(outputs, dict) else None
+                    images = node.get("images") if isinstance(node, dict) else None
+                    if not isinstance(images, list) or len(images) != 1:
+                        raise FactoryError(
+                            "Approved SaveImage must produce exactly one output image."
+                        )
+                    candidate = images[0]
+                    if (not isinstance(candidate, dict)
+                            or candidate.get("type") != "output"
+                            or not isinstance(candidate.get("filename"), str)
+                            or not isinstance(candidate.get("subfolder", ""), str)):
+                        raise FactoryError("Approved SaveImage produced an invalid output.")
+                    return {
+                        "filename": candidate["filename"],
+                        "subfolder": candidate.get("subfolder", ""),
+                        "type": "output",
+                    }
             time.sleep(poll_seconds)
         raise TimeoutError(f"ComfyUI job did not complete within {timeout_seconds}s.")
 
@@ -424,7 +432,11 @@ def build_character(
             entry["prompt_id"] = prompt_id
             entry["status"] = "RUNNING"
             _json_atomic(state_file, state)
-            image_ref = active.await_image(prompt_id, timeout_seconds=timeout_seconds)
+            image_ref = active.await_image(
+                prompt_id,
+                save_node_id=prepared["save_node_id"],
+                timeout_seconds=timeout_seconds,
+            )
             image_bytes = active.download_png(image_ref)
             target = out / job["target_png"]
             digest = _store_rgba_png(

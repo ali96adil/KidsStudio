@@ -15,6 +15,7 @@ from .godot_export import GodotExportError, export_godot
 from .godot_render import GodotRenderError, render_godot_project
 from .reviewer import VisionReviewError, review_rig
 from .cycle import CycleError, run_character_cycle
+from .workflow_audit import audit_character_workflow
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -89,14 +90,31 @@ def main(argv: list[str] | None = None) -> int:
     cycle.add_argument("--preview-side", type=int, default=384)
     cycle.add_argument("--execute", action="store_true",
                        help="Required: invoke preapproved local ComfyUI and vision model")
+    preflight = commands.add_parser(
+        "audit-character-workflow",
+        help="Offline preflight: prove identity conditioning, sampler and alpha stages"
+    )
+    preflight.add_argument("blueprint")
+    preflight.add_argument("--workflow", required=True)
+    preflight.add_argument("--profile", required=True)
+    preflight.add_argument("--reference", required=True)
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "audit-character-workflow":
+            result = audit_character_workflow(
+                args.blueprint, args.workflow, args.profile, args.reference
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
         if args.command == "produce-character":
             if not args.execute:
                 print("ERROR: Explicit --execute required for local production cycle.",
                       file=sys.stderr)
                 return 2
+            audit_character_workflow(
+                args.blueprint, args.workflow, args.profile, args.reference
+            )
             result = run_character_cycle(
                 args.blueprint, args.workflow, args.profile,
                 args.reference, args.out,
@@ -164,6 +182,11 @@ def main(argv: list[str] | None = None) -> int:
             if not args.execute:
                 print("ERROR: Explicit --execute required for actual ComfyUI generation.", file=sys.stderr)
                 return 2
+            if not args.reference:
+                raise ComfySafetyError("Real character generation requires a canonical reference PNG.")
+            audit_character_workflow(
+                args.blueprint, args.workflow, args.profile, args.reference
+            )
             result = build_character(
                 args.blueprint, args.workflow, args.profile, args.out,
                 timeout_seconds=args.timeout, preview_side=args.preview_side,

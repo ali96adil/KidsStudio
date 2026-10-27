@@ -16,6 +16,7 @@ import threading
 from typing import Any, Callable
 
 from .cycle import run_character_cycle
+from .workflow_audit import audit_character_workflow
 from .godot_render import render_godot_project
 from .remote_worker import RemoteClient, RemoteWorkerError
 
@@ -115,6 +116,12 @@ class MediaRecipes:
             path = _private_path(filename, directory=False)
             if _sha(path) != recipe["sha256"][name]:
                 raise MediaError("Pinned media source changed; owner review required.")
+        if kind == "character_generate":
+            source = recipe["inputs"]
+            audit_character_workflow(
+                source["blueprint"], source["workflow"],
+                source["profile"], source["reference"],
+            )
         return recipe
 
 
@@ -260,7 +267,7 @@ class RemoteMediaWorker:
         # Invalid local recipe is terminal, not an ambiguous GPU execution.
         try:
             self.recipes.resolve(kind, recipe_id)
-        except (MediaError, OSError):
+        except (MediaError, OSError, ValueError):
             try:
                 self.pi.call("fail", {
                     "job_id": job_id, "generation": generation,

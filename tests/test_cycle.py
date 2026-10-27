@@ -26,7 +26,8 @@ class FakeComfy:
         self.jobs.append(prepared["prompt"]["1"]["inputs"]["text"])
         return f"job-{len(self.jobs)}"
 
-    def await_image(self, prompt_id, *, timeout_seconds):
+    def await_image(self, prompt_id, *, save_node_id, timeout_seconds):
+        assert isinstance(save_node_id, str) and save_node_id
         return {"filename": prompt_id + ".png", "subfolder": "", "type": "output"}
 
     def download_png(self, image_ref):
