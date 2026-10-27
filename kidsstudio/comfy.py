@@ -76,6 +76,7 @@ def prepare_submission(
     *,
     prompt_text: str,
     filename_prefix: str,
+    reference_image_name: str | None = None,
 ) -> dict[str, Any]:
     workflow_path = Path(workflow_file)
     profile_path = Path(profile_file)
@@ -140,6 +141,41 @@ def prepare_submission(
     result = copy.deepcopy(workflow)
     result[prompt_node]["inputs"]["text"] = prompt_text
     result[prefix_node]["inputs"]["filename_prefix"] = filename_prefix
+    # Reference is optional, but an explicitly configured reference-conditioned
+    # workflow MUST receive it; it may not silently fall back to text-only art.
+    reference_node = profile.get("reference_node_id")
+    if reference_node is not None or reference_image_name is not None:
+        if not isinstance(reference_node, str) or reference_node not in workflow:
+            raise ComfySafetyError("Profile must explicitly configure reference_node_id.")
+        if workflow[reference_node]["class_type"] != "LoadImage":
+            raise ComfySafetyError("Reference node must be a standard LoadImage.")
+        if not isinstance(reference_image_name, str) or not re.fullmatch(
+            r"[a-zA-Z0-9_-]{1,100}\.png", reference_image_name
+        ):
+            raise ComfySafetyError("A pre-uploaded safe PNG reference name is required.")
+
+        # Fail closed when a LoadImage node exists but is disconnected from the
+        # actual output graph. An unused reference node gives fake consistency.
+        seen: set[str] = set()
+        queue = [prefix_node]
+        while queue:
+            current = queue.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            for input_value in workflow[current]["inputs"].values():
+                if (
+                    isinstance(input_value, list) and len(input_value) == 2
+                    and isinstance(input_value[0], str)
+                    and type(input_value[1]) is int
+                    and input_value[0] in workflow
+                ):
+                    queue.append(input_value[0])
+        if reference_node not in seen:
+            raise ComfySafetyError(
+                "Reference LoadImage is not connected to the SaveImage output graph."
+            )
+        result[reference_node]["inputs"]["image"] = reference_image_name
     return {
         "status": "READY_NOT_SUBMITTED",
         "workflow_sha256": checksum,

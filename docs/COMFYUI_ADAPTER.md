@@ -57,3 +57,25 @@ This initial implementation does not yet:
 
 These tasks remain in M1 Issues #2 and #3. This code is a narrow safe bridge,
 not the complete production agent.
+
+## Identity-conditioned rig parts (new)
+
+For character continuity, **use a vetted reference-conditioned API workflow**.
+Its profile must set `reference_node_id` to the id of an approved standard
+`LoadImage` node that **actually feeds the SaveImage output graph**.
+Disconnected cosmetic reference nodes are rejected.
+
+The workflow must additionally have model-specific image-conditioning nodes
+that produce visually consistent isolated parts. Merely connecting LoadImage
+somewhere in the graph is a minimum wiring check, **not** proof the model used
+the reference effectively. Use the canonical reference + local visual review
+to catch mismatches.
+
+`build-character --reference /path/to/canonical_bunny.png` validates the
+PNG, computes a hash-based safe filename, uploads it only to the loopback
+ComfyUI input endpoint, and uses its filename in all per-part jobs.
+The original file stays on the Mac, outside Git. The factory report records
+its SHA256, not the image itself.
+
+If the profile demands a reference and none is given, preparation **fails**.
+Never quietly revert to text-only generation for an approved character.

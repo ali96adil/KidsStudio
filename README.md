@@ -57,3 +57,5 @@ See docs/ARCHITECTURE.md, docs/STUDIO_CONSTITUTION.md, docs/COMFYUI_ADAPTER.md, 
 ## Privacy / licensing
 
 No license has been granted for redistribution of studio-specific work. Respect the individual licenses of software, AI checkpoints, voices, music and artwork. Do not include photos or identifying information of children in public development data.
+
+**Identity preservation:** an approved ComfyUI LoadImage reference node may be required for each part; the factory hashes and uploads the canonical original only to local ComfyUI and uses it again for independent visual QA. ComfyUI must have an appropriately wired, manually approved reference-conditioned workflow.
