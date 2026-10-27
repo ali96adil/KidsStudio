@@ -92,3 +92,16 @@ worker-side activity will require a separate explicitly approved adapter.
 
 See [Studio Queue operations](docs/STUDIO_QUEUE.md). All state and full logs
 remain outside public Git and outside the NAS transactional data share.
+
+## First local multi-provider AI worker
+
+`studio-worker --once` can execute a **single** allowlisted
+`script_draft` or `editorial_review` job from the Studio Brain local
+SQLite queue through an explicitly configured OpenAI-compatible AI Chat API.
+Artifacts and provenance are saved on the local machine; public publication,
+model downloads and irreversible actions remain prohibited. Different AI
+providers may be assigned to writer and reviewer.
+
+See [AI Router and Worker](docs/AI_ROUTER_WORKER.md). The Pi-to-Mac
+authenticated remote channel is **not deployed** yet; never share the SQLite
+file over a NAS or assume a Mac on another host can safely claim it.

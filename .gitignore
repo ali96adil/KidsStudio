@@ -250,3 +250,13 @@ private-assets/
 secrets/
 .venv/
 .godot/
+
+# Provider secrets/config live only on user-owned local disks
+providers.json
+providers.local.json
+provider-config.json
+private-config/
+.kidsstudio/
+studio.sqlite*
+*.sqlite
+*.sqlite-*

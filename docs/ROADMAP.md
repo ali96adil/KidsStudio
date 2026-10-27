@@ -22,7 +22,9 @@
 ## Milestone 2 — Studio brain
 - [x] Durable SQLite production-job state, audit journal, worker leases/fencing, crash recovery and local Studio Director CLI (offline integration tests)
 - [ ] Persistent episode/script editorial schemas and linked revisions
-- [ ] Studio Director agent with allowlisted tool permissions, quotas and rollback
+- [x] Explicit per-role OpenAI-compatible multi-provider AI Chat router, env-only credentials, no paid/failover without opt-in (mock-tested)
+- [x] Single-shot local worker for script_draft/editorial_review with persistent SQLite job acknowledgement (mock-tested)
+- [ ] Studio Director decision-making agent, signed authenticated Pi-to-Mac remote worker transport and durable external-side-effect deduplication
 - [ ] Independent bilingual editorial review committee
 - [ ] Telegram private command bot with allowlisted IDs and emergency stop
 
