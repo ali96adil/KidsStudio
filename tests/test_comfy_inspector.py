@@ -232,11 +232,11 @@ class InspectMacComfyTests(unittest.TestCase):
     def test_existing_diagnostic_report_is_not_overwritten(self):
         output = self.root / "out.json"
         output.write_text("keep-me")
-        with self.assertRaises(FileExistsError):
-            kidsstudio_main([
-                "inspect-mac-comfy", "--workflow", str(self.workflow_file),
-                "--report", str(output),
-            ])
+        code = kidsstudio_main([
+            "inspect-mac-comfy", "--workflow", str(self.workflow_file),
+            "--report", str(output),
+        ])
+        self.assertEqual(code, 2)
         self.assertEqual(output.read_text(), "keep-me")
 
     def test_bad_remote_base_url_rejected_before_network(self):

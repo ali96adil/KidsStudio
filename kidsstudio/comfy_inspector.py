@@ -247,6 +247,9 @@ def inspect_mac_comfy(
             result["model_registration"] = model_checks
             if any(x["status"] == "NOT_IN_NODE_CHOICES" for x in model_checks):
                 result["issues"].append("SELECTED_MODEL_NOT_AVAILABLE")
+            if any(x["status"] == "UNVERIFIED_DYNAMIC_MODEL_INPUT"
+                   for x in model_checks):
+                result["issues"].append("MODEL_INSTALLATION_NOT_PROVEN")
             result["live_nodes_registered"] = len(nodes)
         except (error.URLError, OSError, ValueError, UnicodeError,
                 ReadinessError, TimeoutError, TypeError):
@@ -300,7 +303,8 @@ def inspect_mac_comfy(
     if any(issue in critical for issue in result["issues"]):
         result["status"] = "BLOCKED"
     elif (result["checks"]["approved_graph"] == "PASS"
-          and connect and result["checks"].get("local_registry") == "PASS"):
+          and connect and result["checks"].get("local_registry") == "PASS"
+          and "MODEL_INSTALLATION_NOT_PROVEN" not in result["issues"]):
         result["status"] = "READY_FOR_TWO_PART_PROBE_NOT_GENERATED"
     else:
         result["status"] = "NEEDS_OWNER_WORKFLOW_APPROVAL"
