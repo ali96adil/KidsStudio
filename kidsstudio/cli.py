@@ -14,6 +14,7 @@ from .motion import create_motion_evidence
 from .godot_export import GodotExportError, export_godot
 from .godot_render import GodotRenderError, render_godot_project
 from .reviewer import VisionReviewError, review_rig
+from .cycle import CycleError, run_character_cycle
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -73,9 +74,49 @@ def main(argv: list[str] | None = None) -> int:
     render.add_argument("--godot", default="godot")
     render.add_argument("--ffmpeg", default="ffmpeg")
     render.add_argument("--timeout", type=int, default=1800)
+    cycle = commands.add_parser(
+        "produce-character", help="Bounded rig-first batch, AI review and targeted repair"
+    )
+    cycle.add_argument("blueprint")
+    cycle.add_argument("--workflow", required=True)
+    cycle.add_argument("--profile", required=True)
+    cycle.add_argument("--reference", required=True)
+    cycle.add_argument("--review-model", required=True)
+    cycle.add_argument("--out", required=True)
+    cycle.add_argument("--max-attempts", type=int, default=2)
+    cycle.add_argument("--max-repair-parts", type=int, default=3)
+    cycle.add_argument("--timeout", type=int, default=900)
+    cycle.add_argument("--preview-side", type=int, default=384)
+    cycle.add_argument("--execute", action="store_true",
+                       help="Required: invoke preapproved local ComfyUI and vision model")
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "produce-character":
+            if not args.execute:
+                print("ERROR: Explicit --execute required for local production cycle.",
+                      file=sys.stderr)
+                return 2
+            result = run_character_cycle(
+                args.blueprint, args.workflow, args.profile,
+                args.reference, args.out,
+                vision_model=args.review_model,
+                max_attempts=args.max_attempts,
+                max_repair_parts=args.max_repair_parts,
+                timeout_seconds=args.timeout,
+                preview_side=args.preview_side,
+            )
+            print(json.dumps({
+                "status": result["status"],
+                "attempts": len(result["attempts"]),
+                "generated_comfy_jobs": sum(
+                    i["generated_comfy_jobs"] for i in result["attempts"]
+                ),
+                "report": str(Path(args.out).resolve() / "production_cycle.json"),
+                "owner_publication_approval_required": True,
+            }, indent=2, ensure_ascii=False))
+            return 0 if result["status"] == (
+                "INTERNAL_ASSET_APPROVED_NOT_FOR_PUBLICATION") else 1
         if args.command == "comfy-prepare":
             prepared = prepare_submission(
                 args.workflow, args.profile,
@@ -136,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
                 "visual_review_status": result.get("visual_review", {}).get("status", "NOT_RUN"),
                 "report": str(Path(args.out).resolve() / "factory_report.json"),
             }, indent=2))
+            if args.review_model:
+                return 0 if result["status"] == "APPROVED_BY_LOCAL_AI_QA" else 1
             return 0 if result["technical_pass"] else 1
         if args.command == "motion-preview":
             result = create_motion_evidence(
@@ -149,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = check_rig(args.manifest)
             success = bool(result["passed"])
-    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

@@ -13,7 +13,8 @@
 - [ ] Validate isolated layers, identity conditioning and real rendered joint overlaps on the Mac (batch code in place; live art unverified)
 - [x] Layer-based GIF/contact-sheet evidence generator (deterministic)
 - [x] Optional local AI vision reviewer: independent decision, evidence hashes, PASS/REVISE/FAIL gate (requires real Mac validation)
-- [ ] Automated bounded repair/retry loop with model evaluation and cost caps
+- [x] Bounded 1–3 attempt visual-REVISE loop with part-specific reuse, immutable attempts and strict output guardrails (offline tests)
+- [ ] Validate repair effectiveness and review quality on real Mac models
 - [x] Export a standalone Godot 4 rig project from manifest and JSON scene beats (native Mac render still pending)
 - [ ] Benchmarks on actual Mac M3 Max and 48 GB shared memory
 

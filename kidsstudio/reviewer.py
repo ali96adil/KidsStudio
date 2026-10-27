@@ -35,8 +35,13 @@ Rate each issue with motion panel, concise evidence and severity. Do not invent
 issues that cannot be seen. Prefer REVISE if uncertain.
 Return strict JSON ONLY:
 {"verdict":"PASS|REVISE|FAIL","confidence":0.0,
- "issues":[{"motion":"wave_right","severity":"low|medium|high",
- "description":"specific visible artifact"}],"reason":"brief explanation"}
+ "issues":[{"motion":"wave_right","part_id":"arm_right",
+ "severity":"low|medium|high","description":"specific visible artifact"}],
+ "reason":"brief explanation"}
+Only name a part_id when you can clearly attribute a defect to that single
+part. Valid part ids: body, head, arm_left, arm_right, leg_left, leg_right,
+ear_left, ear_right, eyes, mouth. Otherwise omit part_id and request manual
+triage: do not guess a culprit in a multi-part seam/overlap.
 Use PASS only if no material visible defects and you are at least 0.8 confident.
 A model PASS is not equivalent to human release/publishing permission.
 """
@@ -156,9 +161,19 @@ def _verdict(obj: dict[str, Any]) -> dict[str, Any]:
             raise VisionReviewError("Invalid issue severity.")
         if not isinstance(detail, str) or not detail.strip() or len(detail) > 500:
             raise VisionReviewError("Invalid issue description.")
-        cleaned.append({
+        part_id = issue.get("part_id")
+        if part_id is not None and (
+            not isinstance(part_id, str)
+            or len(part_id) > 80
+            or not re.fullmatch(r"[a-zA-Z0-9_]+", part_id)
+        ):
+            raise VisionReviewError("Invalid part_id in review.")
+        cleaned_issue = {
             "motion": motion, "severity": severity, "description": detail
-        })
+        }
+        if part_id is not None:
+            cleaned_issue["part_id"] = part_id
+        cleaned.append(cleaned_issue)
     # Fail closed if the model contradicts itself.
     if decision == "PASS" and (confidence < 0.80 or
                                any(i["severity"] in ("medium", "high") for i in cleaned)):
