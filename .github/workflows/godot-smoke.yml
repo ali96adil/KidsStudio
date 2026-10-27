@@ -2,8 +2,12 @@ name: Real Godot smoke
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: godot-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -18,15 +22,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install Python code and native FFmpeg
+      - name: Prepare preinstalled Xvfb and bundled FFmpeg
+        shell: bash
         run: |
-          python -m pip install -e .
-          # GitHub Ubuntu runners normally include these utilities already.
-          # Avoid repeated apt index downloads unless a tool is actually missing.
-          if ! command -v ffmpeg >/dev/null || ! command -v xvfb-run >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq unzip ffmpeg libfontconfig1 xvfb libgl1-mesa-dri libgl1
-          fi
+          set -euo pipefail
+          python -m pip install -e . imageio-ffmpeg==0.6.0
+          command -v xvfb-run
+          command -v unzip
+          FFMPEG_EXE="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          "$FFMPEG_EXE" -hide_banner -encoders | grep libx264
+          ln -s "$FFMPEG_EXE" "$RUNNER_TEMP/ffmpeg"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Download official Godot 4.7.2 (SHA-256 verified)
         shell: bash
         run: |
@@ -47,5 +53,6 @@ jobs:
           set -euo pipefail
           xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
             python scripts/ci_godot_smoke.py "$RUNNER_TEMP/kidsstudio-native-smoke"
-          ffprobe -v error -show_entries stream=codec_name,width,height \
-            -of default=noprint_wrappers=1 "$RUNNER_TEMP/kidsstudio-native-smoke/movie/character_preview.mp4"
+          ffmpeg -hide_banner -loglevel error \
+            -i "$RUNNER_TEMP/kidsstudio-native-smoke/movie/character_preview.mp4" \
+            -frames:v 1 -f null -
