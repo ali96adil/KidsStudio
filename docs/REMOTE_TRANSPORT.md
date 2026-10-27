@@ -88,3 +88,17 @@ enforce provider-level hard caps independently.
 The remote client is restricted to editorial text jobs. Real Mac
 ComfyUI/Godot tasks must get their own resource/rights sandbox and separate
 approved worker adapter before any overnight autonomous media production.
+
+## Media capabilities (separate, restricted role)
+
+Starting with the next software revision, the coordinator supports
+`character_generate` and `godot_render` in addition to editorial jobs.
+This access must be **granted explicitly** with `--worker-kinds` on a
+dedicated worker identity; the default remains editorial-only. A worker
+may call `/v1/complete-media` to submit SHA256/status/size of a Mac-local
+result — media bytes are **not** copied to Pi by this API.
+
+This addition is only an integration/development prototype. Media workers
+must be restricted to their own Mac, local vetted recipes, known TLS endpoint,
+private per-worker token, and never offered over a publicly exposed listener.
+See [MEDIA_WORKER.md](MEDIA_WORKER.md).

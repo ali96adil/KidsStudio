@@ -260,3 +260,6 @@ private-config/
 studio.sqlite*
 *.sqlite
 *.sqlite-*
+
+media_recipes*.json
+receipts.sqlite*

@@ -24,7 +24,20 @@ MAX_REQUEST_BYTES = 32_768
 MAX_ANSWER_BYTES = 20_000
 ID = re.compile(r"^[a-f0-9]{32}$")
 IDENT = re.compile(r"^[a-zA-Z0-9_./:-]{1,160}$")
-ALLOWED_KINDS = frozenset({"script_draft", "editorial_review"})
+ALLOWED_KINDS = frozenset({
+    "script_draft", "editorial_review", "character_generate", "godot_render"
+})
+MEDIA_KINDS = frozenset({"character_generate", "godot_render"})
+SHA256 = re.compile(r"^[a-f0-9]{64}$")
+MEDIA_STATUSES = {
+    "godot_render": frozenset({"VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"}),
+    "character_generate": frozenset({
+        "INTERNAL_ASSET_APPROVED_NOT_FOR_PUBLICATION",
+        "REPAIR_BUDGET_EXHAUSTED", "BLOCKED_MANUAL_TRIAGE",
+        "REJECTED_FINAL", "BLOCKED_MANUAL_REVIEW"
+    }),
+}
+
 
 
 class TransportError(ValueError):
@@ -119,7 +132,8 @@ class Coordinator:
         if action == "fail":
             error_code = request.get("error_code")
             if error_code not in ("AI_WORKER_ERROR", "WORKER_EXECUTION_ERROR",
-                                  "PROVIDER_UNAVAILABLE", "INVALID_REVIEW_SOURCE"):
+                                  "PROVIDER_UNAVAILABLE", "INVALID_REVIEW_SOURCE",
+                                  "MEDIA_RECONCILIATION_REQUIRED"):
                 raise TransportError("Invalid error code.")
             self.queue.fail(job_id=leased["job_id"], worker_id=worker_id,
                             generation=leased["generation"], error_code=error_code,
@@ -151,6 +165,49 @@ class Coordinator:
             return {"script_text": raw.decode("utf-8"),
                     "original_provider_id": payload["original_provider_id"],
                     "source_answer_sha256": payload["source_answer_sha256"]}
+
+        if action == "complete-media":
+            if leased["kind"] not in MEDIA_KINDS:
+                raise TransportError("Media completion requires a media lease.")
+            if set(request) != {
+                "job_id", "generation", "result_status",
+                "artifact_sha256", "artifact_bytes",
+                "artifact_type", "publication_approved",
+            }:
+                raise TransportError("Unexpected media result fields.")
+            status = request["result_status"]
+            digest = request["artifact_sha256"]
+            bytes_count = request["artifact_bytes"]
+            expected_type = (
+                "mp4" if leased["kind"] == "godot_render" else "rig_report"
+            )
+            if (
+                status not in MEDIA_STATUSES[leased["kind"]]
+                or not isinstance(digest, str) or not SHA256.fullmatch(digest)
+                or type(bytes_count) is not int
+                or not 1 <= bytes_count <= 20_000_000_000
+                or request["artifact_type"] != expected_type
+                or request["publication_approved"] is not False
+            ):
+                raise TransportError("Media provenance or approval gate failed.")
+            result = {
+                "status": status,
+                "artifact_sha256": digest,
+                "artifact_bytes": bytes_count,
+                "artifact_type": expected_type,
+                "worker_id": worker_id,
+                "publication_approved": False,
+                "artifact_stored_on_mac": True,
+            }
+            done = self.queue.complete(
+                job_id=leased["job_id"], worker_id=worker_id,
+                generation=leased["generation"], result=result,
+            )
+            return {
+                "status": done["state"],
+                "job_id": done["job_id"],
+                "artifact_sha256": digest,
+            }
 
         if action != "complete":
             raise TransportError("Unknown action.")
@@ -224,7 +281,7 @@ def create_handler(coordinator: Coordinator):
         def do_POST(self):
             path = self.path
             if path not in ("/v1/claim", "/v1/heartbeat", "/v1/review-source",
-                            "/v1/complete", "/v1/fail"):
+                            "/v1/complete", "/v1/complete-media", "/v1/fail"):
                 self._reply(404, {"error": "NOT_FOUND"})
                 return
             length = self.headers.get("Content-Length")
@@ -279,6 +336,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tls-key", required=True)
     parser.add_argument("--worker-id", default="mac-ai-01")
     parser.add_argument("--token-env", default="KIDS_STUDIO_WORKER_TOKEN")
+    parser.add_argument("--worker-kinds", default="script_draft,editorial_review",
+                        help="Comma-separated Pi-approved job kinds for this worker")
     args = parser.parse_args(argv)
     if not isinstance(args.token_env, str) or not re.fullmatch(
         r"[A-Z][A-Z0-9_]{4,90}", args.token_env
@@ -287,9 +346,12 @@ def main(argv: list[str] | None = None) -> int:
     token = os.environ.get(args.token_env, "")
     if len(token) < 32:
         parser.error("Worker token environment variable must contain 32+ characters.")
+    kinds = set(args.worker_kinds.split(","))
+    if not kinds or not kinds.issubset(ALLOWED_KINDS):
+        parser.error("Worker capabilities must be explicitly allowlisted.")
     serve(StudioQueue(args.db), bind=args.bind, port=args.port,
           cert=args.tls_cert, key=args.tls_key, vault=args.vault,
-          workers={args.worker_id: (token, set(ALLOWED_KINDS))})
+          workers={args.worker_id: (token, kinds)})
     return 0
 
 
