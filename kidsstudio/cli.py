@@ -16,6 +16,7 @@ from .godot_render import GodotRenderError, render_godot_project
 from .reviewer import VisionReviewError, review_rig
 from .cycle import CycleError, run_character_cycle
 from .workflow_audit import audit_character_workflow
+from .part_probe import ProbeError, run_two_part_probe
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,9 +99,46 @@ def main(argv: list[str] | None = None) -> int:
     preflight.add_argument("--workflow", required=True)
     preflight.add_argument("--profile", required=True)
     preflight.add_argument("--reference", required=True)
+    probe = commands.add_parser(
+        "probe-bunny", help="Generate ONLY body and arm_right with QA evidence"
+    )
+    probe.add_argument("blueprint")
+    probe.add_argument("--workflow", required=True)
+    probe.add_argument("--profile", required=True)
+    probe.add_argument("--reference", required=True)
+    probe.add_argument("--out", required=True)
+    probe.add_argument("--timeout", type=int, default=900)
+    probe.add_argument("--preview-side", type=int, default=512)
+    probe.add_argument("--execute", action="store_true",
+                       help="Required: run two local ComfyUI diffusion jobs")
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "probe-bunny":
+            if not args.execute:
+                print("ERROR: --execute required; probe calls local ComfyUI twice.",
+                      file=sys.stderr)
+                return 2
+            result = run_two_part_probe(
+                args.blueprint, args.workflow, args.profile,
+                args.reference, args.out,
+                timeout_seconds=args.timeout, preview_side=args.preview_side,
+            )
+            print(json.dumps({
+                "status": result["status"],
+                "generated_parts": [
+                    item["part_id"] for item in result["jobs"]
+                    if item["status"] == "COLLECTED"
+                ],
+                "shoulder_overlap": result["qa"].get(
+                    "shoulder_neutral", {}).get("overlap_pixels"),
+                "report": str(Path(args.out).resolve() / "probe_report.json"),
+                "review_sheet": str(Path(args.out).resolve() /
+                                    "probe_contact_sheet.png"),
+                "not_approved_for_full_production": True,
+            }, indent=2, ensure_ascii=False))
+            return 0 if result["status"] == (
+                "PROBE_READY_FOR_VISUAL_INSPECTION") else 1
         if args.command == "audit-character-workflow":
             result = audit_character_workflow(
                 args.blueprint, args.workflow, args.profile, args.reference
@@ -215,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = check_rig(args.manifest)
             success = bool(result["passed"])
-    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError, ProbeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
