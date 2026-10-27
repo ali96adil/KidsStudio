@@ -206,9 +206,11 @@ class MediaJobTests(unittest.TestCase):
     def test_modified_local_pinned_recipe_file_blocks_work(self):
         self.enqueue()
         self.source.write_text('{"status":"EDITED"}')
-        with self.assertRaises(MediaError):
-            self.worker.run_once()
+        state = self.worker.run_once()
+        self.assertEqual(state["status"], "CONFIG_REJECTED")
         self.assertEqual(len(self.executor.calls), 0)
+        self.assertEqual(self.queue.status()["counts"]["FAILED"], 1)
+        self.assertEqual(self.queue.status()["counts"]["FAILED"], 1)
 
 
 if __name__ == "__main__":

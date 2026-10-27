@@ -245,10 +245,30 @@ class RemoteMediaWorker:
         if (not isinstance(job_id, str) or not JOB.fullmatch(job_id) or
             type(generation) is not int or generation < 1 or
             not isinstance(payload, dict) or set(payload) != {"recipe_id"}):
+            if isinstance(job_id, str) and JOB.fullmatch(job_id) and (
+                type(generation) is int and generation >= 1
+            ):
+                try:
+                    self.pi.call("fail", {
+                        "job_id": job_id, "generation": generation,
+                        "error_code": "MEDIA_CONFIGURATION_REJECTED",
+                    })
+                except RemoteWorkerError:
+                    pass
             raise MediaError("Invalid Pi media task payload.")
         kind, recipe_id = job["kind"], payload["recipe_id"]
-        # Validate recipe before irrevocably reserving a side-effect.
-        self.recipes.resolve(kind, recipe_id)
+        # Invalid local recipe is terminal, not an ambiguous GPU execution.
+        try:
+            self.recipes.resolve(kind, recipe_id)
+        except (MediaError, OSError):
+            try:
+                self.pi.call("fail", {
+                    "job_id": job_id, "generation": generation,
+                    "error_code": "MEDIA_CONFIGURATION_REJECTED",
+                })
+            except RemoteWorkerError:
+                pass
+            return {"status": "CONFIG_REJECTED", "job_id": job_id}
         digest = hashlib.sha256(
             json.dumps({"kind": kind, "payload": payload},
                        sort_keys=True).encode("utf-8")

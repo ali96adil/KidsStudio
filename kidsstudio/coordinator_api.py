@@ -133,7 +133,8 @@ class Coordinator:
             error_code = request.get("error_code")
             if error_code not in ("AI_WORKER_ERROR", "WORKER_EXECUTION_ERROR",
                                   "PROVIDER_UNAVAILABLE", "INVALID_REVIEW_SOURCE",
-                                  "MEDIA_RECONCILIATION_REQUIRED"):
+                                  "MEDIA_RECONCILIATION_REQUIRED",
+                                  "MEDIA_CONFIGURATION_REJECTED"):
                 raise TransportError("Invalid error code.")
             self.queue.fail(job_id=leased["job_id"], worker_id=worker_id,
                             generation=leased["generation"], error_code=error_code,
