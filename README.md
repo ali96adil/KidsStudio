@@ -59,3 +59,22 @@ See docs/ARCHITECTURE.md, docs/STUDIO_CONSTITUTION.md, docs/COMFYUI_ADAPTER.md, 
 No license has been granted for redistribution of studio-specific work. Respect the individual licenses of software, AI checkpoints, voices, music and artwork. Do not include photos or identifying information of children in public development data.
 
 **Identity preservation:** an approved ComfyUI LoadImage reference node may be required for each part; the factory hashes and uploads the canonical original only to local ComfyUI and uses it again for independent visual QA. ComfyUI must have an appropriately wired, manually approved reference-conditioned workflow.
+
+## Character Factory v0.2: bounded repair cycle
+
+Run a single **local-only**, reference-conditioned production cycle with an
+independent installed vision model, limited to two attempts by default:
+
+    kidsstudio produce-character examples/bunny_blueprint.json \
+      --workflow /local/approved/workflow_api.json \
+      --profile /local/approved/comfy_profile.json \
+      --reference /local/characters/bunny/bunny_neutral_v01.png \
+      --review-model YOUR_INSTALLED_LOCAL_VISION_MODEL \
+      --out /local/characters/bunny/production_cycle_001 --execute
+
+If visual QA requests revision and attributes a defect to an exact part,
+the cycle makes a new immutable attempt, reusing validated parts and
+regenerating only the rejected ones. An ambiguous defect, explicit FAIL,
+missing reviewer, broken alpha, invalid provenance or exhausted retry
+limit stops rather than approving/submitting unreviewed art.
+Full details: [bounded production cycle](docs/PRODUCTION_CYCLE.md).

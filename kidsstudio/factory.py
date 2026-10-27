@@ -11,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 import time
 from typing import Any
 from urllib import request
@@ -213,6 +214,9 @@ def build_character(
     review_model: str | None = None,
     vision_client: Any | None = None,
     reference_image: str | Path | None = None,
+    reuse_from: str | Path | None = None,
+    regenerate_parts: frozenset[str] | None = None,
+    repair_feedback: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Execute a new batch; refuses to overwrite any existing output."""
     plan = make_rig_plan(blueprint_file)
@@ -232,16 +236,87 @@ def build_character(
         reference_bytes, reference_name, reference_digest = inspect_reference_image(
             reference_image
         )
+    # A repair always creates an immutable new attempt; never mutate approved
+    # or rejected artwork in-place. All old assets must match the same blueprint,
+    # workflow, reference and their recorded hashes before any generation.
+    previous: Path | None = None
+    previous_report: dict[str, Any] | None = None
+    if reuse_from is not None:
+        previous = Path(reuse_from).expanduser().resolve()
+        if not previous.is_dir() or previous == out:
+            raise FactoryError("Repair source must be an existing separate attempt.")
+        if not isinstance(regenerate_parts, frozenset) or not regenerate_parts:
+            raise FactoryError("Repair must name at least one part to regenerate.")
+        valid_parts = {job["part_id"] for job in plan["jobs"]}
+        if not regenerate_parts.issubset(valid_parts):
+            raise FactoryError("Repair requested unknown part ids.")
+        prev_rig = previous / "rig.json"
+        prev_qa = check_rig(prev_rig)
+        if not prev_qa["passed"]:
+            raise FactoryError("Cannot reuse an invalid previous rig.")
+        previous_report = json.loads(
+            (previous / "factory_report.json").read_text(encoding="utf-8")
+        )
+        if previous_report.get("status") != "REVISE_REQUIRED":
+            raise FactoryError("Only a visually REVISE_REQUIRED attempt can be repaired.")
+        previous_manifest = json.loads(prev_rig.read_text(encoding="utf-8"))
+        if (
+            previous_manifest != plan["rig_manifest_template"]
+            or previous_report.get("blueprint_sha256") !=
+                hashlib.sha256(Path(blueprint_file).read_bytes()).hexdigest()
+            or previous_report.get("canonical_reference_sha256") != reference_digest
+        ):
+            raise FactoryError("Source attempt differs from current blueprint/reference.")
+        jobs = previous_report.get("jobs", [])
+        if not isinstance(jobs, list):
+            raise FactoryError("Previous provenance entries are missing.")
+        for job in plan["jobs"]:
+            ident = job["part_id"]
+            entry = next((j for j in jobs if isinstance(j, dict) and
+                          j.get("part_id") == ident), None)
+            if entry is None or entry.get("status") not in ("COLLECTED", "REUSED"):
+                raise FactoryError(f"Unverified source part: {ident}")
+            image_file = previous / job["target_png"]
+            if not image_file.is_file() or (
+                hashlib.sha256(image_file.read_bytes()).hexdigest()
+                != entry.get("sha256")
+            ):
+                raise FactoryError(f"Original part changed after review: {ident}")
+    elif regenerate_parts is not None or repair_feedback is not None:
+        raise FactoryError("Repair options require a previous attempt.")
+    if repair_feedback is not None:
+        if (
+            not isinstance(repair_feedback, dict)
+            or not regenerate_parts
+            or set(repair_feedback) != set(regenerate_parts)
+            or any(not isinstance(v, str) or
+                   not (1 <= len(v) <= 700) for v in repair_feedback.values())
+        ):
+            raise FactoryError("Repair feedback must cover each selected part.")
+
     # Check all target jobs *before* the first remote generation.
     prepared_jobs = [
         (job, prepare_submission(
             workflow_file, profile_file,
-            prompt_text=job["prompt"],
+            prompt_text=(
+                job["prompt"] + (
+                    " Address these rig QA defects while preserving the canonical "
+                    "character identity and all other parts: " +
+                    repair_feedback[job["part_id"]]
+                    if repair_feedback is not None and
+                    job["part_id"] in repair_feedback else ""
+                )
+            ),
             filename_prefix=f"KidsStudio/{char_id}/{job['part_id']}",
             reference_image_name=reference_name,
         ))
         for job in plan["jobs"]
     ]
+    if previous_report is not None and (
+        previous_report.get("approved_workflow_sha256")
+        != prepared_jobs[0][1]["workflow_sha256"]
+    ):
+        raise FactoryError("Previous attempt used a different approved workflow.")
     # ComfyUI workflow may be valid, but image edits and extra node types require
     # a pre-approved profile, not arbitrary additions to this implementation.
     active = client if client is not None else LocalComfyClient()
@@ -258,6 +333,12 @@ def build_character(
         "canonical_reference_sha256": reference_digest,
         "reference_conditioned": reference_name is not None,
         "jobs": [],
+        "reused_from": str(previous) if previous is not None else None,
+        "reused_report_sha256": (
+            hashlib.sha256((previous / "factory_report.json").read_bytes()).hexdigest()
+            if previous is not None else None
+        ),
+        "regenerated_parts": sorted(regenerate_parts) if regenerate_parts else [],
         "technical_pass": False,
         "visual_review_required": True,
     }
@@ -270,6 +351,22 @@ def build_character(
             if actual_name != reference_name:
                 raise FactoryError("Reference upload did not preserve the approved name.")
         for job, prepared in prepared_jobs:
+            if previous is not None and job["part_id"] not in regenerate_parts:
+                src = previous / job["target_png"]
+                dst = out / job["target_png"]
+                shutil.copyfile(src, dst)
+                digest = hashlib.sha256(dst.read_bytes()).hexdigest()
+                state["jobs"].append({
+                    "part_id": job["part_id"],
+                    "status": "REUSED",
+                    "sha256": digest,
+                    "file": job["target_png"],
+                    "source_attempt": str(previous),
+                    "prompt_sha256": hashlib.sha256(
+                        job["prompt"].encode("utf-8")).hexdigest(),
+                })
+                _json_atomic(state_file, state)
+                continue
             entry: dict[str, Any] = {
                 "part_id": job["part_id"],
                 "status": "QUEUED",

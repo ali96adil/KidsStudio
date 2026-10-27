@@ -117,3 +117,11 @@ must flag visible inconsistent proportions, expression and colors.
 
 Both the reference workflow and local multimodal reviewer still require real
 Mac setup before autonomous art production can be claimed.
+
+## v0.2 retry orchestration
+
+The separate `produce-character` command (see
+[PRODUCTION_CYCLE.md](PRODUCTION_CYCLE.md)) adds bounded rejection/repair
+handling. The plain `build-character` command still produces a single
+attempt only. Repair attempts are independent version directories and cannot
+overwrite the original layers.
