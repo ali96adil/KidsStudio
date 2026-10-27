@@ -32,3 +32,23 @@ Source AI images, WAV, model weights, voice references, internal secrets and MP4
 
 ## Runtime acknowledgements
 Local evidence before this repo: Godot JSON movie proof; FLUX.2 Klein illustration and image edit proof. No AI manager daemon, ComfyUI adapter, autonomous evaluator or night render scheduling has been deployed yet.
+
+## Standalone rig animation project exporter
+
+The `export-godot` command creates a local Godot 4 project from a validated
+`rig.json` with **separate transparent PNG layers** and a validated
+`scene_spec.json` action timeline. Each part has its own `Node2D`
+joint positioned at its declared pivot and `Sprite2D` image anchored to
+the common canvas coordinates. Ears, eyes and mouth are parented to head
+without flattening the artwork. Playback uses frame `delta` so Godot
+`--write-movie --fixed-fps` exports are deterministic.
+
+Actions initially supported: neutral, wave_right, wave_left, head_tilt,
+jump, walk. These are proof-of-rig motions, NOT final acting animation.
+Real deformation, mesh blending, mouth shapes, believable walk cycles
+and facial performance require additional layers/animation.
+
+The default export is `PREVIEW_ONLY_UNAPPROVED`. With
+`--require-reviewed` an independent local AI PASS, fresh motion evidence,
+and hashes of the exact current part files are required before **internal**
+asset export. The owner still approves publication.

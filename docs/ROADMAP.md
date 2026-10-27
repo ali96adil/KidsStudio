@@ -14,7 +14,7 @@
 - [x] Layer-based GIF/contact-sheet evidence generator (deterministic)
 - [x] Optional local AI vision reviewer: independent decision, evidence hashes, PASS/REVISE/FAIL gate (requires real Mac validation)
 - [ ] Automated bounded repair/retry loop with model evaluation and cost caps
-- [ ] Export a Godot rig scene from manifest
+- [x] Export a standalone Godot 4 rig project from manifest and JSON scene beats (native Mac render still pending)
 - [ ] Benchmarks on actual Mac M3 Max and 48 GB shared memory
 
 ## Milestone 2 — Studio brain

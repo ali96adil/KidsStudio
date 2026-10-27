@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "fps": 30,
+  "duration_seconds": 12,
+  "beats": [
+    {
+      "start": 0,
+      "end": 2,
+      "motion": "neutral"
+    },
+    {
+      "start": 2,
+      "end": 4,
+      "motion": "wave_right"
+    },
+    {
+      "start": 4,
+      "end": 6,
+      "motion": "head_tilt"
+    },
+    {
+      "start": 6,
+      "end": 8,
+      "motion": "jump"
+    },
+    {
+      "start": 8,
+      "end": 10,
+      "motion": "wave_left"
+    },
+    {
+      "start": 10,
+      "end": 12,
+      "motion": "walk"
+    }
+  ]
+}
