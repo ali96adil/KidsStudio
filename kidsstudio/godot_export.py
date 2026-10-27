@@ -192,6 +192,14 @@ def export_godot(
         "source_scene_sha256": _digest(scene_file),
         "exported_parts": [part["id"] for part in normalized["parts"]],
     }
+    metadata["project_hashes"] = {
+        name: _digest(output / name)
+        for name in [
+            "project.godot", "main.tscn",
+            "scripts/rig_player.gd", "rig.json", "scene_spec.json",
+            *["assets/" + part["id"] + ".png" for part in normalized["parts"]],
+        ]
+    }
     (output / "export_report.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
     )

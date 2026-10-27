@@ -12,6 +12,7 @@ from .rigqa import check_rig
 from .factory import build_character, FactoryError
 from .motion import create_motion_evidence
 from .godot_export import GodotExportError, export_godot
+from .godot_render import GodotRenderError, render_godot_project
 from .reviewer import VisionReviewError, review_rig
 
 
@@ -64,6 +65,12 @@ def main(argv: list[str] | None = None) -> int:
                        help="Demand a fresh local independent AI PASS before export")
     godot.add_argument("--review-report")
     godot.add_argument("--evidence")
+    render = commands.add_parser("render-godot", help="Render verified exported Godot project to local H.264 MP4")
+    render.add_argument("project")
+    render.add_argument("--out", required=True)
+    render.add_argument("--godot", default="godot")
+    render.add_argument("--ffmpeg", default="ffmpeg")
+    render.add_argument("--timeout", type=int, default=1800)
     args = parser.parse_args(argv)
 
     try:
@@ -80,6 +87,15 @@ def main(argv: list[str] | None = None) -> int:
                  "node_count": prepared["node_count"], "models": prepared["models"]}
             )
             print(json.dumps(result, indent=2))
+            return 0
+        if args.command == "render-godot":
+            result = render_godot_project(
+                args.project, args.out,
+                godot_executable=args.godot,
+                ffmpeg_executable=args.ffmpeg,
+                timeout_seconds=args.timeout,
+            )
+            print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0
         if args.command == "export-godot":
             result = export_godot(
@@ -129,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = check_rig(args.manifest)
             success = bool(result["passed"])
-    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

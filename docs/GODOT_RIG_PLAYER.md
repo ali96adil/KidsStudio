@@ -33,8 +33,8 @@ Optional local FFmpeg transcode:
       /local/characters/bunny/preview.mp4
 
 Because ComfyUI is installed on the owner's Mac, **GitHub CI cannot run
-the real character render**, but the exporter and timeline validations are
-covered by offline tests. Godot headless runtime validation is still pending.
+the real character render**, but the exporter, timeline validations and native render command orchestration
+are covered by offline mocked tests. Godot headless runtime validation is still pending.
 
 ## Stronger internal quality gate
 

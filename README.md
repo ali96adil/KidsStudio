@@ -24,7 +24,7 @@ AI-powered bilingual educational animation studio for children.
 3. Tests and a GitHub Actions workflow.
 4. A checksum-approved **local-only ComfyUI API bridge** for explicit opt-in job submission.
 5. **Character Factory v0.1:** sequential ComfyUI jobs for each isolated part, validated alpha, versioned rig and provenance, six animated motion previews/contact sheet, and a fail-closed technical review report. An optional independent local multimodal reviewer can return PASS / REVISE / FAIL with an auditable report; it requires a separately installed vision model and has **not** been tested against actual art yet.
-6. **Godot 4 rig project exporter:** real Sprite2D layers and pivot Node2D joints, hierarchical head/ears/face, deterministic JSON action beats, and a strict freshness gate for reviewed assets. Preview exports are explicitly unapproved.
+6. **Godot 4 rig project exporter and local MP4 renderer:** real Sprite2D layers and pivot Node2D joints, hierarchical head/ears/face, deterministic JSON action beats, project source integrity, and one-command fixed-fps Godot/FFmpeg video render. Preview exports and videos are explicitly unapproved.
 
 This initial QA does **not** judge artistic quality, seams, motion, IP originality or child safety. Technical approval is **not** final asset approval.
 
