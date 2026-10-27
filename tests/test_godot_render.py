@@ -56,6 +56,10 @@ class GodotRenderTests(unittest.TestCase):
              patch("kidsstudio.godot_render.subprocess.run", side_effect=fake_run) as run:
             status = render_godot_project(self.project, self.root / "render")
         self.assertEqual(run.call_count, 2)
+        godot_command = run.call_args_list[0].args[0]
+        self.assertIn("--rendering-method", godot_command)
+        self.assertIn("gl_compatibility", godot_command)
+        self.assertNotIn("--headless", godot_command)
         self.assertEqual(status["status"], "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW")
         self.assertTrue((self.root / "render" / "character_preview.mp4").exists())
         self.assertTrue(status["owner_publication_approval_required"])
