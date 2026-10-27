@@ -135,6 +135,15 @@ class WorkflowProductionAuditTests(unittest.TestCase):
 
     def test_conditioning_bypassed_by_sampler_is_rejected(self):
         self.graph["4"]["inputs"]["conditioning"] = ["1", 0]
+        # A cosmetic reference image composited downstream would pass the
+        # older "LoadImage reaches SaveImage" check. The new contract
+        # must still detect that conditioning never reached the sampler.
+        self.graph["8"] = {
+            "class_type": "ImageComposite",
+            "inputs": {"generated": ["6", 0], "decorative_ref": ["2", 0]},
+        }
+        self.graph["7"]["inputs"]["images"] = ["8", 0]
+        self.profile_data["allowed_node_classes"].append("ImageComposite")
         self.save()
         with self.assertRaisesRegex(ComfySafetyError, "Image conditioning"):
             self.audit()
