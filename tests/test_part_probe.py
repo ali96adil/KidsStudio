@@ -122,7 +122,7 @@ class ProbeTests(unittest.TestCase):
             },
         }))
 
-    def run(self, name="probe", client=None):
+    def run_probe(self, name="probe", client=None):
         return run_two_part_probe(
             self.blueprint, self.workflow, self.profile,
             self.reference, self.root / name,
@@ -131,7 +131,7 @@ class ProbeTests(unittest.TestCase):
         )
 
     def test_probe_runs_exactly_two_jobs_and_stages_evidence(self):
-        state = self.run()
+        state = self.run_probe()
         self.assertEqual(state["status"], "PROBE_READY_FOR_VISUAL_INSPECTION")
         self.assertEqual([j["part_id"] for j in state["jobs"]],
                          ["body", "arm_right"])
@@ -148,7 +148,7 @@ class ProbeTests(unittest.TestCase):
 
     def test_no_joint_overlap_blocks_preproduction(self):
         fake = FakeComfy([part_png("body"), part_png("arm_right", overlap=False)])
-        state = self.run("no_overlap", fake)
+        state = self.run_probe("no_overlap", fake)
         self.assertEqual(state["status"], "PROBE_BLOCKED_NO_SHOULDER_OVERLAP")
         self.assertEqual(state["qa"]["shoulder_neutral"]["overlap_pixels"], 0)
 
@@ -158,7 +158,7 @@ class ProbeTests(unittest.TestCase):
         img.save(out, "PNG")
         fake = FakeComfy([out.getvalue()])
         with self.assertRaises(FactoryError):
-            self.run("opaque", fake)
+            self.run_probe("opaque", fake)
         self.assertEqual(len(fake.queued), 1)
         state = json.loads((self.root / "opaque" / "probe_report.json").read_text())
         self.assertEqual(state["status"], "PROBE_FAILED")
@@ -168,7 +168,7 @@ class ProbeTests(unittest.TestCase):
         self.graph["4"]["inputs"].pop("identity")
         self._save_graph()
         with self.assertRaises(Exception):
-            self.run("badgraph")
+            self.run_probe("badgraph")
         self.assertFalse((self.root / "badgraph").exists())
         self.assertEqual(self.client.queued, [])
         self.assertEqual(self.client.uploaded, [])
@@ -181,13 +181,13 @@ class ProbeTests(unittest.TestCase):
         img.save(b, "PNG")
         fake = FakeComfy([b.getvalue()])
         with self.assertRaises(FactoryError):
-            self.run("wrong", fake)
+            self.run_probe("wrong", fake)
         self.assertEqual(len(fake.queued), 1)
 
     def test_no_overwrite_and_cli_no_execute(self):
-        self.run()
+        self.run_probe()
         with self.assertRaises(FileExistsError):
-            self.run()
+            self.run_probe()
         status = kidsstudio_cli([
             "probe-bunny", str(self.blueprint),
             "--workflow", str(self.workflow),
