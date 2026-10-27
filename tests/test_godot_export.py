@@ -63,6 +63,8 @@ class GodotExportTests(unittest.TestCase):
         self.assertTrue((dest / "main.tscn").is_file())
         script = (dest / "scripts" / "rig_player.gd").read_text()
         self.assertIn("wave_right", script)
+        self.assertIn("ImageTexture.create_from_image", script)
+        self.assertIn("layer_image.load(", script)
         self.assertIn('(_parts["head"] as Node2D)', script)
         copy = json.loads((dest / "rig.json").read_text())
         for part in copy["parts"]:
