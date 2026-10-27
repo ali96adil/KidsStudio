@@ -20,6 +20,7 @@ from .workflow_audit import audit_character_workflow
 from .part_probe import ProbeError, run_two_part_probe
 from .probe_review import review_two_part_probe
 from .comfy_inspector import inspect_mac_comfy, ReadinessError
+from .mac_doctor import inspect_mac_station, MacDoctorError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,9 +139,48 @@ def main(argv: list[str] | None = None) -> int:
                            help="Write private redacted JSON diagnostic (no overwrite)")
     inspector.add_argument("--draft-profile", type=Path,
                            help="Write intentionally UNAPPROVED profile draft (no overwrite)")
+    station = commands.add_parser(
+        "mac-doctor",
+        help="Read-only combined ComfyUI, original art, Godot, FFmpeg and vision preflight"
+    )
+    station.add_argument("--workflow", required=True)
+    station.add_argument("--reference", required=True)
+    station.add_argument("--blueprint")
+    station.add_argument("--profile")
+    station.add_argument("--comfy-url", default="http://127.0.0.1:8188")
+    station.add_argument("--connect", action="store_true",
+                         help="GET metadata from local ComfyUI and Ollama only")
+    station.add_argument("--ollama-model")
+    station.add_argument("--output-root")
+    station.add_argument("--min-free-gb", type=int, default=10)
+    station.add_argument("--godot-binary")
+    station.add_argument("--ffmpeg-binary")
+    station.add_argument("--report", type=Path)
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "mac-doctor":
+            result = inspect_mac_station(
+                workflow_file=args.workflow, reference_file=args.reference,
+                blueprint_file=args.blueprint, profile_file=args.profile,
+                connect=args.connect, comfy_url=args.comfy_url,
+                ollama_model=args.ollama_model, output_root=args.output_root,
+                min_free_gb=args.min_free_gb,
+                godot_binary=args.godot_binary,
+                ffmpeg_binary=args.ffmpeg_binary,
+            )
+            if args.report is not None:
+                path = args.report.expanduser().resolve()
+                if any((parent / ".git").exists()
+                       for parent in (path.parent, *path.parents)):
+                    raise MacDoctorError("Report must be outside public Git.")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as out:
+                    json.dump(result, out, ensure_ascii=False, indent=2)
+                    out.write("\n")
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if result["status"] != "BLOCKED" else 1
         if args.command == "inspect-mac-comfy":
             result, draft = inspect_mac_comfy(
                 args.workflow,
@@ -331,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = check_rig(args.manifest)
             success = bool(result["passed"])
-    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError, ProbeError, ReadinessError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError, ProbeError, ReadinessError, MacDoctorError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

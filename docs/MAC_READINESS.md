@@ -82,3 +82,56 @@ The actual owner's Mac, FLUX.2 Klein checkpoint filename,
 installed ComfyUI custom nodes and approved reference/alpha workflow
 have **not** been inspected by this chat. No private models or artwork
 were committed.
+
+## 5. One comprehensive station report (no art generation)
+
+This combines all preparatory checks into a single **read-only** output.
+First export an API-format workflow and ensure any approved profile,
+blueprint and original reference are present on the Mac.
+
+```sh
+kidsstudio mac-doctor \
+  --workflow "$HOME/PRIVATE/ComfyUI/bunny_api.json" \
+  --reference "$HOME/development/KidsStudio-AI/characters/bunny/v01/bunny_neutral_v01.png" \
+  --blueprint /local/KidsStudio/examples/bunny_blueprint.json \
+  --profile "$HOME/PRIVATE/ComfyUI/APPROVED_bunny_profile.json" \
+  --output-root "$HOME/PRIVATE/KidsStudio/renders" \
+  --ollama-model YOUR_INSTALLED_OLLAMA_VISION_MODEL \
+  --connect \
+  --report "$HOME/PRIVATE/KidsStudio/mac_doctor_report_v01.json"
+```
+
+Paths such as `PRIVATE/ComfyUI/bunny_api.json` and
+`APPROVED_bunny_profile.json` are **examples, not files known to
+exist**. The script never searches other folders for personal artwork.
+Godot and FFmpeg are checked by fixed `--version`/`-version` arguments;
+Mac `/Applications/Godot.app` is checked if there is no `godot`
+binary on PATH. Missing binaries are reported, not installed.
+
+With `--connect` the command reads *only* local ComfyUI
+`GET /object_info` / `GET /system_stats` and local Ollama
+`GET /api/tags`. No reference image is uploaded, and neither a
+new ComfyUI job nor a vision review is run.
+
+The report contains only statuses, SHA256, art dimensions, candidate
+node IDs, model selection names (never keys), installed tool
+versions, device count, and rough free-space statistics. It is created
+with owner-only `0600` permissions **outside Git**, and is never
+overwritten silently.
+
+Possible states:
+- `BLOCKED`: missing essential tool, workflow/model, invalid original
+  image, or insufficient private disk.
+- `NEEDS_LOCAL_PROVISIONING_OR_OWNER_APPROVAL`: basic environment
+  exists but the approved graph, explicit connection, reviewer model or
+  other gate is not proven.
+- `READY_TO_REQUEST_MANUAL_TWO_PART_PROBE`: ComfyUI API graph pinned,
+  registered local nodes/models, available Godot/FFmpeg, registered
+  reviewer model, valid bunny source and private disk.
+
+**This is not a rendering success and never authorizes a full rig or
+public release.** Ollama's model registration does NOT prove it can
+understand images reliably; the actual independent vision probe must
+validate behavior on real image evidence. A passed graph likewise
+does not prove image transparency, visual consistency or seamless
+moving shoulder joins. Those require the separate two-part probe.
