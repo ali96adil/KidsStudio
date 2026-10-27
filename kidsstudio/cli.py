@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from .cycle import CycleError, run_character_cycle
 from .workflow_audit import audit_character_workflow
 from .part_probe import ProbeError, run_two_part_probe
 from .probe_review import review_two_part_probe
+from .comfy_inspector import inspect_mac_comfy, ReadinessError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,9 +123,57 @@ def main(argv: list[str] | None = None) -> int:
     probe_review.add_argument("--model", required=True)
     probe_review.add_argument("--execute", action="store_true",
                               help="Required: invoke installed local Ollama vision model")
+    inspector = commands.add_parser(
+        "inspect-mac-comfy",
+        help="Read-only diagnostics for a private Mac ComfyUI API workflow"
+    )
+    inspector.add_argument("--workflow", required=True)
+    inspector.add_argument("--connect", action="store_true",
+                           help="Read registered node/model metadata on localhost; no GPU jobs")
+    inspector.add_argument("--base-url", default="http://127.0.0.1:8188")
+    inspector.add_argument("--profile")
+    inspector.add_argument("--blueprint")
+    inspector.add_argument("--reference")
+    inspector.add_argument("--report", type=Path,
+                           help="Write private redacted JSON diagnostic (no overwrite)")
+    inspector.add_argument("--draft-profile", type=Path,
+                           help="Write intentionally UNAPPROVED profile draft (no overwrite)")
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "inspect-mac-comfy":
+            result, draft = inspect_mac_comfy(
+                args.workflow,
+                base_url=args.base_url, connect=args.connect,
+                profile_file=args.profile,
+                blueprint_file=args.blueprint,
+                reference_file=args.reference,
+            )
+            destinations = [
+                (location.expanduser().resolve(), contents)
+                for location, contents in (
+                    (args.report, result), (args.draft_profile, draft)
+                ) if location is not None
+            ]
+            if len({path for path, _ in destinations}) != len(destinations):
+                raise ReadinessError("Report and unapproved draft need separate paths.")
+            for path, contents in destinations:
+                if contents is None:
+                    raise ReadinessError("Cannot draft a profile for invalid workflow format.")
+                if any((parent / ".git").exists()
+                       for parent in (path.parent, *path.parents)):
+                    raise ReadinessError("Diagnostic files must not be written inside public Git.")
+                if path.exists():
+                    raise FileExistsError("Diagnostic already exists; choose a new version.")
+            for path, contents in destinations:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                # Owner-private regardless of shell umask. O_EXCL avoids races.
+                fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as out:
+                    json.dump(contents, out, ensure_ascii=False, indent=2)
+                    out.write("\n")
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if result["status"] != "BLOCKED" else 1
         if args.command == "review-bunny-probe":
             if not args.execute:
                 print("ERROR: Explicit --execute required for local visual review.",
@@ -281,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = check_rig(args.manifest)
             success = bool(result["passed"])
-    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError, ProbeError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError, ProbeError, ReadinessError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

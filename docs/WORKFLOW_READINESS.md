@@ -164,3 +164,47 @@ tied to input files. Use a new probe directory for a new run.
 Note: a local AI visual reviewer can be mistaken. These two art layers
 are insufficient to prove 10-part coherent character motion. Quality
 is not proven until real ComfyUI art passes multiple full-rig animations.
+
+## Stage zero: inspect the Mac before using the GPU
+
+The first real local step is **read-only**:
+
+```sh
+kidsstudio inspect-mac-comfy \
+  --workflow /local/private/FLUX_bunny_api.json \
+  --report /local/private/mac_diagnostics_v01.json \
+  --draft-profile /local/private/UNAPPROVED_profile.json
+```
+
+This checks API-format nodes, finds *possible* image-reference,
+conditioning, sampler, matting and SaveImage node IDs and saves an
+unapproved profile template. The template's checksum is intentionally
+**not accepted by the production runner** until the owner checks the
+actual workflow and explicitly approves it.
+
+Add `--connect` to query only the user's running local ComfyUI node
+registry and basic device statistics, with no POST, model download,
+checkpoint read, image upload or inference:
+
+```sh
+kidsstudio inspect-mac-comfy \
+  --workflow /local/private/FLUX_bunny_api.json \
+  --connect --base-url http://127.0.0.1:8188 \
+  --report /local/private/mac_diagnostics_v02.json
+```
+
+The tool lists missing classes, checks selected model filenames against
+node dropdowns if provided, and never writes full private prompts to
+the diagnostic JSON. If the file is from File → Save rather than
+**File → Export Workflow (API)**, the tool reports the format problem
+instead of attempting conversion or sending it to ComfyUI.
+
+For a final no-generation graph check supply all three:
+`--profile`, `--blueprint`, `--reference` together; after passing
+the approved graph and local node registry, the report says
+`READY_FOR_TWO_PART_PROBE_NOT_GENERATED`.
+
+**Important:** graph wiring and node registration cannot establish real
+alpha output, identity preservation, licensing, GPU speed or seamless
+joint movement. Those only become testable by running the separately
+approved 2-part probe on the actual Mac. See [MAC_READINESS.md](MAC_READINESS.md).

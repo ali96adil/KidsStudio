@@ -8,7 +8,8 @@
 - [x] Confirm CI green and main branch merged
 
 ## Milestone 1 — Mac art pipeline
-- [ ] Import asset metadata from local ComfyUI and previous Godot proofs (no model weights, rights docs or raw images in public repo)
+- [x] Read-only Mac ComfyUI API workflow and opt-in localhost node/model registry diagnostic, human-review profile skeleton, redacted private report (mock tested; no real Mac probe)
+- [ ] Collect real Mac ComfyUI workflow and verify installed nodes/models plus previous Godot proofs (no model weights, rights docs or raw images in public repo)
 - [x] Implement checksum-pinned localhost ComfyUI job submission and sequential part collection (requires a pre-approved transparency workflow on Mac); no model auto-download or paid inference
 - [x] Strict anatomical placement/coverage/duplicate-art QA enforced for bunny blueprint, with **early abort before the next diffusion job** (offline synthetic tests)
 - [x] Strict offline production graph audit: reference image conditioning + part text both feed sampler; sampler output passes through pinned alpha/matting stage to SaveImage, exact node-ID output collection (synthetic tests)
