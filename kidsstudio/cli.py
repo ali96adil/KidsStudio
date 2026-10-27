@@ -21,6 +21,7 @@ from .part_probe import ProbeError, run_two_part_probe
 from .probe_review import review_two_part_probe
 from .comfy_inspector import inspect_mac_comfy, ReadinessError
 from .mac_doctor import inspect_mac_station, MacDoctorError
+from .first_run import first_bunny_run, FirstRunError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -156,9 +157,38 @@ def main(argv: list[str] | None = None) -> int:
     station.add_argument("--godot-binary")
     station.add_argument("--ffmpeg-binary")
     station.add_argument("--report", type=Path)
+    first = commands.add_parser(
+        "first-bunny-run",
+        help="One bounded local owner-controlled run: preflight, two parts, AI art review"
+    )
+    first.add_argument("--config", required=True,
+                       help="Private local station JSON with approved workflow/reference")
+    first.add_argument("--run-name", required=True,
+                       help="New unique run version, e.g. bunny_trial_001")
+    first.add_argument("--execute", action="store_true",
+                       help="REQUIRED: allow exactly two local ComfyUI jobs and one local vision review")
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "first-bunny-run":
+            if not args.execute:
+                print("ERROR: Explicit --execute required for first two local GPU parts.",
+                      file=sys.stderr)
+                return 2
+            result = first_bunny_run(
+                args.config, args.run_name, execute=True
+            )
+            print(json.dumps({
+                "status": result["status"],
+                "run_name": result["run_name"],
+                "station_status": result.get("station_status"),
+                "probe_status": result.get("probe_status"),
+                "review_status": result.get("review_status"),
+                "full_rig_generation_authorized": False,
+                "public_release_authorized": False,
+            }, ensure_ascii=False, indent=2))
+            return 0 if result["status"] == (
+                "PRELIMINARY_ART_PASS_NEEDS_OWNER") else 1
         if args.command == "mac-doctor":
             result = inspect_mac_station(
                 workflow_file=args.workflow, reference_file=args.reference,
@@ -371,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = check_rig(args.manifest)
             success = bool(result["passed"])
-    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError, ProbeError, ReadinessError, MacDoctorError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, ComfySafetyError, FactoryError, TimeoutError, VisionReviewError, GodotExportError, GodotRenderError, CycleError, ProbeError, ReadinessError, MacDoctorError, FirstRunError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

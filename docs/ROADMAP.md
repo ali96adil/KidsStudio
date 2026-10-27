@@ -10,6 +10,7 @@
 ## Milestone 1 — Mac art pipeline
 - [x] Read-only Mac ComfyUI API workflow and opt-in localhost node/model registry diagnostic, human-review profile skeleton, redacted private report (mock tested; no real Mac probe)
 - [x] Unified Mac Doctor: reference integrity, pinned graph, localhost registry, Godot/FFmpeg versions, Ollama registration, private disk and strict no-GPU readiness result (CI mock tests)
+- [x] Owner-invoked one-command Mac first-bunny art trial: strict preflight -> two reference-conditioned parts -> overlap/contact sheet -> one local AI reviewer, private journal and no retries (CI mocks only)
 - [ ] Collect real Mac ComfyUI workflow and verify installed nodes/models plus previous Godot proofs (no model weights, rights docs or raw images in public repo)
 - [x] Implement checksum-pinned localhost ComfyUI job submission and sequential part collection (requires a pre-approved transparency workflow on Mac); no model auto-download or paid inference
 - [x] Strict anatomical placement/coverage/duplicate-art QA enforced for bunny blueprint, with **early abort before the next diffusion job** (offline synthetic tests)
