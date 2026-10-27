@@ -101,11 +101,18 @@ def review_two_part_probe(
         type(joint.get("overlap_pixels")) is not int or
         joint["overlap_pixels"] <= 0):
         raise ProbeError("Two-part visual review requires real joint overlap.")
+    pivot = joint.get("pivot")
+    radius = joint.get("radius")
+    threshold = joint.get("alpha_threshold")
+    if (not isinstance(pivot, list) or len(pivot) != 2
+        or any(type(x) is not int or x < 0 or x > 4096 for x in pivot)
+        or type(radius) is not int or not 1 <= radius <= 512
+        or type(threshold) is not int or not 1 <= threshold <= 255):
+        raise ProbeError("Shoulder geometry parameters are invalid.")
     recomputed = joint_overlap(
         directory / "parts/body.png",
         directory / "parts/arm_right.png",
-        joint.get("pivot", []),
-        radius=joint.get("radius", 38),
+        pivot, radius=radius, alpha_threshold=threshold,
     )
     if (recomputed["overlap_pixels"] != joint["overlap_pixels"]
             or recomputed["technical_overlap_found"] is not True):

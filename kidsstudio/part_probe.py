@@ -59,6 +59,7 @@ def joint_overlap(
         arm_count = b.histogram()[255]
         return {
             "pivot": [int(x), int(y)], "radius": radius,
+            "alpha_threshold": alpha_threshold,
             "body_pixels": body_count, "arm_pixels": arm_count,
             "overlap_pixels": shared,
             "overlap_ratio_of_smaller_part": round(
