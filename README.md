@@ -167,3 +167,13 @@ local Ollama multimodal model. It checks five body/arm rotation panels
 against the canonical reference and saves an immutable SHA-tied verdict.
 Even PASS is **PROBE_PRELIMINARY_ART_PASS**, never permission to generate
 all parts unattended or publish. See [workflow readiness](docs/WORKFLOW_READINESS.md).
+
+## Mac ComfyUI readiness — no model calls
+
+Before the first real FLUX art probe, use `kidsstudio inspect-mac-comfy` to
+inspect an exported **API-format** workflow. By default this is purely
+offline. With explicit `--connect`, it reads local `/object_info` and
+`/system_stats` metadata, detecting missing custom nodes and unregistered
+checkpoint dropdowns without uploading artwork, queuing GPU jobs or
+downloading models. It can write a private **unapproved** profile skeleton
+and redacted report; see [Mac readiness guide](docs/MAC_READINESS.md).
