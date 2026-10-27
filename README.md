@@ -154,3 +154,7 @@ manual approved setup and end-to-end validation**.
 ## Rig art production preflight
 
 Use `kidsstudio audit-character-workflow` to verify the approved ComfyUI graph connects the canonical reference and part-specific prompt **through the actual sampler**, then the alpha/matting stage, then the specific SaveImage node. Production CLI and Mac character worker require this contract before model execution. See [workflow readiness](docs/WORKFLOW_READINESS.md). This verifies graph structure only; a real Mac rendering/visual quality gate still remains.
+
+## Before full character generation
+
+Use `kidsstudio probe-bunny ... --execute` on the Mac once an approved local ComfyUI reference-conditioned/matting workflow is available. It renders only **body + right arm**, checks alpha/geometry and neutral shoulder overlap, and saves a comparison sheet. A passing result requires visual inspection, not 10-part automatic production. See [two-part qualification](docs/WORKFLOW_READINESS.md).

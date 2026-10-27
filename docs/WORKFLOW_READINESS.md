@@ -77,3 +77,46 @@ not silently select a preview, background image, or alternate SaveImage.
   still needs independent visual QA and owner approval for release.
 - No original children's media, checkpoint weights or private user APIs are
   committed to GitHub.
+
+## Low-cost first bunny art qualification (two parts, not ten)
+
+The operator can run the approved `probe-bunny` command locally on the
+Mac **after** the real reference-conditioned ComfyUI workflow/profile
+passes `audit-character-workflow`:
+
+```sh
+kidsstudio probe-bunny examples/bunny_blueprint.json \
+  --workflow /local/private/workflow_api.json \
+  --profile /local/private/workflow_profile.json \
+  --reference /local/private/bunny_neutral_v01.png \
+  --out /local/private/qualifications/bunny_probe_001 \
+  --execute
+```
+
+This submits **exactly two** model jobs (body + viewer-right arm), sharing
+one uploaded canonical reference. Before a third job could be queued, each
+image must pass the established real-alpha and anatomical-region validation.
+
+Artifacts retained in a new version folder:
+- `parts/body.png`, `parts/arm_right.png`: original transparent source layers
+- `probe_contact_sheet.png`: body, arm, and neutral composite over checkerboard
+- `probe_report.json`: immutable run provenance, hashes, technical alpha/
+  geometry results and measured shoulder-region overlap
+
+Decisions are deliberately conservative:
+- `PROBE_FAILED`: missing transparency, bad dimensions, dangerous graph,
+  geometry failure, network error or any other attempt failure
+- `PROBE_BLOCKED_NO_SHOULDER_OVERLAP`: files may be valid individually,
+  but they do not overlap around the arm-right pivot; full generation blocked
+- `PROBE_READY_FOR_VISUAL_INSPECTION`: structural prerequisites passed,
+  **but neither artistic rig approval nor full-generation authorization**
+
+Check the contact sheet for identity, texture palette, seam color, side of the
+body, reference likeness and anatomical plausibility. Even nonzero joint
+overlap is *not proof* that waving looks natural: next gate is a live
+motion-preview with complete rig parts. No YouTube, paid API, or automatic
+publishing path exists in this step.
+
+The CLI runs only when `--execute` is passed on the Mac. The Pi remote
+worker cannot dispatch this exploratory probe. It remains owner-controlled
+until we see and calibrate real FLUX layers.
