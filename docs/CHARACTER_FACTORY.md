@@ -125,3 +125,48 @@ The separate `produce-character` command (see
 handling. The plain `build-character` command still produces a single
 attempt only. Repair attempts are independent version directories and cannot
 overwrite the original layers.
+
+## v0.3: Anatomical placement quality gate
+
+The bunny blueprint now declares an anatomical `expected_region` for every
+rig layer (body, head, ears, eyes, mouth, both arms and legs). In its
+`qa_policy`, `strict_parts=true` requires all parts to be assigned a region.
+The code measures actual alpha coverage, not just transparency-mode labels:
+
+- Reject if too much visible alpha lies outside the permitted region.
+- Reject near-empty layers or tiny dots masquerading as character limbs.
+- Reject identical RGBA images appearing under multiple part filenames.
+- Reject missing/malformed geometry policy or part bounds.
+- Abort on the **first generated bad part**, before sending a request for the
+  next layer, reducing wasted diffusion work.
+
+The bunny's regions are **generous approximate coordinates** from the existing
+1024 × 1024 reference drawing and require calibration with real generated
+layers. The constraints measure anatomy registration only; they cannot detect
+all shoulder seams, art-style drift, hidden connector quality, or true rig
+deformation. A successful technical pass still requires independent visual QA.
+
+`qa_policy` is optional for older manifests, where technical QA remains
+backwards-compatible. New production characters should use strict mode,
+whose upper bounds are intentionally conservative and tuneable per character.
+
+### Required blueprint fields
+
+    {
+      "qa_policy": {
+        "strict_parts": true,
+        "max_outside_fraction": 0.18,
+        "min_inside_fill_fraction": 0.003,
+        "alpha_threshold": 32,
+        "reject_identical_layers": true
+      },
+      "parts": [
+        {
+          "id": "arm_right",
+          "expected_region": [560, 517, 765, 791],
+          "pivot": [621, 570]
+        }
+      ]
+    }
+
+Other required blueprint fields are omitted from this illustrative excerpt.

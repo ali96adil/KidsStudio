@@ -10,7 +10,8 @@
 ## Milestone 1 — Mac art pipeline
 - [ ] Import asset metadata from local ComfyUI and previous Godot proofs (no model weights, rights docs or raw images in public repo)
 - [x] Implement checksum-pinned localhost ComfyUI job submission and sequential part collection (requires a pre-approved transparency workflow on Mac); no model auto-download or paid inference
-- [ ] Validate isolated layers, identity conditioning and real rendered joint overlaps on the Mac (batch code in place; live art unverified)
+- [x] Strict anatomical placement/coverage/duplicate-art QA enforced for bunny blueprint, with **early abort before the next diffusion job** (offline synthetic tests)
+- [ ] Validate actual isolated layers, identity-conditioned generation and seamless rendered joint overlaps on Mac (live art unverified)
 - [x] Layer-based GIF/contact-sheet evidence generator (deterministic)
 - [x] Optional local AI vision reviewer: independent decision, evidence hashes, PASS/REVISE/FAIL gate (requires real Mac validation)
 - [x] Bounded 1–3 attempt visual-REVISE loop with part-specific reuse, immutable attempts and strict output guardrails (offline tests)

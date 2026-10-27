@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .rigqa import MINIMUM_PARTS, MAX_CANVAS
+from .riggeometry import validate_geometry_policy
 
 
 def make_rig_plan(blueprint_path: str | Path) -> dict[str, Any]:
@@ -36,6 +37,7 @@ def make_rig_plan(blueprint_path: str | Path) -> dict[str, Any]:
         raise ValueError("Each rig part needs a unique id.")
     if not MINIMUM_PARTS.issubset(set(ids)):
         raise ValueError("Missing essential head/body/limb parts.")
+    policy = validate_geometry_policy(data.get("qa_policy"), w, h, parts)
 
     jobs = []
     for part in parts:
@@ -56,13 +58,18 @@ def make_rig_plan(blueprint_path: str | Path) -> dict[str, Any]:
             "target_png": f"assets/{ident}.png",
             "pivot": pivot,
             "z": z,
+            "expected_region": part.get("expected_region"),
             "prompt": (
                 f"Original character: {identity}. "
                 f"Draw ONLY this isolated rig layer: {instruction}. "
                 f"Preserve scale and registration within a {w}x{h} canvas. "
                 "Transparent background. Keep concealed shoulder/neck/hip "
                 "overlap regions fully painted for rotation. Clean layer edges. "
-                "No other character parts, scene elements, labels or watermark."
+                "No other character parts, scene elements, labels or watermark. "
+                + (f"Position visible artwork primarily inside pixel region "
+                   f"{part['expected_region']} on the common canvas, with hidden "
+                   f"joint overlap inside this permitted region. "
+                   if part.get("expected_region") is not None else "")
             ),
         })
 
@@ -77,9 +84,12 @@ def make_rig_plan(blueprint_path: str | Path) -> dict[str, Any]:
             "schema_version": 1,
             "character_id": character_id,
             "canvas": {"width": w, "height": h},
+            "qa_policy": policy,
             "parts": [
                 {"id": j["part_id"], "file": j["target_png"],
-                 "pivot": j["pivot"], "z": j["z"]}
+                 "pivot": j["pivot"], "z": j["z"],
+                 **({"expected_region": j["expected_region"]}
+                    if j["expected_region"] is not None else {})}
                 for j in jobs
             ],
         },

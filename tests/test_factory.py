@@ -138,6 +138,32 @@ class FactoryTests(unittest.TestCase):
         self.assertIn(b"\r\n", fake.req.data)
         self.assertIn(b'Content-Disposition: form-data; name="image"', fake.req.data)
 
+    def test_strict_geometry_stops_on_first_misplaced_part(self):
+        blueprint = json.loads(self.blueprint.read_text())
+        blueprint["qa_policy"] = {
+            "strict_parts": True,
+            "max_outside_fraction": 0.10,
+            "min_inside_fill_fraction": 0.01,
+            "alpha_threshold": 32,
+            "reject_identical_layers": True,
+        }
+        # Every part is intentionally constrained to top-left, while fake
+        # ComfyUI places a large circle in the middle of the canvas.
+        for part in blueprint["parts"]:
+            part["expected_region"] = [0, 0, 12, 12]
+        self.blueprint.write_text(json.dumps(blueprint))
+        client = FakeClient(self.valid_png)
+        dest = self.root / "early_reject"
+        with self.assertRaises(FactoryError) as error:
+            build_character(
+                self.blueprint, self.workflow, self.profile, dest,
+                client=client, preview_side=96,
+            )
+        self.assertIn("GEOMETRY_FAIL", str(error.exception))
+        self.assertEqual(len(client.calls), 1, "Bad art must abort before the next diffusion run.")
+        state = json.loads((dest / "factory_report.json").read_text())
+        self.assertEqual(state["status"], "FAILED")
+
     def test_opaque_png_fails_closed_before_second_job(self):
         img = Image.new("RGB", (64, 64), (255, 255, 255))
         buf = BytesIO()

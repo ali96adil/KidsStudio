@@ -14,7 +14,13 @@
         720
       ],
       "z": 0,
-      "instruction": "torso and pelvis only, with a complete uninterrupted shoulder/neck silhouette under the head and limbs"
+      "instruction": "torso and pelvis only, with a complete uninterrupted shoulder/neck silhouette under the head and limbs",
+      "expected_region": [
+        375,
+        512,
+        658,
+        888
+      ]
     },
     {
       "id": "leg_left",
@@ -23,7 +29,13 @@
         795
       ],
       "z": 1,
-      "instruction": "viewer-left leg and foot, joint-safe upper section concealed under body"
+      "instruction": "viewer-left leg and foot, joint-safe upper section concealed under body",
+      "expected_region": [
+        360,
+        760,
+        525,
+        960
+      ]
     },
     {
       "id": "leg_right",
@@ -32,7 +44,13 @@
         795
       ],
       "z": 2,
-      "instruction": "viewer-right leg and foot, joint-safe upper section concealed under body"
+      "instruction": "viewer-right leg and foot, joint-safe upper section concealed under body",
+      "expected_region": [
+        504,
+        760,
+        673,
+        960
+      ]
     },
     {
       "id": "arm_left",
@@ -41,7 +59,13 @@
         570
       ],
       "z": 3,
-      "instruction": "viewer-left arm and paw, with shoulder overlap hidden beneath head/torso"
+      "instruction": "viewer-left arm and paw, with shoulder overlap hidden beneath head/torso",
+      "expected_region": [
+        300,
+        515,
+        468,
+        791
+      ]
     },
     {
       "id": "arm_right",
@@ -50,7 +74,13 @@
         570
       ],
       "z": 4,
-      "instruction": "viewer-right arm and paw, with shoulder overlap hidden beneath head/torso"
+      "instruction": "viewer-right arm and paw, with shoulder overlap hidden beneath head/torso",
+      "expected_region": [
+        560,
+        517,
+        765,
+        791
+      ]
     },
     {
       "id": "head",
@@ -59,7 +89,13 @@
         550
       ],
       "z": 5,
-      "instruction": "head and cheeks with complete hidden neck connection, WITHOUT attached ears, eyes or mouth"
+      "instruction": "head and cheeks with complete hidden neck connection, WITHOUT attached ears, eyes or mouth",
+      "expected_region": [
+        306,
+        265,
+        713,
+        601
+      ]
     },
     {
       "id": "ear_left",
@@ -68,7 +104,13 @@
         275
       ],
       "z": 6,
-      "instruction": "viewer-left separate long bunny ear and full hidden root"
+      "instruction": "viewer-left separate long bunny ear and full hidden root",
+      "expected_region": [
+        326,
+        45,
+        520,
+        350
+      ]
     },
     {
       "id": "ear_right",
@@ -77,7 +119,13 @@
         275
       ],
       "z": 7,
-      "instruction": "viewer-right separate long bunny ear and full hidden root"
+      "instruction": "viewer-right separate long bunny ear and full hidden root",
+      "expected_region": [
+        520,
+        45,
+        714,
+        350
+      ]
     },
     {
       "id": "eyes",
@@ -86,7 +134,13 @@
         410
       ],
       "z": 8,
-      "instruction": "pair of identical dark-brown eyes, isolated facial-feature layer aligned to face"
+      "instruction": "pair of identical dark-brown eyes, isolated facial-feature layer aligned to face",
+      "expected_region": [
+        410,
+        340,
+        628,
+        465
+      ]
     },
     {
       "id": "mouth",
@@ -95,7 +149,20 @@
         480
       ],
       "z": 9,
-      "instruction": "small neutral smile as isolated mouth layer, no other features"
+      "instruction": "small neutral smile as isolated mouth layer, no other features",
+      "expected_region": [
+        451,
+        429,
+        577,
+        540
+      ]
     }
-  ]
+  ],
+  "qa_policy": {
+    "strict_parts": true,
+    "max_outside_fraction": 0.18,
+    "min_inside_fill_fraction": 0.003,
+    "alpha_threshold": 32,
+    "reject_identical_layers": true
+  }
 }
