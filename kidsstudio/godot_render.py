@@ -134,9 +134,18 @@ def render_godot_project(
         status["status"] = "RENDER_FAILED"
         status["error_type"] = type(exc).__name__
         status["error"] = str(exc)[:2000]
+        std_err = getattr(exc, "stderr", None) or ""
+        std_out = getattr(exc, "stdout", None) or ""
+        if isinstance(std_err, bytes):
+            std_err = std_err.decode("utf-8", errors="replace")
+        if isinstance(std_out, bytes):
+            std_out = std_out.decode("utf-8", errors="replace")
+        diagnostic = (str(std_out) + "\\n" + str(std_err))[-6000:]
+        status["renderer_log_tail"] = diagnostic
         _write_status(status_file, status)
         raise GodotRenderError(
-            f"Local renderer failed. Inspect {status_file} and local logs."
+            f"Local renderer failed. Inspect {status_file}. "
+            f"Renderer output: {diagnostic[-2000:]}"
         ) from exc
     _write_status(status_file, status)
     return status
