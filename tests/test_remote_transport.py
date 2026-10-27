@@ -201,6 +201,48 @@ class NativeTLSIntegrationTests(CoordinatorTests):
             RemoteClient("http://127.0.0.1:8765",
                          worker_id="mac-ai-01", token=self.token)
 
+    def test_https_media_only_worker_can_complete_pinned_video_metadata(self):
+        from kidsstudio.remote_worker import RemoteClient
+        self.service.workers["mac-media-01"] = (
+            "media-secret-" + "m" * 40,
+            frozenset({"godot_render"})
+        )
+        media = RemoteClient(
+            self.base, worker_id="mac-media-01",
+            token="media-secret-" + "m" * 40,
+            ca_file=str(self.root / "localhost.crt"),
+        )
+        self.queue.enqueue(
+            kind="godot_render", request_key="tls-media-01",
+            payload={"recipe_id": "bunny_video_v1"},
+        )
+        claimed = media.call("claim", {})["job"]
+        self.assertEqual(claimed["kind"], "godot_render")
+        self.assertEqual(claimed["payload"], {"recipe_id": "bunny_video_v1"})
+        result = media.call("complete-media", {
+            "job_id": claimed["job_id"],
+            "generation": claimed["generation"],
+            "result_status": "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW",
+            "artifact_sha256": "a" * 64,
+            "artifact_bytes": 12345,
+            "artifact_type": "mp4",
+            "publication_approved": False,
+        })
+        self.assertEqual(result["status"], "COMPLETED")
+        self.assertEqual(
+            json.loads(self.queue.get(claimed["job_id"])["result_json"])[
+                "publication_approved"
+            ], False
+        )
+
+    def test_https_editorial_worker_cannot_complete_media_task(self):
+        self.queue.enqueue(
+            kind="godot_render", request_key="tls-media-02",
+            payload={"recipe_id": "bunny_video_v1"},
+        )
+        self.assertIsNone(self.client.call("claim", {})["job"])
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"], 1)
+
     def test_cancelled_lease_rejects_remote_result(self):
         self.queue.enqueue(
             kind="script_draft", request_key="fenced-tls",

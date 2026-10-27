@@ -6,14 +6,22 @@ checked-in rig player and must produce a real MP4 (not mock subprocesses).
 """
 from __future__ import annotations
 
+import hashlib
+from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
+import ssl
+import subprocess
 import sys
+import threading
 
 from PIL import Image, ImageDraw
 
 from kidsstudio.godot_export import export_godot
-from kidsstudio.godot_render import render_godot_project
+from kidsstudio.coordinator_api import Coordinator, create_handler
+from kidsstudio.media_worker import MediaRecipes, MediaJournal, RemoteMediaWorker
+from kidsstudio.remote_worker import RemoteClient
+from kidsstudio.studio_queue import StudioQueue
 
 
 def _layer(name: str, canvas: tuple[int, int]) -> Image.Image:
@@ -83,21 +91,93 @@ def main() -> int:
     project = base / "godot_project"
     exported = export_godot(rig_file, scene_file, project)
     assert exported["status"] == "PREVIEW_ONLY_UNAPPROVED"
-    result = render_godot_project(
-        project, base / "movie", timeout_seconds=120
+    # Actual coordinator + HTTPS + media worker + real Godot/FFmpeg in one
+    # bounded 3-frame run. No paid models, personal art or API secrets.
+    report_file = project / "export_report.json"
+    digest = hashlib.sha256(report_file.read_bytes()).hexdigest()
+    recipes_file = base / "test_media_recipes.json"
+    recipes_file.write_text(json.dumps({
+        "schema_version": 1,
+        "recipes": {
+            "synthetic_scene_ci": {
+                "kind": "godot_render",
+                "output_root": str(base / "movie"),
+                "inputs": {"project_report": str(report_file)},
+                "sha256": {"project_report": digest},
+            }
+        },
+    }), encoding="utf-8")
+
+    queue = StudioQueue(base / "pi_queue.sqlite")
+    queue.initialize()
+    job = queue.enqueue(
+        kind="godot_render", request_key="native-3frames-v1",
+        payload={"recipe_id": "synthetic_scene_ci"},
     )
-    mp4 = Path(result["mp4"])
+    token = "CI-only-not-an-actual-secret-" + "g" * 40
+    coordinator = Coordinator(
+        queue, base / "pi_vault",
+        {"mac-media-01": (token, {"godot_render"})}
+    )
+    cert = base / "cert.pem"
+    key = base / "key.pem"
+    subprocess.run([
+        "openssl", "req", "-x509", "-newkey", "rsa:2048",
+        "-nodes", "-sha256", "-days", "1",
+        "-keyout", str(key), "-out", str(cert),
+        "-subj", "/CN=localhost",
+        "-addext", "subjectAltName=DNS:localhost",
+    ], check=True, capture_output=True, timeout=30)
+    listener = ThreadingHTTPServer(
+        ("127.0.0.1", 0), create_handler(coordinator)
+    )
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain(str(cert), str(key))
+    listener.socket = ssl_context.wrap_socket(listener.socket, server_side=True)
+    threading.Thread(target=listener.serve_forever, daemon=True).start()
+    try:
+        client = RemoteClient(
+            f"https://localhost:{listener.server_port}",
+            worker_id="mac-media-01", token=token, ca_file=str(cert)
+        )
+        worker = RemoteMediaWorker(
+            client, MediaRecipes(recipes_file),
+            MediaJournal(base / "mac_receipts.sqlite")
+        )
+        done = worker.run_once()
+        if done["status"] != "COMPLETED":
+            raise RuntimeError("Pi-to-Mac real render was not acknowledged.")
+    finally:
+        listener.shutdown()
+        listener.server_close()
+
+    mp4 = base / "movie" / job["job_id"] / "character_preview.mp4"
+    render_report = json.loads(
+        (mp4.parent / "render_report.json").read_text(encoding="utf-8")
+    )
+    state = json.loads(queue.get(job["job_id"])["result_json"])
+    actual_hash = hashlib.sha256(mp4.read_bytes()).hexdigest()
     if not mp4.is_file() or mp4.stat().st_size <= 1000:
         raise RuntimeError("Godot/FFmpeg did not produce a usable video file.")
-    if result["frames_expected"] != 3:
+    if render_report["frames_expected"] != 3:
         raise RuntimeError("Godot produced unexpected frame count.")
-    print("REAL_GODOT_SMOKE_PASS")
+    if (state["artifact_sha256"] != actual_hash or
+        state["status"] != "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW" or
+        state["publication_approved"] is not False):
+        raise RuntimeError("Pi media report failed provenance/approval checks.")
+    subprocess.run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-i", str(mp4), "-frames:v", "1", "-f", "null", "-",
+    ], check=True, capture_output=True, timeout=30)
+    print("REAL_GODOT_PI_MAC_TLS_SMOKE_PASS")
     print(json.dumps({
-        "status": result["status"],
-        "mp4_bytes": result["mp4_bytes"],
-        "mp4_sha256": result["mp4_sha256"],
-        "frames_expected": result["frames_expected"],
+        "status": state["status"],
+        "mp4_bytes": mp4.stat().st_size,
+        "mp4_sha256": actual_hash,
+        "frames_expected": render_report["frames_expected"],
         "asset_status": exported["status"],
+        "coordinator_state": queue.get(job["job_id"])["state"],
+        "publication_approved": False,
     }, indent=2))
     return 0
 

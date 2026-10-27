@@ -132,3 +132,21 @@ See [Pi↔Mac secured transport](docs/REMOTE_TRANSPORT.md). This is a
 no SSH/firewall change, agent autostart or paid API has been enabled on
 the owner's devices. Mac ComfyUI/Godot rendering remains a separate future
 worker capability.
+
+## Mac Media Worker v0.1 — one-shot, pinned, journaled
+
+Pi Studio Brain can now lease **media-only** `godot_render` and
+`character_generate` to a separately permissioned Mac worker over
+authenticated TLS. The request contains **only an approved recipe ID**,
+not arbitrary paths or commands. A private Mac recipe pins the local
+art/workflows/reference/project hash before actual ComfyUI or Godot use.
+
+A Mac-local SQLite **at-most-one-start** journal prevents automatic
+re-render after crashes, reconnects or uncertain results. DONE results
+can be re-acknowledged without rerunning; ambiguous STARTED results are
+quarantined for manual reconciliation. The Pi receives only output
+type, byte count and SHA256 — never entire confidential artwork.
+
+See [Media Worker guide](docs/MEDIA_WORKER.md). This feature is CI-tested
+with fake media executors; **real Mac ComfyUI production still requires
+manual approved setup and end-to-end validation**.
