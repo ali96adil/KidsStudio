@@ -150,3 +150,7 @@ type, byte count and SHA256 — never entire confidential artwork.
 See [Media Worker guide](docs/MEDIA_WORKER.md). This feature is CI-tested
 with fake media executors; **real Mac ComfyUI production still requires
 manual approved setup and end-to-end validation**.
+
+## Rig art production preflight
+
+Use `kidsstudio audit-character-workflow` to verify the approved ComfyUI graph connects the canonical reference and part-specific prompt **through the actual sampler**, then the alpha/matting stage, then the specific SaveImage node. Production CLI and Mac character worker require this contract before model execution. See [workflow readiness](docs/WORKFLOW_READINESS.md). This verifies graph structure only; a real Mac rendering/visual quality gate still remains.

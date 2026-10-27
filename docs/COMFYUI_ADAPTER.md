@@ -48,15 +48,11 @@ Explicit queue operation, only once the dry run succeeds:
       --prompt "Original bunny neutral pose, isolated..." \
       --prefix KidsStudio/test/bunny --submit
 
-This initial implementation does not yet:
-- Upload reference images
-- Poll/download resulting images
-- Generate all parts in sequence
-- Authorize visual review or auto-approve a final rig
-- Operate the owner's Mac from GitHub without a locally running worker
-
-These tasks remain in M1 Issues #2 and #3. This code is a narrow safe bridge,
-not the complete production agent.
+The original `comfy-prepare` command is a narrow graph-preparation tool.
+`build-character` now handles local reference uploads, bounded sequential
+part collection and visual-review staging. For production readiness, use
+the stronger offline audit in [WORKFLOW_READINESS.md](WORKFLOW_READINESS.md).
+This does not mean live Mac artistic output has been verified.
 
 ## Identity-conditioned rig parts (new)
 
@@ -79,3 +75,7 @@ its SHA256, not the image itself.
 
 If the profile demands a reference and none is given, preparation **fails**.
 Never quietly revert to text-only generation for an approved character.
+
+## Production readiness and exact output provenance
+
+See [WORKFLOW_READINESS.md](WORKFLOW_READINESS.md). A connected reference node alone no longer qualifies as a production rig workflow. `production_contract` must prove the image-conditioning branch feeds the approved sampler, with text and image input, followed by an alpha/matting stage before the selected SaveImage. The part collector uses the exact output node ID in ComfyUI history and rejects multiple/missing images.

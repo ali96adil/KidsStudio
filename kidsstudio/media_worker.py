@@ -260,7 +260,7 @@ class RemoteMediaWorker:
         # Invalid local recipe is terminal, not an ambiguous GPU execution.
         try:
             self.recipes.resolve(kind, recipe_id)
-        except (MediaError, OSError):
+        except (MediaError, OSError, ValueError):
             try:
                 self.pi.call("fail", {
                     "job_id": job_id, "generation": generation,

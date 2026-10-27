@@ -170,3 +170,7 @@ whose upper bounds are intentionally conservative and tuneable per character.
     }
 
 Other required blueprint fields are omitted from this illustrative excerpt.
+
+## Before the first real FLUX bunny run
+
+Run the **offline production graph audit** from [WORKFLOW_READINESS.md](WORKFLOW_READINESS.md) with the owner's real local ComfyUI workflow, profile and original bunny PNG. An unmodified text-to-image graph or reference image wired straight to SaveImage will now be blocked by the production CLI and Mac media worker. This is intentionally distinct from visual QA: a wired graph does not guarantee good transparent layers or stable joints.
