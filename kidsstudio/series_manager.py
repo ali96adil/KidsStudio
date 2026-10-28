@@ -375,6 +375,16 @@ class SeriesManager:
                 WHERE series_id=? AND ordinal=?""",(series_id,ordinal)).fetchone()
             if ep is None or ep["state"]!="RENDERED_QA_PENDING":
                 raise SeriesError("Rendered video must pass owner QA first.")
+            qa_table=db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='studio_quality_reviews'""").fetchone()
+            if qa_table:
+                current=db.execute("""SELECT render_job_id FROM studio_episodes
+                    WHERE series_id=? AND ordinal=?""",(series_id,ordinal)).fetchone()
+                qa=db.execute("""SELECT state,checks_passed FROM studio_quality_reviews
+                    WHERE series_id=? AND ordinal=? AND render_job_id=?""",
+                    (series_id,ordinal,current["render_job_id"])).fetchone()
+                if qa is None or qa["state"]!="READY_FOR_OWNER_EPISODE_APPROVAL" or qa["checks_passed"]!=11:
+                    raise SeriesError("Complete M7 technical, educational and rights QA required.")
             db.execute("""UPDATE studio_episodes
                 SET state='EPISODE_APPROVED',owner_review_note=?,updated_at=?
                 WHERE series_id=? AND ordinal=?""",
