@@ -222,7 +222,7 @@ class SeriesManager:
                 elif media and job["state"]=="COMPLETED":
                     result=json.loads(job["result_json"] or "{}")
                     state=("RENDERED_QA_PENDING" if
-                        result.get("result_status")=="VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"
+                        result.get("result_status", result.get("status"))=="VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"
                         and result.get("artifact_type")=="mp4"
                         and isinstance(result.get("artifact_sha256"),str)
                         and DIGEST.fullmatch(result["artifact_sha256"])
@@ -282,22 +282,24 @@ class SeriesManager:
             self._audit(db,series_id,ordinal,"SCRIPT_APPROVED_BY_OWNER")
 
     def queue_render(self, series_id: str, ordinal: int,
-                     recipe_id: str) -> str:
+                     recipe_id: str, *, media_kind: str = "godot_render") -> str:
         """Owner-only action; Mac validates locally pinned recipe and assets."""
         if not isinstance(recipe_id,str) or not RECIPE.fullmatch(recipe_id):
             raise SeriesError("Use a pinned local recipe identifier.")
+        if media_kind not in ("godot_render", "episode_assemble"):
+            raise SeriesError("Unsupported media kind.")
         with self.queue._connection(write=True) as db:
             ep=db.execute("""SELECT * FROM studio_episodes
                 WHERE series_id=? AND ordinal=?""",(series_id,ordinal)).fetchone()
             if ep is None or ep["state"]!="SCRIPT_APPROVED":
                 raise SeriesError("Owner-approved script required before rendering.")
             key=(f"series:{series_id}:episode:{ordinal}:"
-                 f"render:a{ep['render_attempt']}:{ep['source_sha256'][:16]}")
+                 f"render:{media_kind}:a{ep['render_attempt']}:{ep['source_sha256'][:16]}")
             payload=_json_object({"recipe_id":recipe_id},"payload")
             prior=db.execute("SELECT * FROM jobs WHERE request_key=?",
                              (key,)).fetchone()
             if prior:
-                if prior["kind"]!="godot_render" or prior["payload"]!=payload:
+                if prior["kind"]!=media_kind or prior["payload"]!=payload:
                     raise SeriesError("Existing job has different recipe.")
                 job_id=prior["job_id"]
             else:
@@ -307,8 +309,8 @@ class SeriesManager:
                     (job_id,request_key,kind,payload,state,max_attempts,
                      available_at,created_at,updated_at)
                     VALUES (?,?,?,?,?,?,?,?,?)""",
-                    (job_id,key,"godot_render",payload,"QUEUED",1,now,now,now))
-                self.queue._event(db,job_id,"ENQUEUED",{"kind":"godot_render"})
+                    (job_id,key,media_kind,payload,"QUEUED",1,now,now,now))
+                self.queue._event(db,job_id,"ENQUEUED",{"kind":media_kind})
             db.execute("""UPDATE studio_episodes
                 SET state='RENDER_QUEUED',render_job_id=?,updated_at=?
                 WHERE series_id=? AND ordinal=?""",
