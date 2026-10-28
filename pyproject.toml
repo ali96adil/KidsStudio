@@ -31,6 +31,7 @@ studio-audio-continuity = "kidsstudio.audio_continuity:main"
 studio-import-bunny = "kidsstudio.private_asset_intake:main"
 studio-handoff-review = "kidsstudio.handoff_review:main"
 studio-assembly-lineage = "kidsstudio.assembly_lineage:main"
+studio-scene-assembly = "kidsstudio.scene_assembly:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
