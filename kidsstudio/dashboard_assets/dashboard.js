@@ -106,6 +106,7 @@
       NOT_CONFIGURED:"نظام فحص M7 غير مفعّل",
       NOT_STARTED:"الفحص النهائي لم يبدأ",
       TECH_PASSED_WAITING_HUMAN:"الفحص التقني ناجح · بانتظار المراجعة البشرية",
+      CHANGES_REQUESTED:"المراجع طلب تعديلات · لا يمكن اعتماد الحلقة",
       READY_FOR_OWNER_EPISODE_APPROVAL:"المراجعة موثقة · بانتظار اعتماد الحلقة"
     };
     host.append(make("p","small-explainer",
