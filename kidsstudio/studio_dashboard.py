@@ -104,10 +104,34 @@ def build_snapshot(queue: StudioQueue) -> dict:
     quality_states={}
     audio_states={}
     scene_states={}
+    learning_summary={"state":"NOT_CONFIGURED","observed_windows":0,
+                      "proposed":0,"adopted":0,"recommendations":[]}
     scene_tracking_installed=False
     audio_tracking_installed=False
     stage_tracking_installed=False
     with queue._connection() as db:
+        has_learning=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_learning_proposals'""").fetchone())
+        if has_learning:
+            learning_summary["state"]="OWNER_REVIEWED_ANALYTICS_ONLY"
+            learning_summary["observed_windows"]=db.execute(
+                "SELECT COUNT(*) FROM studio_video_metrics").fetchone()[0]
+            for record in db.execute("""SELECT status,COUNT(*) AS n
+                FROM studio_learning_proposals GROUP BY status"""):
+                if record["status"]=="PROPOSED":
+                    learning_summary["proposed"]=record["n"]
+                if record["status"]=="ADOPT_FOR_FUTURE_EXPERIMENT":
+                    learning_summary["adopted"]=record["n"]
+            for record in db.execute("""SELECT series_id,feature_name,
+                winning_style,comparison_style,status FROM studio_learning_proposals
+                ORDER BY created_at DESC LIMIT 8"""):
+                learning_summary["recommendations"].append({
+                    "series_id":record["series_id"],
+                    "feature":record["feature_name"],
+                    "candidate":record["winning_style"],
+                    "baseline":record["comparison_style"],
+                    "state":record["status"]
+                })
         scene_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_scenes'""").fetchone())
         if scene_tracking_installed:
@@ -204,6 +228,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "text":n["note"],"created_at":n["created_at"]} for n in data["notes"][:50]]
     return {"version":1,"generated_at":datetime.now(timezone.utc).isoformat(),
             "overview":counts,"series":series,"episodes":episodes,"notes":notes,
+            "learning":learning_summary,
             "queue":{"paused":status["paused"],"counts":status["counts"]},
             "limits":{"media_execution":False,"publishing":False,
                       "voice_and_ltx_tracking":("RECEIPT_GATED" if stage_tracking_installed
