@@ -182,6 +182,52 @@
       markStatus("تعذّر قراءة البيانات المحلية");
     }
   }
+  async function checkAcceptance() {
+    const status=root("acceptance-status");
+    const host=root("acceptance-findings");
+    status.textContent="جاري التحقق من البيانات المحلية...";
+    clear(host);
+    try {
+      const response=await fetch("/api/acceptance",{cache:"no-store"});
+      if (!response.ok) throw Error("Acceptance HTTP "+response.status);
+      const report=await response.json();
+      if (!Array.isArray(report.findings) || report.schema_version!==1)
+        throw Error("Unsupported acceptance response");
+      const descriptions={
+        required_schema:"قاعدة البيانات",
+        active_series:"السلسلة النشطة",
+        episodes:"خطة الحلقات",
+        provenance:"ارتباط المهام والبصمات",
+        queue_drain:"المهام المنتظرة",
+        first_real_episode:"حلقة مكتملة",
+        restore_drill:"تجربة استعادة القاعدة",
+        private_preview:"المراجعة الخاصة",
+        live_chatterbox_ltx:"تأهيل محركات الصوت والتحريك",
+        owner_artistic_educational_rights:"الفحص التربوي والفني والحقوق",
+        separate_backup:"النسخة الاحتياطية المستقلة"
+      };
+      const labels={
+        PASS:"موثّق",BLOCKED:"مشكلة تحتاج معالجة",
+        ACTION:"مطلوب",DEVICE_TEST_REQUIRED:"يتطلب اختبار الماك",
+        HUMAN_REVIEW_REQUIRED:"يتطلب مراجعة بشرية"
+      };
+      status.textContent="نتيجة الفحص: "+report.status+
+        " — لا يشمل تشغيل النماذج ولا النشر.";
+      for (const entry of report.findings) {
+        const wrap=make("div","acceptance-entry");
+        const header=make("div","acceptance-top");
+        header.append(make("strong",null,descriptions[entry.code]||entry.code),
+            make("span","stagepill "+(entry.status==="PASS"?"complete":
+                            entry.status==="BLOCKED"?"blocked":"review"),
+                 labels[entry.status]||entry.status));
+        wrap.append(header,make("p",null,entry.next_action));
+        host.append(wrap);
+      }
+    } catch {
+      status.textContent="تعذر فحص الجاهزية. لا تعتمد حالة سابقة من اللوحة.";
+    }
+  }
+  root("acceptance-check").addEventListener("click",checkAcceptance);
   root("refresh-now").addEventListener("click",load);
   selectState.addEventListener("change",()=>snapshot&&renderEpisodes(snapshot));
   selectSeries.addEventListener("change",()=>snapshot&&renderEpisodes(snapshot));
