@@ -122,6 +122,14 @@
         " · تحريك معتمد "+fmt(scenes.ltx_approved)+
         (scenes.blocked ? " · مهام متوقفة "+fmt(scenes.blocked) : "")));
     }
+    const aiScene=episode.ai_scene_reviews||{state:"NOT_STARTED"};
+    if (aiScene.state!=="NOT_STARTED") {
+      host.append(make("p","small-explainer",
+        "مراجعات AI للمشاهد M28: صوت "+fmt(aiScene.voice_ready||0)+
+        " · تحريك "+fmt(aiScene.ltx_ready||0)+
+        (aiScene.needs_fix ? " · يحتاج تصحيح "+fmt(aiScene.needs_fix) : "")+
+        " · تقارير موقّعة، ليست دليلاً على تشغيل نموذج فعلي بذاتها"));
+    }
     const continuity=episode.audio_continuity||{state:"NOT_CONFIGURED"};
     const continuityText={
       NOT_CONFIGURED:"فحص الاستمرارية الصوتية غير مفعّل بعد",
