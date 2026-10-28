@@ -282,7 +282,8 @@ class SeriesManager:
             self._audit(db,series_id,ordinal,"SCRIPT_APPROVED_BY_OWNER")
 
     def queue_render(self, series_id: str, ordinal: int,
-                     recipe_id: str, *, media_kind: str = "godot_render") -> str:
+                     recipe_id: str, *, media_kind: str = "godot_render",
+                     catalogue_sha256: str | None = None) -> str:
         """Owner-only action; Mac validates locally pinned recipe and assets."""
         if not isinstance(recipe_id,str) or not RECIPE.fullmatch(recipe_id):
             raise SeriesError("Use a pinned local recipe identifier.")
@@ -309,12 +310,14 @@ class SeriesManager:
                         r["script_sha256"]!=ep["source_sha256"] for r in existing)
                 ):
                     raise SeriesError("Independent owner-approved voice and LTX required before assembly.")
+            requires_frozen_catalogue=False
             if db.execute("""SELECT 1 FROM sqlite_master WHERE
                 type='table' AND name='studio_scene_plans'""").fetchone():
                 scene_plan=db.execute("""SELECT 1 FROM studio_scene_plans
                     WHERE series_id=? AND ordinal=?""",
                     (series_id,ordinal)).fetchone()
                 if scene_plan:
+                    requires_frozen_catalogue=True
                     if media_kind!="episode_assemble":
                         raise SeriesError("Scene plan requires episode assembly.")
                     from .studio_scenes import assert_scenes_ready, SceneError
@@ -322,12 +325,21 @@ class SeriesManager:
                         assert_scenes_ready(db,series_id,ordinal,ep["source_sha256"])
                     except SceneError as exc:
                         raise SeriesError("Scene production still needs review.") from exc
+            if requires_frozen_catalogue and (
+                not isinstance(catalogue_sha256,str) or
+                not DIGEST.fullmatch(catalogue_sha256)):
+                raise SeriesError("M14 multi-scene owner catalogue SHA256 is mandatory.")
+            if not requires_frozen_catalogue and catalogue_sha256 is not None:
+                raise SeriesError("Catalogue SHA is only supported on M13 multi-scene recipes.")
             key=(f"series:{series_id}:episode:{ordinal}:"
                  f"render:{media_kind}:a{ep['render_attempt']}:{ep['source_sha256'][:16]}")
-            payload=_json_object(({"recipe_id":recipe_id,
-                                  "script_sha256":ep["source_sha256"]}
-                                 if media_kind=="episode_assemble" else
-                                 {"recipe_id":recipe_id}),"payload")
+            payload_data=({"recipe_id":recipe_id,
+                           "script_sha256":ep["source_sha256"]}
+                          if media_kind=="episode_assemble" else
+                          {"recipe_id":recipe_id})
+            if requires_frozen_catalogue:
+                payload_data["catalogue_sha256"]=catalogue_sha256
+            payload=_json_object(payload_data,"payload")
             prior=db.execute("SELECT * FROM jobs WHERE request_key=?",
                              (key,)).fetchone()
             if prior:
