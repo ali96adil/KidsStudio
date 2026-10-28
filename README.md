@@ -4,6 +4,26 @@ AI-powered bilingual educational animation studio for children.
 
 **Status:** Early R&D. The Godot/ComfyUI experiments described below were run on a Mac outside this repository; production automation is not yet deployed.
 
+## Current draft implementation (M3–M16, unmerged)
+
+The connected GitHub draft branch now includes series-first bounded agents,
+scene-by-scene voice/LTX ownership and human QA, Mac source provenance,
+M14 frozen scene catalogue, and M16 Pi-to-Mac catalogue SHA matching.
+M15 adds offline, owner-verified seven-day video performance analysis:
+compare comparable language/format/age cohorts, propose evidence-backed
+creative experiments, and use ONLY owner-adopted ideas in future original
+script drafts. The Arabic local dashboard shows learning proposals.
+
+**This is development code.** GitHub CI uses synthetic media and analytics.
+Real Chatterbox/LTX on the owner's Mac, actual video quality, commercial
+rights, independent backup and any YouTube upload remain unverified.
+No Mac/Pi deployment, live model calls, automatic publication or merge to
+main has been performed by this draft work.
+
+See [M15/M16 launch and test pack](docs/M15_M16_TEST_PACK.md),
+[M14 scene provenance](docs/M14_FROZEN_MEDIA_CATALOGUE.md),
+and [M13 multi-scene pipeline](docs/M13_SCENE_PIPELINE.md).
+
 ## Production principle
 
 **Rig first, animate second.** Generate original, independently layered character assets with explicit pivots and hidden-body overlap. Assemble and animate them in Godot using structured scene instructions. Run technical checks, visual reviews and independent educational/safety checks before any public release.
