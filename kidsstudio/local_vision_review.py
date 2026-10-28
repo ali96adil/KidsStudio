@@ -233,6 +233,97 @@ def review_ltx(*,series_id:str,episode:int,scene:int,job_id:str,
     return out_result
 
 
+def sign_after_m10(*,pending_report:str|Path,
+                   m10_report:str|Path,expected_m10_sha:str,
+                   rights_file:str|Path,observation_file:str|Path,
+                   attestation_key:bytes,out_file:str|Path)->dict:
+    """Bind actually recorded M10 source/voice/media data to live vision run.
+
+    Must be invoked ONLY inside the trusted model-worker process. The
+    resulting M28 bundle still needs Pi SceneAIGate.register, which
+    compares the M10 digest against the current immutable Pi receipt.
+    """
+    if (not isinstance(attestation_key,bytes) or len(attestation_key)<32
+        or not isinstance(expected_m10_sha,str) or
+        not SHA.fullmatch(expected_m10_sha)):
+        raise LocalVisionError("Private trusted model-runner key and pinned M10 required.")
+    raw,pending_sha=_private(pending_report,100000,".json")
+    m10_raw,real_m10_sha=_private(m10_report,40000,".json")
+    observation_raw,obs_sha=_private(observation_file,100000,".json")
+    rights_raw,rights_sha=_private(rights_file,100000,".json")
+    if real_m10_sha!=expected_m10_sha:
+        raise LocalVisionError("M10 report changed before signing.")
+    try:
+        pending=json.loads(raw); m10=json.loads(m10_raw)
+        obs=json.loads(observation_raw)
+    except (TypeError,ValueError,UnicodeError) as exc:
+        raise LocalVisionError("Malformed evidence before signing.") from exc
+    if (not isinstance(pending,dict) or
+        pending.get("status")!="REAL_LOCAL_VISUAL_MODEL_REPORTS_PENDING_M10_BIND" or
+        pending.get("runner_models_executed") is not True or
+        pending.get("m28_stage_approved") is not False or
+        pending.get("public_release_authorized") is not False or
+        pending.get("observations_sha256")!=obs_sha or
+        pending.get("rights_sha256")!=rights_sha or
+        pending.get("stage")!="ltx_animate" or
+        pending.get("artifact_sha256")!=obs.get("artifact_sha256") or
+        pending.get("script_sha256")!=obs.get("script_sha256") or
+        not isinstance(pending.get("reviewers"),list) or
+        len(pending["reviewers"])!=2 or
+        not isinstance(m10,dict) or
+        m10.get("status")!="AUDIO_ENVELOPE_COMPATIBLE_HUMAN_QA_REQUIRED" or
+        m10.get("voice_sha256")!=obs.get("source_voice_sha256") or
+        m10.get("a2v_sha256")!=pending.get("artifact_sha256") or
+        m10.get("duration_close") is not True or
+        m10.get("energy_present") is not True or
+        type(m10.get("envelope_correlation")) not in (int,float) or
+        not .82<=m10["envelope_correlation"]<=1 or
+        type(m10.get("estimated_lag_seconds")) not in (int,float) or
+        abs(m10["estimated_lag_seconds"])>.6):
+        raise LocalVisionError("Current source voice and signed-review M10 mismatch.")
+    reviewers=pending["reviewers"]
+    if (reviewers[0].get("role")!="motion_sync" or
+        reviewers[1].get("role")!="visual_child_safety" or
+        reviewers[0].get("provider_id")==reviewers[1].get("provider_id") or
+        any(item.get("evidence_sha256")!=obs_sha for item in reviewers)):
+        raise LocalVisionError("Independent model output source differs.")
+    bundle={
+        "schema_version":1,"series_id":pending["series_id"],
+        "episode_number":pending["episode_number"],
+        "scene":pending["scene"],
+        "stage":"ltx_animate","job_id":pending["job_id"],
+        "script_sha256":pending["script_sha256"],
+        "artifact_sha256":pending["artifact_sha256"],
+        "observations_sha256":obs_sha,
+        "rights_sha256":rights_sha,
+        "technical_sha256":real_m10_sha,
+        "reviewers":reviewers,"publication_approved":False
+    }
+    canonical=json.dumps(bundle,sort_keys=True,ensure_ascii=False,
+        separators=(",",":"),allow_nan=False).encode("utf-8")
+    bundle["runner_attestation"]={
+        "runner_id":"m29_local_multimodal_worker",
+        "runtime_status":"REVIEW_MODELS_EXECUTED",
+        "hmac_sha256":hmac.new(attestation_key,canonical,
+                               hashlib.sha256).hexdigest()
+    }
+    out=Path(out_file).expanduser()
+    if (not out.is_absolute() or out.is_symlink() or out.suffix!=".json" or
+        out.exists() or
+        out.resolve().parent!=Path(pending_report).resolve().parent):
+        raise LocalVisionError("Signed bundle must be new private sibling JSON.")
+    blob=json.dumps(bundle,ensure_ascii=False,indent=2,
+                    allow_nan=False).encode("utf-8")
+    fd=os.open(str(out),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,"wb") as file:
+        file.write(blob);file.flush();os.fsync(file.fileno())
+    return {"status":"SIGNED_M28_VISUAL_REVIEW_READY_FOR_PI_IMPORT",
+            "bundle_sha256":digest(out),
+            "technical_sha256":real_m10_sha,
+            "m28_scene_approved":False,
+            "public_release_authorized":False}
+
+
 def main(argv:list[str]|None=None)->int:
     p=argparse.ArgumentParser(prog="studio-real-vision-review")
     p.add_argument("--series",required=True)
