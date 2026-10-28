@@ -4,6 +4,7 @@ Uses the existing M32 two-scene fixture to verify that an M33 cycle
 consumes receipts instead of claiming to have rendered children's media.
 No Whisper/Ollama/YouTube operation in this suite.
 """
+import hashlib
 import json
 import unittest
 
@@ -31,10 +32,19 @@ class Cycle33(unittest.TestCase):
         return last["job_id"]
 
     def completed(self,job,kind):
-        sha=self.h.pass_job(job,kind)
+        leased=self.h.queue.claim(worker_id="mac-m33-test",capabilities=[kind])
+        self.assertEqual(leased["job_id"],job)
+        checksum=hashlib.sha256(job.encode("ascii")).hexdigest()
+        self.h.queue.complete(job_id=job,worker_id="mac-m33-test",
+            generation=leased["generation"],result={
+                "status":("VOICE_RENDERED_PENDING_QA" if kind=="voice_synthesize"
+                    else "A2V_RENDERED_PENDING_QA"),
+                "artifact_sha256":checksum,
+                "artifact_type":"wav" if kind=="voice_synthesize" else "mp4",
+                "artifact_bytes":300,"publication_approved":False})
         updated=self.cycle.step(execute=True)
         self.assertEqual(updated["status"],"M33_CURRENT_SCENE_RECEIPT_RECONCILED")
-        return sha
+        return checksum
 
     def agent_proof(self,scene,stage,job,sha):
         SceneAIGate(self.h.queue).initialize()
