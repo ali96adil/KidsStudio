@@ -147,7 +147,7 @@ class QualityLedger:
         for name in CRITERIA:
             row=criteria[name]
             if (not isinstance(row,dict) or set(row)!={"decision","evidence"} or
-                row["decision"]!="PASS" or not isinstance(row["evidence"],str)
+                row["decision"] not in ("PASS","NEEDS_FIX") or not isinstance(row["evidence"],str)
                 or not 20<=len(row["evidence"].strip())<=800):
                 raise QualityGateError(f"Owner has not passed/documented: {name}")
         with self.queue._connection(write=True) as db:
@@ -159,12 +159,23 @@ class QualityLedger:
                 raise QualityGateError("A matching unmodified technical QA report is required first.")
             if review["media_sha256"]!=media_sha:
                 raise QualityGateError("Human review references the wrong MP4.")
+            passed=sum(1 for item in criteria.values() if item["decision"]=="PASS")
+            decision=("READY_FOR_OWNER_EPISODE_APPROVAL"
+                      if passed==len(CRITERIA) else "CHANGES_REQUESTED")
             db.execute("""UPDATE studio_quality_reviews
-                SET state='READY_FOR_OWNER_EPISODE_APPROVAL',
-                    review_report_sha256=?,checks_passed=?,updated_at=?
+                SET state=?,review_report_sha256=?,checks_passed=?,updated_at=?
                 WHERE series_id=? AND ordinal=? AND render_job_id=?""",
-                (review_sha,len(CRITERIA),time.time(),series_id,ordinal,job_id))
-            self._audit(db,series_id,ordinal,job_id,"HUMAN_QA_ATTESTATION_REGISTERED")
+                (decision,review_sha,passed,time.time(),series_id,ordinal,job_id))
+            if decision=="CHANGES_REQUESTED":
+                failed="، ".join(k for k in CRITERIA
+                                if criteria[k]["decision"]=="NEEDS_FIX")
+                db.execute("""INSERT INTO studio_series_notes
+                    (series_id,ordinal,note,created_at) VALUES (?,?,?,?)""",
+                    (series_id,ordinal,"M7 QA NEEDS FIX: "+failed+
+                     " — "+review["summary"].strip()[:500],time.time()))
+            self._audit(db,series_id,ordinal,job_id,
+                        "OWNER_QA_READY" if passed==len(CRITERIA)
+                        else "OWNER_REQUESTED_CHANGES")
 
     def snapshot(self) -> list[dict]:
         with self.queue._connection() as db:
