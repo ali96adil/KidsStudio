@@ -23,8 +23,10 @@ def main(argv:list[str]|None=None)->int:
     grant.add_argument("series_id")
     grant.add_argument("--channel-id",required=True)
     grant.add_argument("--max-uploads-24h",type=int,default=1)
-    grant.add_argument("--made-for-kids",action="store_true",required=True)
-    grant.add_argument("--contains-synthetic-media",action="store_true",required=True)
+    grant.add_argument("--made-for-kids",required=True,choices=("yes","no"),
+                       help="Explicitly classify the actual intended audience.")
+    grant.add_argument("--contains-synthetic-media",required=True,choices=("yes","no"),
+                       help="Owner-declared YouTube altered/synthetic-media disclosure.")
     grant.add_argument("--owner-note",required=True)
     pause=commands.add_parser("pause")
     pause.add_argument("series_id")
@@ -37,8 +39,8 @@ def main(argv:list[str]|None=None)->int:
         elif args.action=="grant":
             result=ledger.grant(args.series_id,channel_id=args.channel_id,
                 max_uploads_24h=args.max_uploads_24h,
-                made_for_kids=args.made_for_kids,
-                contains_synthetic_media=args.contains_synthetic_media,
+                made_for_kids=args.made_for_kids=="yes",
+                contains_synthetic_media=args.contains_synthetic_media=="yes",
                 owner_note=args.owner_note)
         else:
             result=ledger.pause(args.series_id)
