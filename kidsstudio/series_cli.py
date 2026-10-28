@@ -119,6 +119,11 @@ def main(argv: list[str] | None = None) -> int:
     pilot.add_argument("--recipe",required=True)
     pilot.add_argument("--plan-sha256",required=True)
     pilot.add_argument("--owner-note",required=True)
+    ai_pilot=commands.add_parser("queue-first-voice-ai")
+    ai_pilot.add_argument("series_id")
+    ai_pilot.add_argument("episode",type=int)
+    ai_pilot.add_argument("--recipe",required=True)
+    ai_pilot.add_argument("--plan-sha256",required=True)
     voiceqa=commands.add_parser("register-scene-voice-qa")
     voiceqa.add_argument("series_id")
     voiceqa.add_argument("episode",type=int)
@@ -187,6 +192,11 @@ def main(argv: list[str] | None = None) -> int:
                 args.plan_sha256,args.owner_note)
             result={"job_id":job,
                     "status":"FIRST_SCENE_VOICE_QUEUED_OWNER_APPROVED_NO_MODEL_RUN"}
+        elif args.cmd=="queue-first-voice-ai":
+            job=scenes.queue_first_voice_ai(
+                args.series_id,args.episode,args.recipe,args.plan_sha256)
+            result={"status":"AI_APPROVED_VOICE_PILOT_QUEUED_NO_OWNER_LISTENING",
+                    "job_id":job,"public_release_authorized":False}
         elif args.cmd=="register-scene-voice-qa":
             result=scenes.register_voice_technical(
                 args.series_id,args.episode,args.scene,args.report)
