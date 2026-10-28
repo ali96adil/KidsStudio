@@ -103,9 +103,31 @@ def build_snapshot(queue: StudioQueue) -> dict:
     stage_states={}
     quality_states={}
     audio_states={}
+    scene_states={}
+    scene_tracking_installed=False
     audio_tracking_installed=False
     stage_tracking_installed=False
     with queue._connection() as db:
+        scene_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_scenes'""").fetchone())
+        if scene_tracking_installed:
+            for item in db.execute("""SELECT series_id,ordinal,COUNT(*) AS total
+                FROM studio_scenes GROUP BY series_id,ordinal"""):
+                scene_states[(item["series_id"],item["ordinal"])]={
+                    "total":item["total"],"voice_approved":0,
+                    "ltx_approved":0,"blocked":0}
+            for item in db.execute("""SELECT series_id,ordinal,stage,state
+                FROM studio_scene_stages"""):
+                state=scene_states.get((item["series_id"],item["ordinal"]))
+                if state is None:
+                    continue
+                if item["state"]=="QA_APPROVED":
+                    if item["stage"]=="voice_synthesize":
+                        state["voice_approved"]+=1
+                    if item["stage"]=="ltx_animate":
+                        state["ltx_approved"]+=1
+                if item["state"]=="BLOCKED":
+                    state["blocked"]+=1
         audio_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_audio_checks'""").fetchone())
         if audio_tracking_installed:
@@ -164,6 +186,8 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "series_id":ep["series_id"], "ordinal":ep["ordinal"],
             "title":ep["title"],"objective":ep["objective"],"state":state,
             "status_label":label,"tone":tone,"revision":ep["revision"],
+            "scene_progress":scene_states.get((ep["series_id"],ep["ordinal"]),{
+                "total":0,"voice_approved":0,"ltx_approved":0,"blocked":0}),
             "audio_continuity":audio_states.get((ep["series_id"],ep["ordinal"]),
                   {"state":"NOT_RECORDED" if audio_tracking_installed else "NOT_CONFIGURED",
                    "correlation":None}),
@@ -188,6 +212,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
                                                      else "NOT_CONFIGURED"),
                       "episode_qa_tracking":("EVIDENCE_GATED" if quality_installed
                                              else "NOT_CONFIGURED"),
+                      "scene_tracking":("PER_SCENE_QA" if scene_tracking_installed else "NOT_CONFIGURED"),
                       "data_source":"Studio Brain SQLite; read-only"},
             }
 
