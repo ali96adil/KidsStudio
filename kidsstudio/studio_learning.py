@@ -131,7 +131,9 @@ class LearningLedger:
         packet,source_sha=_json_file(file)
         if set(packet)!={"schema_version","source","profiles","metrics"} or (
                 packet["schema_version"]!=1 or
-                packet["source"]!="OWNER_VERIFIED_YOUTUBE_STUDIO_EXPORT"):
+                packet["source"] not in (
+                    "OWNER_VERIFIED_YOUTUBE_STUDIO_EXPORT",
+                    "OWNER_AUTHORIZED_YOUTUBE_ANALYTICS_API_READONLY")):
             raise LearningError("Explicit owner-verified YouTube Studio export required.")
         profiles,metrics=packet["profiles"],packet["metrics"]
         if (not isinstance(profiles,list) or not isinstance(metrics,list)
