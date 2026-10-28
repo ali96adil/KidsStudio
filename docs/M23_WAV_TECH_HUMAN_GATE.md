@@ -1,4 +1,4 @@
-# M23 — Real WAV technical QA + separate owner listening gate
+> **M28 update (opt-in):** The original owner-listening requirement remains for the legacy M23 approval command, but the new [AI scene QA gate](M28_AI_SCENE_WAV_LTX_QA.md) can internally approve the same pilot after real technical WAV verification, signed independent AI evidence, transcript comparison and rights-source evidence. The owner should review the full video after PRIVATE upload, not each WAV. Actual ASR/vision model execution on user hardware remains unqualified.\n\n# M23 — Real WAV technical QA + separate owner listening gate
 
 **Implementation:** Draft PR #28 on GitHub only. No real owner Mac/Pi
 installation, no Chatterbox or LTX model invocation, no original/personal
