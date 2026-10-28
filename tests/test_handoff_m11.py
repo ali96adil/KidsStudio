@@ -545,6 +545,137 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaises(LivePreflightError):
             self._check_m21(fake, plan, scripts, recipes, backup)
 
+    def prepare_m22_voice_lease(self):
+        from kidsstudio.studio_scenes import SceneLedger
+        from kidsstudio.coordinator_api import Coordinator
+        from kidsstudio.media_worker import MediaRecipes, MediaJournal, RemoteMediaWorker
+        from kidsstudio.remote_worker import RemoteWorkerError
+        from kidsstudio.coordinator_api import TransportError
+        import time
+
+        _, queue, plan, scripts, voice_recipes, backup = self.prepare_m20_snapshot()
+        ledger=SceneLedger(queue)
+        job_id=ledger.queue_first_voice_pilot(
+            "colors-ar",1,"m22_voice_scene01",sha(plan),
+            "Owner expressly queued scene one synthetic voice qualification")
+        class Pi:
+            def __init__(self, api):
+                self.api=api
+                self.reject_proof=False
+            def call(self, action, request):
+                try:
+                    result=self.api.dispatch(action,request,"mac-voice-01",
+                                             frozenset({"voice_synthesize"}))
+                    result["server_time"]=time.time()
+                    if action=="pilot-voice-lease-check" and self.reject_proof:
+                        result["script_sha256"]="0"*64
+                    return result
+                except (TransportError, ValueError) as exc:
+                    raise RemoteWorkerError("Synthetic Pi rejected request") from exc
+        service=Coordinator(queue,self.root/"m22_vault",
+            {"mac-voice-01":("m22-test-"+"z"*40,{"voice_synthesize"})})
+        pi=Pi(service)
+        recipe_catalogue=self.root/"m22_recipes.json"
+        self._write(recipe_catalogue,{
+            "schema_version":1,
+            "recipes":{"m22_voice_scene01":{
+                "kind":"voice_synthesize",
+                "output_root":str(self.root/"output"),
+                "inputs":{"stage_recipe":str(voice_recipes[0])},
+                "sha256":{"stage_recipe":sha(voice_recipes[0])},
+            }}
+        })
+        class FakeVoice:
+            def __init__(self):
+                self.calls=[]
+            def execute(self,kind,recipe_id,job):
+                self.calls.append((kind,recipe_id,job))
+                return {
+                    "result_status":"VOICE_RENDERED_PENDING_QA",
+                    "artifact_sha256":"a"*64,"artifact_bytes":1024,
+                    "artifact_type":"wav","publication_approved":False,
+                }
+        fake=FakeVoice()
+        journal=MediaJournal(self.root/"m22_journal.sqlite")
+        worker=RemoteMediaWorker(pi,MediaRecipes(recipe_catalogue),
+                                 journal,executor=fake)
+        return queue,plan,job_id,service,pi,fake,worker,journal
+
+    def test_m22_queues_exact_first_scene_once_never_two_jobs(self):
+        from kidsstudio.studio_scenes import SceneLedger, SceneError
+        _, queue, plan, scripts, recipes, snapshot = self.prepare_m20_snapshot()
+        ledger=SceneLedger(queue)
+        with self.assertRaises(SceneError):
+            ledger.queue_first_voice_pilot("colors-ar",1,"m22_voice_scene01",
+                "b"*64,"Owner requested the first voice only")
+        job_id=ledger.queue_first_voice_pilot(
+            "colors-ar",1,"m22_voice_scene01",sha(plan),
+            "Owner explicitly approves a first scene pilot for testing")
+        with self.assertRaises(SceneError):
+            ledger.queue_first_voice_pilot(
+                "colors-ar",1,"m22_voice_scene01",sha(plan),
+                "Owner second click must never create another stage job")
+        with queue._connection() as db:
+            rows=db.execute("SELECT job_id,payload,max_attempts FROM jobs").fetchall()
+            self.assertEqual(len(rows),1)
+            self.assertEqual(rows[0]["job_id"],job_id)
+            self.assertEqual(rows[0]["max_attempts"],1)
+            self.assertEqual(json.loads(rows[0]["payload"])["pilot_scene"],1)
+
+    def test_m22_matching_live_lease_synthetic_worker_runs_only_once(self):
+        queue,plan,job_id,service,pi,fake,worker,journal=self.prepare_m22_voice_lease()
+        result=worker.run_once()
+        self.assertEqual(result["status"],"COMPLETED")
+        self.assertEqual(len(fake.calls),1)
+        self.assertEqual(fake.calls[0],("voice_synthesize","m22_voice_scene01",job_id))
+        self.assertEqual(queue.get(job_id)["state"],"COMPLETED")
+        self.assertEqual(worker.run_once()["status"],"NO_ELIGIBLE_JOB")
+        self.assertEqual(len(fake.calls),1)
+
+    def test_m22_stale_or_mutated_live_plan_blocks_before_journal_or_voice(self):
+        queue,plan,job_id,service,pi,fake,worker,journal=self.prepare_m22_voice_lease()
+        with queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_plans SET plan_sha256=?
+                WHERE series_id='colors-ar' AND ordinal=1""",("f"*64,))
+        self.assertEqual(worker.run_once()["status"],"PILOT_LEASE_REJECTED")
+        self.assertEqual(fake.calls,[])
+        self.assertEqual(queue.get(job_id)["state"],"FAILED")
+        with journal._connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM journal").fetchone()[0],0)
+
+    def test_m22_pi_proof_tamper_prevents_synthetic_model_invocation(self):
+        queue,plan,job_id,service,pi,fake,worker,journal=self.prepare_m22_voice_lease()
+        pi.reject_proof=True
+        self.assertEqual(worker.run_once()["status"],"PILOT_LEASE_REJECTED")
+        self.assertEqual(fake.calls,[])
+        self.assertEqual(queue.get(job_id)["state"],"FAILED")
+
+    def test_m22_pause_rejects_at_preexecution_check_and_no_retry(self):
+        from kidsstudio.series_manager import SeriesManager
+        queue,plan,job_id,service,pi,fake,worker,journal=self.prepare_m22_voice_lease()
+        original_call=pi.call
+        def call_then_pause(action,request):
+            if action=="pilot-voice-lease-check":
+                SeriesManager(queue).pause("colors-ar",
+                    "Owner paused pilot immediately after job claim")
+            return original_call(action,request)
+        pi.call=call_then_pause
+        self.assertEqual(worker.run_once()["status"],"PILOT_LEASE_REJECTED")
+        self.assertEqual(fake.calls,[])
+        self.assertEqual(queue.get(job_id)["state"],"FAILED")
+
+    def test_m22_revoked_lease_rejected_before_voice(self):
+        queue,plan,job_id,service,pi,fake,worker,journal=self.prepare_m22_voice_lease()
+        original=pi.call
+        def cancel_just_before_proof(action,request):
+            if action=="pilot-voice-lease-check":
+                queue.cancel(job_id)
+            return original(action,request)
+        pi.call=cancel_just_before_proof
+        self.assertEqual(worker.run_once()["status"],"PILOT_LEASE_REJECTED")
+        self.assertEqual(fake.calls,[])
+        self.assertEqual(queue.get(job_id)["state"],"CANCELLED")
+
     def test_m19_wrong_stage_wrapper_is_blocked_even_if_script_matches(self):
         from kidsstudio.handoff_review import HandoffError
         check, plan, scripts, recipes = self.build_two_scene_pilot()
