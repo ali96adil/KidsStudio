@@ -139,7 +139,7 @@ class YouTubeAnalyticsReadOnlyTests(unittest.TestCase):
             {"columnHeaders":[{"name":x} for x in METRICS],
              "rows":[[True,100,20,50]]},
             {"columnHeaders":[{"name":x} for x in METRICS],
-             "rows":[[50,100,30,102]]},
+             "rows":[[50,100,30,402]]},
             {"columnHeaders":[{"name":x} for x in METRICS],
              "rows":[[20,100,30,50],[21,100,30,50]]},
             {"error":{"message":"account error"},"columnHeaders":[
