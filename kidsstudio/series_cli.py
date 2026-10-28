@@ -15,6 +15,7 @@ from .agent_final_qa import AgentFinalQA
 from .studio_audio_ledger import AudioEvidenceLedger, AudioEvidenceError
 from .studio_scenes import SceneLedger, SceneError
 from .scene_ai_qa import SceneAIGate
+from .scene_repair import SceneRepair,RepairError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -143,6 +144,11 @@ def main(argv: list[str] | None = None) -> int:
     ai_approve.add_argument("episode",type=int)
     ai_approve.add_argument("scene",type=int)
     ai_approve.add_argument("--stage",choices=["voice_synthesize","ltx_animate"],required=True)
+    commands.add_parser("init-scene-repair")
+    repair_plan=commands.add_parser("register-scene-repair-plan")
+    repair_plan.add_argument("--plan",type=Path,required=True)
+    commands.add_parser("run-scene-repair-once")
+    commands.add_parser("scene-repair-status")
     commands.add_parser("sync-scene-stages")
     scene_audio=commands.add_parser("register-scene-audio")
     scene_audio.add_argument("series_id")
@@ -174,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         ai_scenes=SceneAIGate(
             queue,attestation_key=os.environ.get(
                 "KIDS_STUDIO_SCENE_QA_RUNNER_KEY","").encode("utf-8"))
+        scene_repair=SceneRepair(queue)
         if args.cmd=="init":
             control.initialize()
             result={"status":"SCHEMA_READY"}
@@ -210,6 +217,15 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd=="auto-approve-scene-stage":
             result=ai_scenes.auto_approve(args.series_id,args.episode,
                                           args.scene,args.stage)
+        elif args.cmd=="init-scene-repair":
+            scene_repair.initialize()
+            result={"status":"M31_REPAIR_LEDGER_READY_NO_JOBS_QUEUED"}
+        elif args.cmd=="register-scene-repair-plan":
+            result=scene_repair.register_plan(args.plan)
+        elif args.cmd=="run-scene-repair-once":
+            result=scene_repair.run_once()
+        elif args.cmd=="scene-repair-status":
+            result=scene_repair.snapshot()
         elif args.cmd=="sync-scene-stages":
             result={"updated_stages":scenes.reconcile()}
         elif args.cmd=="register-scene-audio":
