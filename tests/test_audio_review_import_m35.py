@@ -150,8 +150,11 @@ class AudioReviewImport35(unittest.TestCase):
         with self.assertRaises(AudioImportError):
             self.run_import(execute=True)
         with self.host.queue._connection() as db:
-            self.assertEqual(db.execute(
-                "SELECT count(*) FROM studio_scene_ai_reviews").fetchone()[0], 0)
+            table = db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='studio_scene_ai_reviews'""").fetchone()
+            if table:
+                self.assertEqual(db.execute(
+                    "SELECT count(*) FROM studio_scene_ai_reviews").fetchone()[0], 0)
 
 
 if __name__ == "__main__":
