@@ -25,13 +25,17 @@ MAX_ANSWER_BYTES = 20_000
 ID = re.compile(r"^[a-f0-9]{32}$")
 IDENT = re.compile(r"^[a-zA-Z0-9_./:-]{1,160}$")
 ALLOWED_KINDS = frozenset({
-    "script_draft", "editorial_review", "character_generate", "godot_render", "episode_assemble"
+    "script_draft", "editorial_review", "character_generate", "godot_render",
+    "episode_assemble", "voice_synthesize", "ltx_animate"
 })
-MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble"})
+MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble",
+                         "voice_synthesize", "ltx_animate"})
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 MEDIA_STATUSES = {
     "godot_render": frozenset({"VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"}),
     "episode_assemble": frozenset({"VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"}),
+    "voice_synthesize": frozenset({"VOICE_RENDERED_PENDING_QA"}),
+    "ltx_animate": frozenset({"A2V_RENDERED_PENDING_QA"}),
     "character_generate": frozenset({
         "INTERNAL_ASSET_APPROVED_NOT_FOR_PUBLICATION",
         "REPAIR_BUDGET_EXHAUSTED", "BLOCKED_MANUAL_TRIAGE",
@@ -181,7 +185,9 @@ class Coordinator:
             digest = request["artifact_sha256"]
             bytes_count = request["artifact_bytes"]
             expected_type = (
-                "mp4" if leased["kind"] in ("godot_render", "episode_assemble") else "rig_report"
+                ("wav" if leased["kind"] == "voice_synthesize" else
+                 "mp4" if leased["kind"] in ("godot_render", "episode_assemble", "ltx_animate")
+                 else "rig_report")
             )
             if (
                 status not in MEDIA_STATUSES[leased["kind"]]
