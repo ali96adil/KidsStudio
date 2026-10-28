@@ -13,6 +13,8 @@ import unittest
 from unittest.mock import patch
 
 from kidsstudio.av_model_calibration import benchmark_av,CalibrationError
+from kidsstudio.synchronized_av_review import AVRunner
+from test_local_audio_review_m34 import executable
 from kidsstudio.real_media_evidence import digest
 from test_synchronized_av_m37 import SynchronizedAV37
 
@@ -94,6 +96,51 @@ class AVCrisisCanaries39(unittest.TestCase):
         self.assertFalse(result["public_release_authorized"])
         self.assertFalse((self.av.root/"benchmark_outputs"/"clean"/"frames" /
             "frames_manifest.json").is_symlink())
+
+    def test_label_memorizing_mock_passes_comparison_but_never_is_qualified(self):
+        # Deliberately dishonest "AI": a trivial SHA table knows the labels.
+        # Even a perfect score cannot become model certification.
+        labels={entry["mp4_sha256"]:entry["expected"]
+                for entry in self.doc["cases"]}
+        runners=[]
+        for i,role in enumerate(("motion_sync","visual_child_safety")):
+            program=(
+                "import argparse,hashlib,json\nfrom pathlib import Path\n"
+                "p=argparse.ArgumentParser()\n"
+                "for k in ('mp4','wav','script','frames-manifest','model','role','output'):\n"
+                " p.add_argument('--'+k,required=True)\n"
+                "a=p.parse_args()\n"
+                "def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()\n"
+                "labels="+repr(labels)+"\n"
+                "roles={'motion_sync':('lip_sync','voice_continuity','character_motion'),"
+                "'visual_child_safety':('age_appropriate','visual_consistency','no_unsafe_content')}\n"
+                "checks={k:{'decision':labels[sha(a.mp4)][a.role].get(k,'PASS'),"
+                "'evidence':'SYNTHETIC HASH MEMORIZATION ONLY and not actual perception: '+k}"
+                " for k in roles[a.role]}\n"
+                "result={'role':a.role,'mp4_sha256':sha(a.mp4),"
+                "'wav_sha256':sha(a.wav),'script_sha256':sha(a.script),"
+                "'frames_manifest_sha256':sha(a.frames_manifest),"
+                "'model_sha256':sha(a.model),'checks':checks,"
+                "'summary':'Mock learns original labels by hash; no audiovisual analysis.'}\n"
+                "Path(a.output).write_text(json.dumps(result))\n"
+            )
+            binary=executable(self.av.root/f"m39_leaked_labels_{i}",
+                              program+f"# mock {i}\n")
+            original=self.av.runners[i]
+            runners.append(AVRunner(binary=str(binary),
+                binary_sha=digest(binary),
+                model=original.model,model_sha=original.model_sha,
+                provider_id="mock_hash_labels_"+str(i),
+                model_id="synthetic-label-memorizer-"+str(i)))
+        result=self.evaluate(execute=True,first=runners[0],second=runners[1])
+        self.assertEqual(result["mismatched_criteria"],0)
+        self.assertTrue(result["all_canaries_match"])
+        self.assertEqual(result["status"],
+                         "M39_CANARY_SIGNAL_MATCHED_UNVERIFIED_GROUND_TRUTH")
+        self.assertFalse(result["model_quality_qualified"])
+        self.assertFalse(result["owner_ground_truth_independently_verified"])
+        self.assertFalse(result["mac_pi_hardware_qualified"])
+        self.assertFalse(result["public_release_authorized"])
 
     def test_modified_source_or_repeated_media_prevents_any_model_call(self):
         self.doc["cases"][2]["mp4_sha256"]="b"*64
