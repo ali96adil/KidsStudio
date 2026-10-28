@@ -428,6 +428,20 @@ class RemoteMediaWorker:
             thread = threading.Thread(target=heartbeat, daemon=True)
             thread.start()
         try:
+            if state == "NEW" and kind == "voice_synthesize" and "pilot_scene" in payload:
+                # An additional check after reserving the local STARTED
+                # journal record narrows the window before actual actuation.
+                # Failure leaves STARTED quarantined: never retry blindly.
+                fresh=self.pi.call("pilot-voice-lease-check",check_request)
+                if (not isinstance(fresh,dict) or
+                    set(fresh)!=set(check_request)|{
+                        "status","model_execution_authorized",
+                        "publication_approved","server_time"} or
+                    fresh["status"]!="PINNED_SINGLE_VOICE_LEASE_CURRENT_NOT_EXECUTED" or
+                    any(fresh.get(key)!=value for key,value in check_request.items()) or
+                    fresh["model_execution_authorized"] is not False or
+                    fresh["publication_approved"] is not False):
+                    raise MediaError("Pilot lease changed immediately before voice call.")
             result = receipt if state == "DONE" else self.executor.execute(
                 kind, recipe_id, job_id
             )
