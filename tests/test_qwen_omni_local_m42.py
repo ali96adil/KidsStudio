@@ -195,7 +195,7 @@ class LocalOmni42(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.review("pronunciation",output=target)
         self.assertFalse(target.exists())
-        self.assertEqual(self.inference_calls,0)
+        self.assertEqual(len(self.inference_calls),0)
 
     def test_unmocked_linux_ci_cannot_invoke_transformers_or_write(self):
         with patch("kidsstudio.qwen_omni_local.infer_local_qwen",
