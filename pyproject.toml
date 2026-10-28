@@ -55,6 +55,7 @@ studio-import-audio-review = "kidsstudio.audio_review_import:main"
 studio-import-visual-review = "kidsstudio.visual_review_import:main"
 studio-synchronized-av-review = "kidsstudio.synchronized_av_review:main"
 studio-import-synchronized-av = "kidsstudio.synchronized_av_import:main"
+studio-pilot-readiness = "kidsstudio.studio_pilot_readiness:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
