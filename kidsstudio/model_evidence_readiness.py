@@ -222,6 +222,34 @@ def assess_model_evidence(*,model:str|Path,model_sha256:str,
             {x.get("case_id") for x in canary["findings"]}!=
             {x["id"] for x in canaries}):
             raise EvidenceReadinessError("Canary score cannot be passed off as owner-qualified ground truth.")
+        expected_shas={x["id"]:x["mp4_sha"] for x in canaries}
+        mismatch_count=0
+        for finding in canary["findings"]:
+            if (not isinstance(finding,dict) or
+                set(finding)!={"case_id","mp4_sha256",
+                               "wrong_verdicts","passes_expected_labels"} or
+                finding["mp4_sha256"]!=expected_shas.get(finding["case_id"]) or
+                not isinstance(finding["wrong_verdicts"],list) or
+                type(finding["passes_expected_labels"]) is not bool or
+                finding["passes_expected_labels"]!=
+                (len(finding["wrong_verdicts"])==0)):
+                raise EvidenceReadinessError("Canary outcome source/score mismatch.")
+            for item in finding["wrong_verdicts"]:
+                if (not isinstance(item,dict) or
+                    set(item)!={"role","criterion","expected","observed"} or
+                    item["expected"] not in ("PASS","NEEDS_FIX") or
+                    item["observed"] not in ("PASS","NEEDS_FIX","UNSURE")):
+                    raise EvidenceReadinessError("Invalid canary mismatch item.")
+            mismatch_count+=len(finding["wrong_verdicts"])
+        if (type(canary.get("mismatched_criteria")) is not int or
+            canary["mismatched_criteria"]!=mismatch_count or
+            type(canary.get("all_canaries_match")) is not bool or
+            canary["all_canaries_match"]!=(mismatch_count==0) or
+            canary.get("status")!=(
+                "M39_CANARY_SIGNAL_MATCHED_UNVERIFIED_GROUND_TRUTH"
+                if mismatch_count==0 else
+                "M39_UNSAFE_OR_UNQUALIFIED_AV_MODEL_VERDICTS")):
+            raise EvidenceReadinessError("AV canary summary contradicts original findings.")
         canary_checked=True
         _gate(gates,"M39_CANARY_CONTRAST_EVIDENCE","PASS_SOURCE_BYTES_ONLY",
               "Canary clips and results pinned; source labels not independently established.")
