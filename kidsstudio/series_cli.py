@@ -46,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     render.add_argument("episode",type=int)
     render.add_argument("--recipe",required=True)
     render.add_argument("--media-kind",choices=["godot_render","episode_assemble"],default="godot_render")
+    render.add_argument("--catalogue-sha256",help="Required exact M14 catalogue SHA for multi-scene render")
     retry=commands.add_parser("retry-blocked")
     retry.add_argument("series_id")
     retry.add_argument("episode",type=int)
@@ -204,7 +205,8 @@ def main(argv: list[str] | None = None) -> int:
             result={"status":"SCRIPT_APPROVED"}
         elif args.cmd=="queue-render":
             result={"render_job_id":control.queue_render(
-                args.series_id,args.episode,args.recipe,media_kind=args.media_kind)}
+                args.series_id,args.episode,args.recipe,media_kind=args.media_kind,
+                                                catalogue_sha256=args.catalogue_sha256)}
         elif args.cmd=="retry-blocked":
             result={"resumed_state":control.retry_blocked(
                 args.series_id,args.episode,args.reason)}
