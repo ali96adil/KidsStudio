@@ -134,6 +134,15 @@
         (aiScene.needs_fix ? " · يحتاج تصحيح "+fmt(aiScene.needs_fix) : "")+
         " · تقارير موقّعة، ليست دليلاً على تشغيل نموذج فعلي بذاتها"));
     }
+    const visualAV=episode.visual_av_review||{state:"NOT_STARTED"};
+    if (visualAV.state==="M36_AV_AUDIO_REVIEW_REQUIRED") {
+      host.append(make("p","small-explainer",
+        "مراجعة المشاهد M36: "+
+        fmt(visualAV.scenes_waiting_audio_video||0)+
+        " مشهد بانتظار فحص AI صوت وصورة متزامنين · "+
+        "صور الفريمات وحدها لا تثبت حركة الشفاه · "+
+        "لا توجد موافقة داخلية ولا إعادة توليد بسبب عدم اليقين"));
+    }
     const orchestration=episode.orchestrator||{state:"NOT_PINNED"};
     const orchestrationArabic={
       NOT_PINNED:"ماكو خطة تشغيل موحدة مثبتة للحلقة",
