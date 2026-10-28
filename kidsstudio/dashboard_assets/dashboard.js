@@ -107,7 +107,9 @@
       NOT_STARTED:"الفحص النهائي لم يبدأ",
       TECH_PASSED_WAITING_HUMAN:"الفحص التقني ناجح · بانتظار المراجعة البشرية",
       CHANGES_REQUESTED:"المراجع طلب تعديلات · لا يمكن اعتماد الحلقة",
-      READY_FOR_OWNER_EPISODE_APPROVAL:"المراجعة موثقة · بانتظار اعتماد الحلقة"
+      READY_FOR_OWNER_EPISODE_APPROVAL:"المراجعة موثقة · بانتظار اعتماد الحلقة",
+      AI_INTERNAL_READY_PRIVATE_ONLY:"مراجعتان AI مستقلتان موثقتان · رفع Private فقط · قرارك بعد الرفع",
+      AI_INTERNAL_CHANGES_REQUIRED:"وكلاء المراجعة طلبوا تصحيحات · يمنع رفع الحلقة",
     };
     host.append(make("p","small-explainer",
       "فحص الجودة M7: "+(states[qa.state]||"تحتاج مراجعة فنية")+" · "+
