@@ -160,7 +160,7 @@ class UploadJournal:
             os.close(fd)
         with sqlite3.connect(self.path) as db:
             db.execute("""CREATE TABLE IF NOT EXISTS attempts (
-                render_job_id TEXT PRIMARY KEY, master_sha256 TEXT NOT NULL,
+                render_job_id TEXT PRIMARY KEY, master_sha256 TEXT NOT NULL UNIQUE,
                 plan_sha256 TEXT NOT NULL, state TEXT NOT NULL,
                 video_id TEXT, created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
@@ -175,8 +175,11 @@ class UploadJournal:
                           (job,)).fetchone():
                 raise YouTubePrivateError("This render already has an upload attempt. Manual reconciliation required.")
             now=time.time()
-            db.execute("""INSERT INTO attempts VALUES (?,?,?,'STARTED',NULL,?,?)""",
-                       (job,sha,plan_sha,now,now))
+            try:
+                db.execute("""INSERT INTO attempts VALUES (?,?,?,'STARTED',NULL,?,?)""",
+                           (job,sha,plan_sha,now,now))
+            except sqlite3.IntegrityError as exc:
+                raise YouTubePrivateError("Master SHA already uploaded or reserved. Manual reconciliation required.") from exc
             db.execute("COMMIT")
 
     def record_uploaded(self,job: str,video_id: str)->None:
@@ -394,8 +397,11 @@ def verify_existing(plan:dict,media:Path,readiness:Path,
     if not isinstance(token,str) or len(token)<30 or any(ch.isspace() for ch in token):
         raise YouTubePrivateError("Fresh OAuth bearer required.")
     existing=journal.status(plan["render_job_id"])
+    plan_sha=hashlib.sha256(json.dumps(plan,sort_keys=True,
+                separators=(",",":"),ensure_ascii=False).encode()).hexdigest()
     if (not existing or existing["state"] not in (
             "UPLOADED_UNVERIFIED","PRIVATE_VERIFIED") or
+            existing["plan_sha256"]!=plan_sha or
             existing["master_sha256"]!=safe["master_sha256"] or
             not isinstance(existing["video_id"],str) or
             not VIDEO.fullmatch(existing["video_id"])):
