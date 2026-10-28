@@ -205,7 +205,7 @@ class SceneAIGate:
             except UnicodeError as exc:
                 raise SceneError("ASR or script is not UTF-8.") from exc
         else:
-            if set(obs)!={"schema_version","stage","artifact_sha256",
+            if (set(obs)!={"schema_version","stage","artifact_sha256",
                            "script_sha256","source_voice_sha256",
                            "frame_manifest_sha256","frame_manifest_file",
                            "frame_count","visual_review_model_id","model_execution_verified",
