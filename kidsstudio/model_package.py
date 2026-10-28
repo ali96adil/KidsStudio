@@ -11,11 +11,13 @@ installed, downloaded, executed, licensed or considered capable.
 """
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
-import stat
+import sys
 
 from .episode_assembly import _ensure_private, digest
 
@@ -118,7 +120,7 @@ def _layout(root:Path)->tuple[dict,bytes]:
                 discovered.add(relative)
     if discovered!=listed:
         raise ModelPackageError("Unlisted or missing model checkpoint contents.")
-    if digest(manifest)!=__import__("hashlib").sha256(raw).hexdigest():
+    if digest(manifest)!=hashlib.sha256(raw).hexdigest():
         raise ModelPackageError("Package manifest changed during inspection.")
     return doc,raw
 
@@ -161,3 +163,92 @@ def checkpoint_digest(file:str|Path)->str:
         _,raw=_layout(p)
         return __import__("hashlib").sha256(raw).hexdigest()
     raise ModelPackageError("Checkpoint vanished.")
+
+
+def freeze_model_directory(directory:str|Path,*,execute:bool=False)->dict:
+    """One-time private manifest creation. Default computes without writing.
+
+    File extensions are a data-only allowlist; no .py or executable model
+    plugins are imported or trusted. A freeze is a byte pin, not a license
+    review or a model evaluation.
+    """
+    if type(execute) is not bool:
+        raise ModelPackageError("Explicit execute boolean required.")
+    root=_path(directory)
+    if not root.is_dir() or (root.stat().st_mode & 0o022):
+        raise ModelPackageError("Owner model directory must be private and writable only by owner.")
+    manifest=root/PACKAGE_NAME
+    if manifest.exists() or manifest.is_symlink():
+        raise ModelPackageError("Previously frozen model package cannot be replaced.")
+    names=[]
+    for base,dirs,files in os.walk(root,followlinks=False):
+        parent=Path(base)
+        for folder in dirs:
+            p=parent/folder
+            if p.is_symlink() or folder.startswith("."):
+                raise ModelPackageError("Hidden or symlinked directories not permitted.")
+        for name in files:
+            source=parent/name
+            relative=source.relative_to(root).as_posix()
+            part=PurePosixPath(relative)
+            if (source.is_symlink() or not source.is_file() or
+                any(x.startswith(".") for x in part.parts) or
+                part.suffix.lower() not in EXTENSIONS or
+                part.as_posix()!=relative):
+                raise ModelPackageError("Executable, hidden or symlinked model member.")
+            names.append((relative,source))
+            if len(names)>MAX_FILES:
+                raise ModelPackageError("Model package has too many member files.")
+    if len(names)<2 or not any(
+            PurePosixPath(n).suffix.lower() in SINGLE_FILE_EXTENSIONS
+            for n,_ in names):
+        raise ModelPackageError("Require model weights and accompanying tokenizer/config.")
+    items=[]
+    total=0
+    for name,p in sorted(names):
+        size=p.stat().st_size
+        if not 0<size<=MAX_FILE_BYTES:
+            raise ModelPackageError("Model member size outside bounded limits.")
+        total+=size
+        if total>MAX_PACKAGE_BYTES:
+            raise ModelPackageError("Model checkpoint exceeds bounded storage.")
+        items.append({"path":name,"sha256":digest(p),"bytes":size})
+    doc={"schema_version":1,"format":PACKAGE_FORMAT,"files":items,
+         "inference_qualified":False,"public_release_authorized":False}
+    raw=(json.dumps(doc,sort_keys=True,ensure_ascii=False,
+        indent=2,allow_nan=False)+"\n").encode("utf-8")
+    if len(raw)>MAX_MANIFEST_BYTES:
+        raise ModelPackageError("Manifest exceeds bounded size.")
+    frozen_sha=hashlib.sha256(raw).hexdigest()
+    result={"schema_version":1,"status":"M41_PACKAGE_PREPARED_NOT_WRITTEN",
+            "package_sha256":frozen_sha,"member_count":len(items),
+            "total_bytes":total,"model_executed":False,
+            "model_quality_qualified":False,"mac_pi_hardware_qualified":False,
+            "public_release_authorized":False}
+    if not execute:
+        return result
+    fd=os.open(str(manifest),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,"wb") as stream:
+        stream.write(raw);stream.flush();os.fsync(stream.fileno())
+    verify_checkpoint(root,frozen_sha)
+    return {**result,"status":"M41_IMMUTABLE_PACKAGE_MANIFEST_CREATED",
+            "write_performed":True}
+
+
+def main(argv:list[str]|None=None)->int:
+    p=argparse.ArgumentParser(prog="studio-model-package")
+    p.add_argument("--directory",type=Path,required=True)
+    p.add_argument("--execute",action="store_true",
+                   help="Explicitly freeze model_files.json once (no overwrite).")
+    x=p.parse_args(argv)
+    try:
+        result=freeze_model_directory(x.directory,execute=x.execute)
+        print(json.dumps(result,ensure_ascii=False,indent=2))
+        return 0
+    except (ModelPackageError,OSError,ValueError,TypeError) as exc:
+        print("M41_MODEL_PACKAGE_BLOCKED: "+type(exc).__name__,file=sys.stderr)
+        return 2
+
+
+if __name__=="__main__":
+    raise SystemExit(main())
