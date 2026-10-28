@@ -180,13 +180,24 @@ class EpisodeAssembler:
             self.clips.append({"path":video, "face_cleanup":item["face_cleanup"]})
         self.recipe = recipe
         self.recipe_path = recipe_path
+        self.recipe_sha256 = digest(recipe_path)
         self.runner = runner
         self.prober = prober
 
     def preflight(self) -> dict[str, Any]:
         """Read-only validation: never runs TTS, LTX, rendering or face cleanup."""
+        if digest(self.recipe_path) != self.recipe_sha256:
+            raise EpisodeAssemblyError("Episode recipe changed after it was loaded.")
+        _required_file(self.recipe["script"]["path"],
+                       self.recipe["script"]["sha256"],self.root)
+        _required_file(self.recipe["tools"]["face_v06"],
+                       self.recipe["tools"]["face_v06_sha256"],self.root)
+        _required_file(self.recipe["tools"]["face_v07"],
+                       self.recipe["tools"]["face_v07_sha256"],self.root)
         clips = []
-        for item in self.clips:
+        for index,item in enumerate(self.clips):
+            source=self.recipe["clips"][index]
+            _required_file(source["video"],source["sha256"],self.root)
             information = self.prober(item["path"],self.ffprobe)
             if not .2 <= information["duration"] <= MAX_SECONDS_PER_CLIP:
                 raise EpisodeAssemblyError("Clip too short/long for one scene.")
