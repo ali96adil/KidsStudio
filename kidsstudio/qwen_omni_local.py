@@ -31,7 +31,7 @@ from typing import Callable
 from .model_package import checkpoint_digest, verify_checkpoint, ModelPackageError
 from .real_media_evidence import private_file, _binary, media_subprocess_env, EvidenceCaptureError
 from .scene_ai_qa import ROLE_CHECKS
-from .episode_assembly import digest
+from .episode_assembly import digest, _ensure_private
 
 SHA=re.compile(r"^[a-f0-9]{64}$")
 CRITERIA={**ROLE_CHECKS["voice_synthesize"],**ROLE_CHECKS["ltx_animate"]}
@@ -299,8 +299,11 @@ def review_unqualified(*,role:str,model:str|Path,wav:str|Path,
         transcript_text=transcript_text)
     output_path=Path(output).expanduser()
     if (not output_path.is_absolute() or output_path.is_symlink() or
-        output_path.exists() or output_path.suffix!=".json"):
-        raise OmniAdapterError("New private absolute output file required.")
+        output_path.exists() or output_path.suffix!=".json" or
+        not output_path.parent.is_dir() or output_path.parent.is_symlink() or
+        (output_path.parent.stat().st_mode & 0o022)):
+        raise OmniAdapterError("New owner-private absolute output file required.")
+    _ensure_private(output_path.parent)
     if device!="mps":
         raise OmniAdapterError("Explicit Apple MPS required.")
     # Real invocation must pass a *current hardware* resource screen.
