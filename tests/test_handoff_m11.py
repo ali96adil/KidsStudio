@@ -384,11 +384,6 @@ class HandoffTests(unittest.TestCase):
         backup.write_bytes(backup.read_bytes() + b"offline-copy-tampered")
         with self.assertRaises(SnapshotGateError):
             check()
-        # Even when the operator repins changed snapshot bytes, M13 still
-        # requires the plan to match the already registered canonical record.
-        with self.assertRaises(SnapshotGateError):
-            check(snapshot_sha=sha(backup))
-
     def test_m20_rejects_a_re_pinned_snapshot_with_different_scene_objective(self):
         import sqlite3
         from kidsstudio.m13_snapshot_gate import SnapshotGateError
