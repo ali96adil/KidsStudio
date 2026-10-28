@@ -272,6 +272,7 @@ class StudioOrchestrator:
                 next_action="STOP_AND_RECONCILE"
         return {"schema_version":1,"status":"M32_OBSERVED_NOT_HARDWARE_QUALIFIED",
                 "series_id":sid,"episode_number":num,
+                "plan_sha256":sha,
                 "episode_state":ep["state"] if ep else "MISSING",
                 "next_action":next_action,"blockers":list(dict.fromkeys(blockers)),
                 "scenes":scene_status,
@@ -280,6 +281,12 @@ class StudioOrchestrator:
                 "mac_pi_hardware_test_ready":False,
                 "youtube_private_upload_qualified":False,
                 "owner_final_video_review_required":True,
+                "unqualified_external_checks":[
+                    "real_multimodal_audio_child_safety_models",
+                    "source_rights_proof_external_validation",
+                    "mac_pi_production_link_and_rendered_original_video",
+                    "real_private_youtube_oauth_and_owner_post_upload_review"
+                ],
                 "public_release_authorized":False}
 
     def tick(self,filename:str|Path)->dict:
@@ -291,7 +298,12 @@ class StudioOrchestrator:
                     "blockers":snapshot["blockers"],
                     "public_release_authorized":False}
         action=snapshot["next_action"]
-        plan,_=read_plan(filename)
+        plan,current_sha=read_plan(filename)
+        if current_sha!=snapshot["plan_sha256"]:
+            return {"status":"M32_BLOCKED_NO_JOB_QUEUED",
+                    "next_action":"PLAN_CHANGED_DURING_TICK",
+                    "blockers":["M32_PLAN_RACE"],
+                    "public_release_authorized":False}
         sid=plan["series_id"];num=plan["episode_number"]
         if action=="REPAIR_REJECTED_SCENE":
             result=self.repair.run_once(series_id=sid,ordinal=num)
