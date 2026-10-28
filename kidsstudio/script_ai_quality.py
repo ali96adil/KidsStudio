@@ -190,6 +190,16 @@ class ScriptAIQuality:
                 not isinstance(answer.get("model"),str) or
                 not isinstance(answer.get("answer"),str)):
                 raise ScriptReviewError("Review not from independent configured provider.")
+            if any(item["model_id"]==answer["model"] for item in reviews):
+                raise ScriptReviewError("Two distinct AI model checkpoint IDs required.")
+            if isinstance(self.router,ChatRouter):
+                current=self.router.config.providers.get(provider)
+                if current is None:
+                    raise ScriptReviewError("Model is not in approved router config.")
+                for prior in reviews:
+                    old=self.router.config.providers[prior["provider_id"]]
+                    if old["endpoint"]==current["endpoint"]:
+                        raise ScriptReviewError("Two independent model endpoints required.")
             report=_response(answer["answer"])
             reviews.append({"role":role,"provider_id":provider,
                 "model_id":answer["model"],
