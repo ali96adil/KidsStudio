@@ -56,7 +56,10 @@ class AudioRunner:
                    for x in (expected_binary_sha,expected_model_sha))):
             raise AudioModelError("Provider, model and exact executable hashes required.")
         self.binary=_binary(binary)
-        self.model=private_file(model,".bin",max_bytes=7*1024**3)
+        suffix=Path(model).expanduser().suffix.lower()
+        if suffix not in (".bin",".gguf",".safetensors"):
+            raise AudioModelError("Explicit pinned local model checkpoint required.")
+        self.model=private_file(model,suffix,max_bytes=7*1024**3)
         if (digest(Path(self.binary))!=expected_binary_sha or
             digest(self.model)!=expected_model_sha):
             raise AudioModelError("Local model runner or checkpoint digest differs.")
