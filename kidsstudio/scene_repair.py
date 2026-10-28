@@ -212,12 +212,14 @@ class SceneRepair:
                 AND stage='ltx_animate'""",(sid,ordinal,scene)).fetchone()
             if downstream:
                 return None
-            checked=db.execute("""SELECT 1 FROM studio_scene_voice_checks
+            checked=db.execute("""SELECT report_sha256
+                FROM studio_scene_voice_checks
                 WHERE series_id=? AND ordinal=? AND scene=?
                 AND voice_job_id=? AND voice_sha256=?
                 AND status='TECH_PASS_OWNER_LISTENING_PENDING'""",
                 (sid,ordinal,scene,row["job_id"],row["artifact_sha256"])).fetchone()
-            if not checked or "voice_sha256" in original:
+            if (not checked or checked["report_sha256"]!=qa["technical_sha256"]
+                or "voice_sha256" in original):
                 return None
         else:
             voice=db.execute("""SELECT * FROM studio_scene_stages
@@ -231,14 +233,15 @@ class SceneRepair:
                 row["source_voice_sha256"]!=voice["artifact_sha256"] or
                 original.get("voice_sha256")!=voice["artifact_sha256"]):
                 return None
-            audio=db.execute("""SELECT 1 FROM studio_scene_audio_checks
+            audio=db.execute("""SELECT report_sha256
+                FROM studio_scene_audio_checks
                 WHERE series_id=? AND ordinal=? AND scene=?
                 AND ltx_job_id=? AND voice_sha256=?
                 AND a2v_sha256=?
                 AND status='TECH_COMPATIBLE_HUMAN_QA_REQUIRED'""",
                 (sid,ordinal,scene,row["job_id"],
                  voice["artifact_sha256"],row["artifact_sha256"])).fetchone()
-            if not audio:
+            if not audio or audio["report_sha256"]!=qa["technical_sha256"]:
                 return None
             new_payload["voice_sha256"]=voice["artifact_sha256"]
         key=(f"scene:{sid}:episode:{ordinal}:s{scene}:{stage}:"
