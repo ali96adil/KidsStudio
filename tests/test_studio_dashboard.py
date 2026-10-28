@@ -12,6 +12,7 @@ import unittest
 from kidsstudio.studio_queue import StudioQueue
 from kidsstudio.series_manager import SeriesManager
 from kidsstudio.studio_dashboard import build_snapshot, make_handler, stage_timeline
+from kidsstudio.studio_orchestrator import StudioOrchestrator
 
 
 class DashboardTests(unittest.TestCase):
@@ -27,6 +28,32 @@ class DashboardTests(unittest.TestCase):
            {"title":"الأحمر","objective":"تمييز اللون الأحمر"},
            {"title":"الأزرق","objective":"تمييز اللون الأزرق"}
         ],activate=True)
+
+    def test_m32_pinned_plan_is_read_only_and_never_claims_device_ready(self):
+        StudioOrchestrator(self.queue).initialize()
+        missing=build_snapshot(self.queue)
+        self.assertEqual(missing["episodes"][0]["orchestrator"]["state"],"NOT_PINNED")
+        self.assertFalse(missing["limits"]["m32_hardware_qualification_ready"])
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_episodes SET source_sha256=? WHERE
+                series_id='colors-ar' AND ordinal=1""",("a"*64,))
+            db.execute("""INSERT INTO studio_orchestrator_plans VALUES
+                (?,?,?,?,?,?)""",("colors-ar",1,"b"*64,"a"*64,
+                "c"*64,self.queue.clock()))
+        view=build_snapshot(self.queue)
+        ep=view["episodes"][0]["orchestrator"]
+        self.assertEqual(ep["state"],"PINNED_SOURCE_CURRENT_FILE_NOT_RECHECKED")
+        self.assertFalse(ep["hardware_qualification_ready"])
+        self.assertFalse(ep["private_upload_authorized"])
+        raw=json.dumps(view,ensure_ascii=False)
+        self.assertNotIn("private_models",raw)
+        self.assertNotIn("m32-orchestrator-secret",raw)
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_episodes SET source_sha256=? WHERE
+                series_id='colors-ar' AND ordinal=1""",("d"*64,))
+        changed=build_snapshot(self.queue)
+        self.assertEqual(changed["episodes"][0]["orchestrator"]["state"],
+                         "BLOCKED_SCRIPT_CHANGED")
 
     def test_actual_queue_and_status_without_private_payload(self):
         self.registry.plan_drafts(limit=1)
