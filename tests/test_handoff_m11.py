@@ -665,6 +665,29 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(fake.calls,[])
         self.assertEqual(queue.get(job_id)["state"],"FAILED")
 
+    def test_m22_pause_between_two_proofs_is_quarantined_without_voice(self):
+        import sqlite3
+        from kidsstudio.series_manager import SeriesManager
+        queue,plan,job_id,service,pi,fake,worker,journal=self.prepare_m22_voice_lease()
+        original=pi.call
+        counter={"n":0}
+        def pause_before_final_proof(action,request):
+            if action=="pilot-voice-lease-check":
+                counter["n"]+=1
+                if counter["n"]==2:
+                    SeriesManager(queue).pause("colors-ar",
+                        "Owner paused between journal and actual model call")
+            return original(action,request)
+        pi.call=pause_before_final_proof
+        self.assertEqual(worker.run_once()["status"],"BLOCKED_RECONCILIATION")
+        self.assertEqual(counter["n"],2)
+        self.assertEqual(fake.calls,[])
+        self.assertEqual(queue.get(job_id)["state"],"FAILED")
+        with sqlite3.connect(journal.path) as db:
+            self.assertEqual(
+                db.execute("SELECT state FROM attempts WHERE job_id=?",
+                           (job_id,)).fetchone()[0],"STARTED")
+
     def test_m22_revoked_lease_rejected_before_voice(self):
         queue,plan,job_id,service,pi,fake,worker,journal=self.prepare_m22_voice_lease()
         original=pi.call
