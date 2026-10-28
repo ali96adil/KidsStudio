@@ -19,6 +19,7 @@ from kidsstudio.omni_runtime_compat import (
 )
 from kidsstudio.real_media_evidence import digest
 from kidsstudio.model_package import ModelPackageError
+from kidsstudio.model_evidence_readiness import assess_model_evidence, EvidenceReadinessError
 from test_model_pilot_probe_m43 import MacProbe43
 
 
@@ -149,6 +150,37 @@ class RuntimeCompat46(unittest.TestCase):
         self.assertFalse(report["public_release_authorized"])
         with self.assertRaises(RuntimeCompatError):
             probe_runtime(**self.kw,execute=True,launcher=self.worker)
+
+    def test_m45_inventory_binds_mps_scalar_report_without_claiming_7b_ready(self):
+        self.test_explicit_bounded_mock_worker_writes_private_no_approval()
+        params=dict(
+            model=self.t.x.model,model_sha256=self.t.x.sha,
+            origin_receipt=self.t.origin_receipt,
+            origin_sha256=digest(self.t.origin_receipt),
+            owner_key=self.t.origin_key,
+            resource_screen=self.t.screen,
+            mps_runtime_receipt=self.path/"runtime_receipt.json",
+            mps_runtime_receipt_sha256=digest(self.path/"runtime_receipt.json"),
+            mps_worker_report=self.path/"mps_runtime.json",
+            mps_worker_sha256=digest(self.path/"mps_runtime.json"),
+            mps_python=sys.executable,
+        )
+        summary=assess_model_evidence(**params)
+        self.assertTrue(summary["mps_scalar_report_bytes_checked"])
+        self.assertEqual(summary["status"],
+                         "M45_EVIDENCE_INVENTORY_NOT_PRODUCTION_READY")
+        self.assertEqual(summary["qualified_gate_count"],0)
+        self.assertFalse(summary["mac_pi_hardware_qualified"])
+        self.assertFalse(summary["model_quality_qualified"])
+        self.assertFalse(summary["private_upload_permitted"])
+        self.assertFalse(summary["public_release_authorized"])
+        runtime=self.path/"mps_runtime.json"
+        forged=json.loads(runtime.read_text())
+        forged["model_weights_loaded"]=True
+        runtime.write_text(json.dumps(forged))
+        with self.assertRaises((EvidenceReadinessError,RuntimeCompatError)):
+            assess_model_evidence(**{**params,
+                "mps_worker_sha256":digest(runtime)})
 
     def test_forged_worker_model_loaded_or_public_permission_rejected(self):
         def bad(args,**kw):
