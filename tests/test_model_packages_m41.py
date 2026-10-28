@@ -12,7 +12,8 @@ from pathlib import Path
 import unittest
 
 from kidsstudio.model_package import (
-    ModelPackageError, PACKAGE_FORMAT, checkpoint_digest, verify_checkpoint
+    ModelPackageError, PACKAGE_FORMAT, checkpoint_digest, verify_checkpoint,
+    freeze_model_directory, main as package_main
 )
 from kidsstudio.model_runtime_bundle import LocalModelBundle, ModelBundleError
 from kidsstudio.synchronized_av_review import AVRunner
@@ -55,6 +56,44 @@ class ShardedCheckpoint41(unittest.TestCase):
         cfg["reviewers"]["av_motion_sync"]["model_sha256"]=digest(self.package)
         self.h.file.write_text(json.dumps(cfg))
         return LocalModelBundle(self.h.file,digest(self.h.file))
+
+    def test_freeze_is_readonly_by_default_and_exclusive_when_authorized(self):
+        self.package.unlink()
+        dry=freeze_model_directory(self.dir)
+        self.assertEqual(dry["status"],"M41_PACKAGE_PREPARED_NOT_WRITTEN")
+        self.assertEqual(dry["member_count"],2)
+        self.assertFalse((self.dir/"model_files.json").exists())
+        with self.assertRaises(ModelPackageError):
+            verify_checkpoint(self.dir,dry["package_sha256"])
+        actual=freeze_model_directory(self.dir,execute=True)
+        self.assertEqual(actual["status"],
+                         "M41_IMMUTABLE_PACKAGE_MANIFEST_CREATED")
+        self.assertTrue(actual["write_performed"])
+        self.assertEqual(actual["package_sha256"],dry["package_sha256"])
+        self.assertEqual(checkpoint_digest(self.dir),dry["package_sha256"])
+        with self.assertRaises(ModelPackageError):
+            freeze_model_directory(self.dir,execute=True)
+
+    def test_freeze_rejects_unapproved_script_and_hidden_files(self):
+        self.package.unlink()
+        script=self.dir/"remote_code.py"
+        script.write_text("raise RuntimeError('never execute this')")
+        with self.assertRaises(ModelPackageError):
+            freeze_model_directory(self.dir,execute=True)
+        script.unlink()
+        hidden=self.dir/".secret.json"
+        hidden.write_text('{"api_key":"synthetic"}')
+        with self.assertRaises(ModelPackageError):
+            freeze_model_directory(self.dir,execute=True)
+        self.assertFalse(self.package.exists())
+
+    def test_freeze_cli_without_execute_never_writes_a_manifest(self):
+        self.package.unlink()
+        self.assertEqual(package_main(["--directory",str(self.dir)]),0)
+        self.assertFalse(self.package.exists())
+        self.assertEqual(package_main(
+            ["--directory",str(self.dir),"--execute"]),0)
+        self.assertTrue(self.package.exists())
 
     def test_approved_package_and_runtime_preflight_rehash_real_members(self):
         value=digest(self.package)
