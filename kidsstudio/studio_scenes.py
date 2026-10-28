@@ -280,6 +280,33 @@ class SceneLedger:
                 (sid,ordinal,"FIRST_VOICE_PILOT: "+owner_note.strip(),time.time()))
             return job_id
 
+    def queue_first_voice_ai(self,sid:str,ordinal:int,recipe:str,
+                             plan_sha256:str)->str:
+        """M30: single internally AI-approved two-scene pilot; no owner signoff.
+
+        The transaction inside queue_first_voice_pilot is still the final
+        admission gate, and must see a current 2-provider M30 review.
+        This method never executes models or declares PUBLIC approval.
+        """
+        with self.queue._connection() as db:
+            exists=db.execute("""SELECT 1 FROM sqlite_master WHERE
+                type='table' AND name='studio_script_ai_reviews'""").fetchone()
+            if not exists:
+                raise SceneError("M30 signed internal script review schema missing.")
+            ai=db.execute("""SELECT 1 FROM studio_script_ai_reviews r
+                JOIN studio_episodes e ON e.series_id=r.series_id
+                    AND e.ordinal=r.ordinal AND e.revision=r.revision
+                WHERE r.series_id=? AND r.ordinal=? AND
+                  r.verdict='AI_SCRIPT_PRIVATE_READY' AND
+                  r.original_sha256=e.source_sha256 AND
+                  r.first_provider!=r.second_provider AND
+                  e.state='SCRIPT_APPROVED'""",(sid,ordinal)).fetchone()
+            if not ai:
+                raise SceneError("Current independently reviewed AI script required.")
+        return self.queue_first_voice_pilot(
+            sid,ordinal,recipe,plan_sha256,
+            "M30_AI_TWO_MODEL_PRIVATE_ONLY_OWNER_POST_VIDEO_REVIEW")
+
     def reconcile(self)->int:
         count=0
         with self.queue._connection(write=True) as db:
