@@ -26,19 +26,21 @@ class ModelProcessGroup44(unittest.TestCase):
         self.started=self.root/"grandchild_started.txt"
         self.done=self.root/"grandchild_survived.txt"
         self.runner=self.root/"model_launcher"
-        self.runner.write_text(
-            "#!"+sys.executable+"\n"
-            "import subprocess,sys,time\n"
-            "from pathlib import Path\n"
-            "script=('from pathlib import Path\\n'"
-            "        +f'Path({str(self.started)!r}).write_text(\\\"started\\\")\\n'"
-            "        +'import time;time.sleep(1.5)\\n'"
-            "        +f'Path({str(self.done)!r}).write_text(\\\"orphan\\\")\\n')\n"
-            "subprocess.Popen([sys.executable,'-c',script],"
-            "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,"
-            "stderr=subprocess.DEVNULL)\n"
-            "time.sleep(5)\n"
+        child=(
+            "from pathlib import Path\\n"
+            f"Path({str(self.started)!r}).write_text('started')\\n"
+            "import time;time.sleep(1.5)\\n"
+            f"Path({str(self.done)!r}).write_text('orphan')\\n"
         )
+        parent=(
+            f"#!{sys.executable}\\n"
+            "import subprocess,sys,time\\n"
+            f"subprocess.Popen([sys.executable,'-c',{child!r}],"
+            "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,"
+            "stderr=subprocess.DEVNULL)\\n"
+            "time.sleep(5)\\n"
+        )
+        self.runner.write_text(parent)
         self.runner.chmod(0o700)
 
     def launch(self,seconds=1):
@@ -50,6 +52,7 @@ class ModelProcessGroup44(unittest.TestCase):
         with self.assertRaises(subprocess.TimeoutExpired):
             self.launch(seconds=1)
         time.sleep(1)
+        self.assertTrue(self.started.exists(), "Child process did not start.")
         self.assertFalse(self.done.exists(),
                          "Detached GPU child continued after runner timeout.")
 
@@ -62,6 +65,7 @@ class ModelProcessGroup44(unittest.TestCase):
         self.assertEqual(result.stdout,b"")
         self.assertEqual(result.stderr,b"")
         time.sleep(1.7)
+        self.assertTrue(self.started.exists(), "Child process did not start.")
         self.assertFalse(self.done.exists(),
                          "Successful parent left active child model worker.")
 
