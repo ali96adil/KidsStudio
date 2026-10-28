@@ -102,8 +102,22 @@ def build_snapshot(queue: StudioQueue) -> dict:
     render_kinds={}
     stage_states={}
     quality_states={}
+    audio_states={}
+    audio_tracking_installed=False
     stage_tracking_installed=False
     with queue._connection() as db:
+        audio_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_audio_checks'""").fetchone())
+        if audio_tracking_installed:
+            for row in db.execute("""SELECT a.series_id,a.ordinal,a.status,
+                a.correlation
+                FROM studio_audio_checks a
+                JOIN studio_episode_stages s
+                ON s.series_id=a.series_id AND s.ordinal=a.ordinal
+                  AND s.stage='ltx_animate' AND s.job_id=a.ltx_job_id"""):
+                audio_states[(row["series_id"],row["ordinal"])]={
+                    "state":row["status"],"correlation":row["correlation"]
+                }
         stage_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_episode_stages'""").fetchone())
         if stage_tracking_installed:
@@ -150,6 +164,9 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "series_id":ep["series_id"], "ordinal":ep["ordinal"],
             "title":ep["title"],"objective":ep["objective"],"state":state,
             "status_label":label,"tone":tone,"revision":ep["revision"],
+            "audio_continuity":audio_states.get((ep["series_id"],ep["ordinal"]),
+                  {"state":"NOT_RECORDED" if audio_tracking_installed else "NOT_CONFIGURED",
+                   "correlation":None}),
             "quality":quality_states.get((ep["series_id"],ep["ordinal"]),
                   {"state":"NOT_STARTED" if quality_installed else "NOT_CONFIGURED",
                    "criteria_passed":0}),
@@ -167,6 +184,8 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "limits":{"media_execution":False,"publishing":False,
                       "voice_and_ltx_tracking":("RECEIPT_GATED" if stage_tracking_installed
                                                  else "NOT_YET_CONNECTED"),
+                      "audio_continuity_tracking":("CURRENT_LTX_RECEIPT_GATED" if audio_tracking_installed
+                                                     else "NOT_CONFIGURED"),
                       "episode_qa_tracking":("EVIDENCE_GATED" if quality_installed
                                              else "NOT_CONFIGURED"),
                       "data_source":"Studio Brain SQLite; read-only"},
