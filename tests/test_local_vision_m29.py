@@ -164,6 +164,21 @@ class VisionBridgeTests(unittest.TestCase):
             self.execute_review()
         self.assertEqual(self.first_opener.calls,[])
 
+    def test_frame_only_false_voice_continuity_pass_is_never_signed(self):
+        self.execute_review()
+        pending=self.root/"vision"/"model_report_pending_m10.json"
+        doc=json.loads(pending.read_text())
+        doc["reviewers"][0]["checks"]["voice_continuity"]["decision"]="PASS"
+        pending.write_text(json.dumps(doc,ensure_ascii=False))
+        with self.assertRaises(LocalVisionError):
+            sign_after_m10(
+                pending_report=pending,m10_report=self.m10,
+                expected_m10_sha=digest(self.m10),rights_file=self.rights,
+                observation_file=self.root/"vision"/"observations.json",
+                attestation_key=self.key,
+                out_file=self.root/"vision"/"signed_m28.json")
+        self.assertFalse((self.root/"vision"/"signed_m28.json").exists())
+
     def test_cannot_sign_unpinned_m10_report(self):
         self.execute_review()
         with self.assertRaises(LocalVisionError):
