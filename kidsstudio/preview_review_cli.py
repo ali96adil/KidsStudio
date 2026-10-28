@@ -37,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
     decision.add_argument("--decision",required=True,choices=[
         "APPROVE","APPROVE_WITH_NOTES","REQUEST_CHANGES"])
     decision.add_argument("--note",default="")
+    verified=cmd.add_parser("import-youtube-report")
+    verified.add_argument("--report",required=True,type=Path)
+    verified.add_argument("--sha256",required=True)
     cmd.add_parser("list")
     try:
         ledger=PreviewReview(StudioQueue(p.parse_args(argv).db))
@@ -54,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
                                       category=args.category,second=args.second)
         elif args.action=="decide":
             result=ledger.decide(args.video_id,args.decision,note=args.note)
+        elif args.action=="import-youtube-report":
+            result=ledger.record_verified_upload(str(args.report),args.sha256)
         else:
             result=ledger.snapshot()
     except (PreviewReviewError,ValueError,TypeError,KeyError,OSError) as exc:
