@@ -44,7 +44,8 @@ def private_file(path:str|Path,ext:str,*,max_bytes:int=MAX_MEDIA)->Path:
     if not raw.is_absolute() or raw.is_symlink() or raw.suffix.lower()!=ext:
         raise EvidenceCaptureError("Absolute non-symlink media path required.")
     file=raw.resolve()
-    if not file.is_file() or not 100<=file.stat().st_size<=max_bytes:
+    minimum=1 if ext==".txt" else 100
+    if not file.is_file() or not minimum<=file.stat().st_size<=max_bytes:
         raise EvidenceCaptureError("Missing or oversized private source file.")
     if any((p/".git").exists() for p in (file,*file.parents)):
         raise EvidenceCaptureError("Private source media must not be inside Git.")
