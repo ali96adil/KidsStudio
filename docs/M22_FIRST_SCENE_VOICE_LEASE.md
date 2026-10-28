@@ -67,8 +67,12 @@ The Pi compares (read-only, within a SQLite transaction):
 
 The Pi responds only with the exact validated metadata and
 `model_execution_authorized: false`. The worker refuses altered,
-partial or unexpected replies. Any mismatch fails and blocks the
-job **before MediaJournal.STARTED or a model call**.
+partial or unexpected replies. The first check must pass **before
+MediaJournal.STARTED**. The Mac then reserves its immutable STARTED
+journal record, and repeats the **same live lease check immediately
+before calling the local executor**. A failure on this second check
+leaves the attempt permanently quarantined, never silently retried,
+and **no model is called**.
 
 This applies to the new `pilot_scene` job payload; the existing
 non-pilot legacy stage protocol is not silently expanded. After a
@@ -81,7 +85,9 @@ Synthetic tests verify successful single-scene fake voice completion
 with one and only one fake executor invocation, wrong plan SHA,
 double enqueue, changed Pi plan after claim, revoked lease,
 coordinator/series pause, maliciously changed proof response and
-empty Mac execution journal on a rejected lease. No Chatterbox or
+empty Mac execution journal on an initial rejected lease, and a
+STARTED quarantine with zero fake model calls if the owner pauses
+between the journal reservation and the second proof. No Chatterbox or
 LTX MLX inference is invoked by CI.
 
 ## Important boundaries
