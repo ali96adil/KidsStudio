@@ -242,7 +242,7 @@ class Orchestration32(unittest.TestCase):
         self.plan_data["assembly"]["catalogue_sha256"]="AFTER_SCENE_QA"
         self.plan.write_text(json.dumps(self.plan_data))
         self.coord.pin(self.plan)
-        with self.assertRaises(SceneError):
+        with self.assertRaises(OrchestrationError):
             self.coord.bind_assembly(
                 self.plan,evidence_file=self.root/"nothing.json",
                 catalogue_sha256="b"*64)
