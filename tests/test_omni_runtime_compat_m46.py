@@ -135,6 +135,12 @@ class RuntimeCompat46(unittest.TestCase):
         self.assertTrue(report["files_written"])
         self.assertEqual(report["runtime_report_sha256"],
                          digest(self.path/"mps_runtime.json"))
+        self.assertEqual(report["runtime_receipt_sha256"],
+                         digest(self.path/"runtime_receipt.json"))
+        persisted=json.loads((self.path/"runtime_receipt.json").read_text())
+        self.assertEqual(persisted["model_package_sha256"],self.t.x.sha)
+        self.assertFalse(persisted["private_upload_permitted"])
+        self.assertFalse(persisted["model_weights_loaded"])
         self.assertGreaterEqual(report["elapsed_seconds"],0)
         self.assertFalse(report["model_inference_performed"])
         self.assertFalse(report["mac_pi_hardware_qualified"])
