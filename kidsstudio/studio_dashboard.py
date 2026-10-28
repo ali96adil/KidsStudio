@@ -43,7 +43,8 @@ STAGES = [
 ]
 
 
-def stage_timeline(state: str, *, render_kind: str | None = None) -> list[dict[str, str]]:
+def stage_timeline(state: str, *, render_kind: str | None = None,
+                   stage_progress: dict[str, str] | None = None) -> list[dict[str, str]]:
     """Conservative timeline: do not invent separate voice/LTX completion.
 
     The current versioned Studio Brain queue does not have distinct voice,
@@ -59,8 +60,14 @@ def stage_timeline(state: str, *, render_kind: str | None = None) -> list[dict[s
                                 "RENDERED_QA_PENDING", "EPISODE_APPROVED"}
     rendered = state in {"RENDERED_QA_PENDING", "EPISODE_APPROVED"}
     owner_ok = state == "EPISODE_APPROVED"
-    # A result can confirm assembly as a single operation, NOT individual
-    # TTS/animation/face stages. Those are marked 'not_tracked' until M6.
+    # A composite MP4 never proves independent TTS/LTX/face quality.
+    # A voice or animation stage only becomes complete after owner QA.
+    stage_progress = stage_progress or {}
+    def tracked(kind: str) -> str:
+        status = stage_progress.get(kind)
+        return {"QA_APPROVED":"complete","PENDING_QA":"in_review",
+                "QUEUED":"working","BLOCKED":"blocked",
+                "RESET_FOR_RETRY":"pending"}.get(status,"not_tracked")
     return [
         {"id":"curriculum","name":STAGES[0][1],"status":"complete"},
         {"id":"script","name":STAGES[1][1],
@@ -69,10 +76,11 @@ def stage_timeline(state: str, *, render_kind: str | None = None) -> list[dict[s
         {"id":"editorial","name":STAGES[2][1],
          "status":"complete" if script_approved else
                   ("in_review" if script_ready else "pending")},
-        *[
-            {"id":ident,"name":title,"status":"not_tracked"}
-            for ident,title in STAGES[3:6]
-        ],
+        {"id":"voice","name":STAGES[3][1],
+         "status":tracked("voice_synthesize")},
+        {"id":"animation","name":STAGES[4][1],
+         "status":tracked("ltx_animate")},
+        {"id":"face","name":STAGES[5][1],"status":"not_tracked"},
         {"id":"assembly","name":STAGES[6][1],
          "status":"complete" if rendered else
                   ("working" if state=="RENDER_QUEUED" else "pending")},
@@ -90,6 +98,15 @@ def build_snapshot(queue: StudioQueue) -> dict:
     # source paths, API prompts, original scripts, or provider credentials.
     ids={ep["render_job_id"] for ep in data["episodes"] if ep["render_job_id"]}
     render_kinds={}
+    stage_states={}
+    stage_tracking_installed=False
+    with queue._connection() as db:
+        stage_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_episode_stages'""").fetchone())
+        if stage_tracking_installed:
+            for stage in db.execute("""SELECT series_id,ordinal,stage,state
+                FROM studio_episode_stages"""):
+                stage_states.setdefault((stage["series_id"],stage["ordinal"]),{})[stage["stage"]]=stage["state"]
     if ids:
         with queue._connection() as db:
             for identifier in ids:
@@ -117,7 +134,8 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "series_id":ep["series_id"], "ordinal":ep["ordinal"],
             "title":ep["title"],"objective":ep["objective"],"state":state,
             "status_label":label,"tone":tone,"revision":ep["revision"],
-            "stages":stage_timeline(state,render_kind=render_kinds.get(ep["render_job_id"])),
+            "stages":stage_timeline(state,render_kind=render_kinds.get(ep["render_job_id"]),
+                                     stage_progress=stage_states.get((ep["series_id"],ep["ordinal"]))),
         })
     series=[{"id":s["series_id"],"title":s["title"],"language":s["language"],
              "state":s["state"],"total":s["total"],
@@ -128,7 +146,8 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "overview":counts,"series":series,"episodes":episodes,"notes":notes,
             "queue":{"paused":status["paused"],"counts":status["counts"]},
             "limits":{"media_execution":False,"publishing":False,
-                      "voice_and_ltx_tracking":"NOT_YET_CONNECTED",
+                      "voice_and_ltx_tracking":("RECEIPT_GATED" if stage_tracking_installed
+                                                 else "NOT_YET_CONNECTED"),
                       "data_source":"Studio Brain SQLite; read-only"},
             }
 
