@@ -28,6 +28,8 @@ from .real_media_evidence import (
     private_file, private_dir, _binary, media_subprocess_env, EvidenceCaptureError
 )
 from .scene_ai_qa import ROLE_CHECKS
+from .model_process_group import bounded_model_process, ModelProcessError
+from .model_origin_attestation import verify_origin, ModelOriginError
 
 SHA=re.compile(r"^[a-f0-9]{64}$")
 ALL_ROLES={**ROLE_CHECKS["voice_synthesize"],**ROLE_CHECKS["ltx_animate"]}
@@ -95,7 +97,10 @@ def run_probe(*,adapter:str,adapter_sha256:str,
               ffprobe:str|None=None,
               ffprobe_sha256:str|None=None,
               resource_screen:Callable=inspect_local,
-              launcher:Callable=subprocess.run)->dict:
+              launcher:Callable=bounded_model_process,
+              origin_receipt:str|Path|None=None,
+              origin_receipt_sha256:str|None=None,
+              owner_origin_key:bytes|None=None)->dict:
     if (type(execute) is not bool or role not in ALL_ROLES or
         variant not in ("3b","7b") or
         type(timeout_seconds) is not int or
@@ -176,6 +181,7 @@ def run_probe(*,adapter:str,adapter_sha256:str,
             "model_calls":0,"elapsed_seconds":None,
             "observed_child_max_rss_bytes":None,
             "model_inference_proven":False,
+            "owner_origin_attestation_checked":False,
             "model_quality_qualified":False,"owner_canary_approved":False,
             "child_safety_certified":False,
             "mac_pi_hardware_qualified":False,
@@ -184,6 +190,17 @@ def run_probe(*,adapter:str,adapter_sha256:str,
             "public_release_authorized":False}
     if screen["status"]!="M42_RESOURCE_SCREEN_PASSED_MODEL_NOT_RUN":
         raise PilotProbeError("Real Mac local resource screen blocks model launch.")
+    if (origin_receipt is None or origin_receipt_sha256 is None or
+        not isinstance(owner_origin_key,bytes) or
+        len(owner_origin_key)<32):
+        raise PilotProbeError("Commercial diagnostic requires separate owner license/source attestation.")
+    origin=verify_origin(model=model_dir,model_sha256=model_sha256,
+        receipt=origin_receipt,receipt_sha256=origin_receipt_sha256,
+        owner_key=owner_origin_key,variant=variant)
+    if (origin.get("owner_attestation_verified") is not True or
+        origin.get("local_diagnostic_only") is not True or
+        origin.get("private_upload_permitted") is not False):
+        raise PilotProbeError("Source provenance gate blocked.")
     root=Path(out_dir).expanduser()
     if (not root.is_absolute() or root.is_symlink() or root.exists() or
         not root.parent.is_dir() or
@@ -209,6 +226,9 @@ def run_probe(*,adapter:str,adapter_sha256:str,
         len(p.stderr)>MAX_STDERR):
         raise PilotProbeError("Local model adapter failed or emitted unbounded output.")
     report_sha=_verify_result(answer_file,role=role,source=bound)
+    verify_origin(model=model_dir,model_sha256=model_sha256,
+        receipt=origin_receipt,receipt_sha256=origin_receipt_sha256,
+        owner_key=owner_origin_key,variant=variant)
     if (checkpoint_digest(model_dir)!=model_sha256 or
         digest(Path(runner))!=adapter_sha256 or
         digest(audio)!=wav_sha256 or digest(scene)!=script_sha256 or
@@ -231,6 +251,10 @@ def run_probe(*,adapter:str,adapter_sha256:str,
         "status":"M43_OBSERVATION_ONLY_NOT_AI_QUALIFIED",
         "role":role,"model_package_sha256":model_sha256,
         "adapter_sha256":adapter_sha256,"source_sha256":bound,
+        "model_origin_receipt_sha256":origin_receipt_sha256,
+        "owner_origin_attestation_checked":True,
+        "upstream_source_independently_verified":False,
+        "license_legally_adjudicated":False,
         "diagnostic_sha256":report_sha,
         "resource_screen":screen,
         "model_calls":1,"elapsed_seconds":elapsed,
@@ -267,6 +291,8 @@ def main(argv:list[str]|None=None)->int:
     p.add_argument("--ffprobe")
     p.add_argument("--ffprobe-sha256")
     p.add_argument("--timeout-seconds",type=int,default=MAX_SECONDS)
+    p.add_argument("--origin-receipt",type=Path)
+    p.add_argument("--origin-receipt-sha256")
     p.add_argument("--execute",action="store_true")
     x=p.parse_args(argv)
     try:
@@ -278,10 +304,13 @@ def main(argv:list[str]|None=None)->int:
             transcript=x.transcript,transcript_sha256=x.transcript_sha256,
             mp4=x.mp4,mp4_sha256=x.mp4_sha256,
             frames_manifest=x.frames_manifest,frames_sha256=x.frames_sha256,
-            ffprobe=x.ffprobe,ffprobe_sha256=x.ffprobe_sha256)
+            ffprobe=x.ffprobe,ffprobe_sha256=x.ffprobe_sha256,
+            origin_receipt=x.origin_receipt,
+            origin_receipt_sha256=x.origin_receipt_sha256,
+            owner_origin_key=os.environ.get("KIDS_STUDIO_MODEL_ORIGIN_KEY","").encode())
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0
-    except (PilotProbeError,OmniAdapterError,ModelPackageError,
+    except (PilotProbeError,ModelProcessError,ModelOriginError,OmniAdapterError,ModelPackageError,
             EvidenceCaptureError,OSError,ValueError,TypeError,KeyError) as exc:
         print("M43_MODEL_PILOT_BLOCKED: "+type(exc).__name__,file=sys.stderr)
         return 2
