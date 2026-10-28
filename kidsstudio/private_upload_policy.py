@@ -117,9 +117,20 @@ class PrivateUploadPolicy:
         qa=db.execute("""SELECT state,checks_passed,media_sha256 FROM
             studio_quality_reviews WHERE series_id=? AND ordinal=?
             AND render_job_id=?""",(sid,ordinal,render_job)).fetchone()
-        if (not qa or qa["state"]!="READY_FOR_OWNER_EPISODE_APPROVAL" or
+        if (not qa or qa["state"] not in (
+            "READY_FOR_OWNER_EPISODE_APPROVAL","AI_INTERNAL_READY_PRIVATE_ONLY") or
             qa["checks_passed"]!=11 or qa["media_sha256"]!=master_sha):
-            raise PrivatePolicyError("Final technical QA report incomplete.")
+            raise PrivatePolicyError("Final technical plus independent reviewer QA incomplete.")
+        if qa["state"]=="AI_INTERNAL_READY_PRIVATE_ONLY":
+            ai=db.execute("""SELECT status,media_sha256,review_bundle_sha256,
+                pedagogy_provider,visual_provider FROM studio_ai_final_reviews
+                WHERE series_id=? AND ordinal=? AND render_job_id=?""",
+                (sid,ordinal,render_job)).fetchone()
+            if (not ai or ai["status"]!="AI_INTERNAL_READY_PRIVATE_ONLY" or
+                ai["media_sha256"]!=master_sha or
+                ai["review_bundle_sha256"]!=qa["review_report_sha256"] or
+                ai["pedagogy_provider"]==ai["visual_provider"]):
+                raise PrivatePolicyError("Independent M27 internal reviewer evidence unavailable.")
         if db.execute("""SELECT 1 FROM sqlite_master WHERE type='table'
             AND name='studio_private_previews'""").fetchone():
             old=db.execute("""SELECT render_job_id,master_sha256,state
