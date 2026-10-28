@@ -54,7 +54,28 @@ def _prompts(kind: str, payload: Any) -> tuple[str, str, str | None]:
             "Language: " + ("natural Iraqi-friendly Modern Standard Arabic"
                             if language == "ar" else "natural English") + "."
         )
-        return system, "Draft an original short episode on: " + topic, None
+        learning=payload.get("learning_experiment")
+        experiment=""
+        if learning is not None:
+            from .studio_learning import FEATURES
+            if (not isinstance(learning,dict) or
+                set(learning)!={"proposal_id","feature","style"} or
+                not isinstance(learning["proposal_id"],str) or
+                not re.fullmatch(r"[a-f0-9]{32}",learning["proposal_id"]) or
+                learning["feature"] not in FEATURES or
+                not isinstance(learning["style"],str) or
+                not re.fullmatch(r"[a-z][a-z0-9_]{2,39}",learning["style"])):
+                raise WorkerError("Unverified creative experiment payload.")
+            experiment=(
+                "\\nOPTIONAL EXPERIMENTAL IDEA from an owner-approved "
+                "observational comparison, not proof of causality: consider "
+                +learning["feature"]+"="+learning["style"]+
+                ". The lesson must stay original, distinct and age-appropriate; "
+                "do not reuse story templates, make clickbait, or change "
+                "learning objectives merely for views. The reviewer and owner "
+                "must judge quality independently."
+            )
+        return system, "Draft an original short episode on: " + topic + experiment, None
     script = payload.get("script_text")
     previous = payload.get("original_provider_id")
     if not isinstance(script, str) or not 1 <= len(script) <= 12000:
