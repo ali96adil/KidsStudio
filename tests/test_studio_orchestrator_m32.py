@@ -102,6 +102,17 @@ class Orchestration32(unittest.TestCase):
         return artifact
 
     def approve(self,n,kind,sha256):
+        # This synthetic acceptance test uses the existing legacy owner
+        # fixture, never a fake M28 model verdict or public authorization.
+        if kind=="voice_synthesize" and n==1:
+            with self.queue._connection(write=True) as db:
+                row=db.execute("""SELECT job_id FROM studio_scene_stages
+                    WHERE series_id='colors-ar' AND ordinal=1 AND scene=1
+                    AND stage='voice_synthesize'""").fetchone()
+                db.execute("""INSERT INTO studio_scene_voice_checks VALUES
+                    (?,?,?,?,?,?,?,?)""",
+                    ("colors-ar",1,1,row["job_id"],sha256,"f"*64,
+                     "TECH_PASS_OWNER_LISTENING_PENDING",self.queue.clock()))
         if kind=="ltx_animate":
             with self.queue._connection(write=True) as db:
                 st=db.execute("""SELECT job_id,source_voice_sha256 FROM
@@ -114,7 +125,8 @@ class Orchestration32(unittest.TestCase):
                     st["source_voice_sha256"],sha256,
                     "TECH_COMPATIBLE_HUMAN_QA_REQUIRED"))
         self.scenes.approve("colors-ar",1,n,kind,sha256,
-                            "Synthetic M32 test approval, no real model execution")
+                            "Synthetic M32 test approval, no real model execution",
+                            owner_listened=(n==1 and kind=="voice_synthesize"))
 
     def test_read_only_gate_and_conservative_one_job_per_tick(self):
         before=self.coord.status(self.plan)
