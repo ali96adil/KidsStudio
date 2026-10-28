@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from .series_manager import DIGEST, IDENT
 from .studio_queue import StudioQueue, _json_object
-from .youtube_private_upload import CHANNEL, JOB
+from .youtube_private_upload import CHANNEL, JOB, VIDEO
 
 
 class PrivatePolicyError(ValueError):
@@ -231,7 +231,8 @@ class PrivateUploadPolicy:
                   "youtube_privacy","processing_status",
                   "platform_privacy_verified","ready_for_owner_review",
                   "public_release_authorized"}
-        if (not isinstance(result,dict) or
+        if (not isinstance(result,dict) or set(result)!=expected or
+            type(result.get("schema_version")) is not int or result["schema_version"]!=1 or
             result.get("status") not in (
                 "YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING",
                 "YOUTUBE_PRIVATE_PROCESSING_PENDING") or
@@ -239,7 +240,11 @@ class PrivateUploadPolicy:
             result.get("youtube_privacy")!="private" or
             result.get("platform_privacy_verified") is not True or
             not isinstance(result.get("video_id"),str) or
-            len(result["video_id"])!=11):
+            not VIDEO.fullmatch(result["video_id"]) or
+            result.get("ready_for_owner_review") is not (
+                result.get("status")=="YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING") or
+            (result.get("processing_status")=="succeeded") is not (
+                result.get("status")=="YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING")):
             raise PrivatePolicyError("Private-only result proof required.")
         with self.queue._connection(write=True) as db:
             leased=self.queue._guard_current(db,job_id,worker_id,generation,
@@ -251,13 +256,41 @@ class PrivateUploadPolicy:
                 WHERE series_id=?""",(payload["series_id"],)).fetchone()
             if not policy or policy["state"]!="ENABLED" or policy["revision"]!=payload["policy_revision"]:
                 raise PrivatePolicyError("Owner revoked upload before completion; manual reconciliation.")
+            self._approved(db,payload["series_id"],payload["episode_number"],
+                           payload["render_job_id"],payload["master_sha256"])
             if (result.get("series_id")!=payload["series_id"] or
                 result.get("episode_number")!=payload["episode_number"] or
                 result.get("render_job_id")!=payload["render_job_id"] or
                 result.get("video_sha256")!=payload["master_sha256"] or
                 result.get("channel_id")!=payload["channel_id"]):
                 raise PrivatePolicyError("Reported video differs from authorized upload.")
+            # An authenticated, dedicated Mac uploader may hand off a
+            # verified PRIVATE video directly to the owner-review queue.
+            # This is an authenticated worker assertion, not a Google signature.
             now=self.queue.clock()
+            if result["ready_for_owner_review"]:
+                installed=db.execute("""SELECT 1 FROM sqlite_master
+                    WHERE type='table' AND name='studio_private_previews'""").fetchone()
+                if not installed:
+                    raise PrivatePolicyError("Initialize owner preview ledger before private upload.")
+                latest=db.execute("""SELECT state,render_job_id,master_sha256
+                    FROM studio_private_previews WHERE series_id=? AND ordinal=?
+                    ORDER BY version DESC LIMIT 1""",
+                    (payload["series_id"],payload["episode_number"])).fetchone()
+                if latest and (latest["state"]!="REVISION_REQUESTED" or
+                    latest["render_job_id"]==payload["render_job_id"] or
+                    latest["master_sha256"]==payload["master_sha256"]):
+                    raise PrivatePolicyError("Existing private review version conflicts.")
+                version=db.execute("""SELECT COALESCE(MAX(version),0)+1 FROM
+                    studio_private_previews WHERE series_id=? AND ordinal=?""",
+                    (payload["series_id"],payload["episode_number"])).fetchone()[0]
+                db.execute("""INSERT INTO studio_private_previews(
+                    video_id,series_id,ordinal,render_job_id,master_sha256,
+                    state,version,claimed_visibility,platform_privacy_verified,
+                    recorded_at) VALUES (?,?,?,?,?,'PRIVATE_AWAITING_OWNER_REVIEW',
+                    ?,'PRIVATE',1,?)""",
+                    (result["video_id"],payload["series_id"],payload["episode_number"],
+                     payload["render_job_id"],payload["master_sha256"],version,now))
             db.execute("""UPDATE jobs SET state='COMPLETED',worker_id=NULL,
                 lease_expires=NULL,updated_at=?,result_json=?
                 WHERE job_id=?""",(now,_json_object(result,"private upload result"),job_id))
@@ -265,4 +298,6 @@ class PrivateUploadPolicy:
                 "status":"PRIVATE_VERIFIED" if result.get("ready_for_owner_review")
                 else "PRIVATE_PROCESSING_PENDING"})
         return {"status":"PRIVATE_UPLOAD_RECEIPT_RECORDED_NOT_PUBLIC",
-                "job_id":job_id,"public_release_authorized":False}
+                "job_id":job_id,
+                "owner_review_queued":result["ready_for_owner_review"],
+                "public_release_authorized":False}
