@@ -183,6 +183,25 @@ class LocalOmni42(unittest.TestCase):
                 self.review("pronunciation",run_inference=None)
         self.assertFalse((self.root/"unqualified_pronunciation.json").exists())
 
+    def test_direct_cli_defaults_to_no_inference_and_no_output(self):
+        out=self.root/"cli_must_not_run.json"
+        argv=["--model",str(self.model),"--role","pronunciation",
+              "--wav",str(self.av.wav),"--script",str(self.av.script),
+              "--transcript",str(self.transcript),"--output",str(out)]
+        with patch("kidsstudio.qwen_omni_local.infer_local_qwen",
+                   side_effect=AssertionError("Direct CLI cannot infer")):
+            self.assertEqual(main(argv),0)
+        self.assertFalse(out.exists())
+
+    def test_existing_private_observation_is_immutable(self):
+        result=self.review("pronunciation")
+        path=self.root/"unqualified_pronunciation.json"
+        previous=path.read_bytes()
+        with self.assertRaises(OmniAdapterError):
+            self.review("pronunciation")
+        self.assertEqual(path.read_bytes(),previous)
+        self.assertEqual(len(self.inference_calls),1)
+
     def test_unknown_checkpoint_and_bad_role_fail_closed(self):
         with self.assertRaises(OmniAdapterError):
             self.review("video_text_only")
