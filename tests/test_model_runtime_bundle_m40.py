@@ -172,6 +172,21 @@ class PrivateModelBundle40(unittest.TestCase):
         self.assertEqual(rc,0)
         self.assertFalse((self.root/"not_created").exists())
 
+    def test_explicit_run_without_private_signer_key_fails_before_any_output(self):
+        a=self.av.audio
+        argv=["--manifest",str(self.file),
+              "--manifest-sha256",digest(self.file),
+              "voice","--series","colors-ar","--episode","1",
+              "--scene","1","--job-id","a"*32,
+              "--wav",str(a.wav),"--wav-sha256",digest(a.wav),
+              "--script",str(a.script),"--script-sha256",digest(a.script),
+              "--rights",str(a.rights),"--out",str(self.root/"no_key_result"),
+              "--language","ar","--execute"]
+        with patch.dict("os.environ",{"PATH":"/usr/bin:/bin"},clear=True):
+            result=main(argv)
+        self.assertEqual(result,2)
+        self.assertFalse((self.root/"no_key_result").exists())
+
     def test_explicit_voice_adapter_reuses_genuine_m34_ffmpeg_and_mock_ai(self):
         b=self.load()
         audio=self.av.audio
