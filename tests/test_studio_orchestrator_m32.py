@@ -17,6 +17,8 @@ from kidsstudio.series_manager import SeriesManager
 from kidsstudio.studio_scenes import SceneLedger
 from kidsstudio.script_ai_quality import ScriptAIQuality
 from kidsstudio.studio_orchestrator import StudioOrchestrator,OrchestrationError
+from kidsstudio.scene_repair import SceneRepair
+from kidsstudio.scene_ai_qa import SceneAIGate
 
 
 def sha(path):
@@ -198,6 +200,46 @@ class Orchestration32(unittest.TestCase):
                          "NOT_QUEUED")
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.plan)
+
+    def test_repair_negative_current_voice_uses_scoped_m31_plan(self):
+        self.coord.pin(self.plan)
+        first=self.coord.tick(self.plan)
+        voice_sha=self.pass_job(first["job_id"],"voice_synthesize")
+        SceneAIGate(self.queue).initialize()
+        repair=SceneRepair(self.queue);repair.initialize()
+        with self.queue._connection(write=True) as db:
+            db.execute("""INSERT INTO studio_scene_voice_checks VALUES
+                (?,?,?,?,?,?,?,?)""",
+                ("colors-ar",1,1,first["job_id"],voice_sha,"e"*64,
+                 "TECH_PASS_OWNER_LISTENING_PENDING",self.queue.clock()))
+            db.execute("""INSERT INTO studio_scene_ai_reviews VALUES
+                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                ("colors-ar",1,1,"voice_synthesize",first["job_id"],
+                 voice_sha,sha(self.scripts[0]),"f"*64,
+                 "a"*64,"b"*64,"e"*64,"provider_abc","provider_xyz",
+                 "AI_SCENE_NEEDS_FIX",0.5,self.queue.clock()))
+        repair_path=self.root/"repair.json"
+        repair_path.write_text(json.dumps({
+            "schema_version":1,"series_id":"colors-ar",
+            "episode_number":1,"scene":1,"stage":"voice_synthesize",
+            "script_sha256":sha(self.scripts[0]),
+            "recipes":["revoice_1","revoice_2"],
+            "public_release_authorized":False}))
+        repair.register_plan(repair_path)
+        status=self.coord.status(self.plan)
+        self.assertEqual(status["next_action"],"REPAIR_REJECTED_SCENE")
+        retried=self.coord.tick(self.plan)
+        self.assertEqual(retried["status"],"M32_ONE_PRIVATE_JOB_QUEUED")
+        self.assertEqual(retried["action"],"REPAIR_REJECTED_SCENE")
+        self.assertEqual(retried["repair_attempt"],1)
+        self.assertNotEqual(retried["job_id"],first["job_id"])
+        self.assertEqual(self.queue.get(retried["job_id"])["kind"],
+                         "voice_synthesize")
+        self.assertEqual(self.coord.tick(self.plan)["status"],
+                         "M32_BLOCKED_NO_JOB_QUEUED")
+        with self.queue._connection() as db:
+            self.assertIsNone(db.execute("""SELECT 1 FROM studio_scene_stages
+                WHERE series_id='colors-ar' AND scene=2""").fetchone())
 
     def test_plan_cannot_advertise_public_permission(self):
         self.plan_data["public_release_authorized"]=True
