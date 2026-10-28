@@ -14,7 +14,7 @@ import unittest
 
 from kidsstudio.studio_queue import StudioQueue
 from kidsstudio.series_manager import SeriesManager,SeriesError
-from kidsstudio.studio_scenes import SceneLedger
+from kidsstudio.studio_scenes import SceneLedger,SceneError
 from kidsstudio.script_ai_quality import ScriptAIQuality
 from kidsstudio.studio_orchestrator import StudioOrchestrator,OrchestrationError
 from kidsstudio.scene_repair import SceneRepair
@@ -175,6 +175,105 @@ class Orchestration32(unittest.TestCase):
         self.assertFalse(status["software_full_cycle_qualified"])
         self.assertFalse(status["mac_pi_hardware_test_ready"])
         self.assertFalse(status["youtube_private_upload_qualified"])
+
+    def _complete_deferred_scene_stages(self):
+        self.plan_data["assembly"]["catalogue_sha256"]="AFTER_SCENE_QA"
+        self.plan.write_text(json.dumps(self.plan_data))
+        self.coord.pin(self.plan)
+        for scene in (1,2):
+            voice=self.coord.tick(self.plan)
+            self.assertEqual(voice["action"],
+                "FIRST_AI_VOICE" if scene==1 else "NEXT_VOICE")
+            wav=self.pass_job(voice["job_id"],"voice_synthesize")
+            self.approve(scene,"voice_synthesize",wav)
+            ltx=self.coord.tick(self.plan)
+            self.assertEqual(ltx["action"],"NEXT_LTX")
+            video=self.pass_job(ltx["job_id"],"ltx_animate")
+            self.approve(scene,"ltx_animate",video)
+        self.assertEqual(self.coord.status(self.plan)["next_action"],
+                         "M48_ASSEMBLY_CATALOGUE_NOT_BOUND")
+        self.assertEqual(self.coord.tick(self.plan)["status"],
+                         "M32_BLOCKED_NO_JOB_QUEUED")
+
+    def _deferred_evidence(self):
+        from kidsstudio.studio_scenes import assert_scenes_ready
+        with self.queue._connection() as db:
+            ready=assert_scenes_ready(db,"colors-ar",1,sha(self.parent))
+        file=self.root/"m14_scene_evidence.json"
+        manifest={
+            "schema_version":1,"series_id":"colors-ar",
+            "episode_number":1,"script_sha256":sha(self.parent),
+            "scene_plan_sha256":self.plan_data["scene_plan_sha256"],
+            "assembly_recipe_sha256":"e"*64,
+            "voice_output_root":str(self.root/"private_voice"),
+            "ltx_output_root":str(self.root/"private_ltx"),
+            "scenes":[{
+                "scene":x["scene"],
+                "scene_script_sha256":x["script_sha256"],
+                "voice_job_id":x["voice_job_id"],
+                "ltx_job_id":x["ltx_job_id"],
+                "voice_sha256":x["voice_sha256"],
+                "ltx_sha256":x["ltx_sha256"]
+            } for x in ready],
+            "publication_approved":False
+        }
+        file.write_text(json.dumps(manifest))
+        return file
+
+    def test_m48_deferred_catalogue_binding_allows_real_timing_and_no_overwrite(self):
+        self._complete_deferred_scene_stages()
+        evidence=self._deferred_evidence()
+        bound=self.coord.bind_assembly(
+            self.plan,evidence_file=evidence,catalogue_sha256="b"*64)
+        self.assertEqual(bound["status"],"M48_FROZEN_ASSEMBLY_PINNED_NO_JOB_QUEUED")
+        self.assertFalse(bound["render_job_queued"])
+        self.assertEqual(self.coord.status(self.plan)["next_action"],
+                         "ASSEMBLE_FINAL_EPISODE")
+        with self.assertRaises(OrchestrationError):
+            self.coord.bind_assembly(
+                self.plan,evidence_file=evidence,catalogue_sha256="c"*64)
+        started=self.coord.tick(self.plan)
+        self.assertEqual(started["action"],"ASSEMBLE_FINAL_EPISODE")
+        job=json.loads(self.queue.get(started["job_id"])["payload"])
+        self.assertEqual(job["catalogue_sha256"],"b"*64)
+        self.assertFalse(started["public_release_authorized"])
+
+    def test_m48_rejects_partial_scene_or_swapped_evidence(self):
+        self.plan_data["assembly"]["catalogue_sha256"]="AFTER_SCENE_QA"
+        self.plan.write_text(json.dumps(self.plan_data))
+        self.coord.pin(self.plan)
+        with self.assertRaises(SceneError):
+            self.coord.bind_assembly(
+                self.plan,evidence_file=self.root/"nothing.json",
+                catalogue_sha256="b"*64)
+        for scene in (1,2):
+            voice=self.coord.tick(self.plan)
+            wav=self.pass_job(voice["job_id"],"voice_synthesize")
+            self.approve(scene,"voice_synthesize",wav)
+            ltx=self.coord.tick(self.plan)
+            mp4=self.pass_job(ltx["job_id"],"ltx_animate")
+            self.approve(scene,"ltx_animate",mp4)
+        evidence=self._deferred_evidence()
+        original=json.loads(evidence.read_text())
+        swapped=json.loads(evidence.read_text())
+        swapped["scenes"][0]["voice_sha256"]="f"*64
+        evidence.write_text(json.dumps(swapped))
+        with self.assertRaises(OrchestrationError):
+            self.coord.bind_assembly(
+                self.plan,evidence_file=evidence,catalogue_sha256="b"*64)
+        evidence.write_text(json.dumps(original))
+        self.coord.bind_assembly(
+            self.plan,evidence_file=evidence,catalogue_sha256="b"*64)
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_stages SET artifact_sha256=?
+                WHERE series_id='colors-ar' AND ordinal=1 AND scene=2
+                AND stage='ltx_animate'""",("f"*64,))
+        state=self.coord.status(self.plan)
+        self.assertIn(state["next_action"],(
+            "SCENE_LTX_QA_APPROVED","M48_ASSEMBLY_SCENES_NOT_VERIFIED"))
+        self.assertNotEqual(state["next_action"],"ASSEMBLE_FINAL_EPISODE")
+        self.assertEqual(self.coord.tick(self.plan)["status"],
+                         "M32_BLOCKED_NO_JOB_QUEUED")
 
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
