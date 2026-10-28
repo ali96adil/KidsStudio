@@ -135,6 +135,23 @@ class OfflineEvidence45(unittest.TestCase):
         self.assertFalse(report["independent_canary_truth_qualified"])
         self.assertFalse(report["model_quality_qualified"])
         self.assertIn("INDEPENDENT_CANARY_GROUND_TRUTH",report["blockers"])
+        # Even a dishonestly memorized perfect result can only prove
+        # the bytes were bound, NEVER independently grounded model skill.
+        score["status"]="M39_CANARY_SIGNAL_MATCHED_UNVERIFIED_GROUND_TRUTH"
+        score["mismatched_criteria"]=0
+        score["all_canaries_match"]=True
+        for finding in score["findings"]:
+            finding["wrong_verdicts"]=[]
+            finding["passes_expected_labels"]=True
+        score_file.write_text(json.dumps(score))
+        perfect=self.assess(av_canary_report=score_file,
+            av_canary_sha256=digest(score_file),
+            av_canary_manifest=c.manifest)
+        self.assertTrue(perfect["four_canary_source_bytes_checked"])
+        self.assertFalse(perfect["model_quality_qualified"])
+        self.assertFalse(perfect["independent_canary_truth_qualified"])
+        self.assertFalse(perfect["private_upload_permitted"])
+        self.assertFalse(perfect["public_release_authorized"])
         score["model_quality_qualified"]=True
         score_file.write_text(json.dumps(score))
         with self.assertRaises(EvidenceReadinessError):
