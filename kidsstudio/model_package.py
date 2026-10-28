@@ -45,6 +45,8 @@ def _path(file:str|Path,*,private_root:Path|str|None=None)->Path:
         raise ModelPackageError("Checkpoint must be an absolute, non-symlink source.")
     p=raw.resolve()
     _ensure_private(p if p.is_dir() else p.parent)
+    if p.is_dir() and (p.stat().st_mode & 0o022):
+        raise ModelPackageError("Checkpoint directory cannot be writable by others.")
     if private_root is not None:
         root=Path(private_root).expanduser()
         if not root.is_absolute() or root.is_symlink() or not p.is_relative_to(
@@ -56,7 +58,8 @@ def _path(file:str|Path,*,private_root:Path|str|None=None)->Path:
 def _layout(root:Path)->tuple[dict,bytes]:
     manifest=root/PACKAGE_NAME
     if (not manifest.is_file() or manifest.is_symlink()
-        or not 100<=manifest.stat().st_size<=MAX_MANIFEST_BYTES):
+        or not 100<=manifest.stat().st_size<=MAX_MANIFEST_BYTES or
+        (manifest.stat().st_mode & 0o022)):
         raise ModelPackageError("Pinned model-files.json is absent or oversized.")
     raw=manifest.read_bytes()
     try:doc=json.loads(raw.decode("utf-8"))
@@ -95,6 +98,7 @@ def _layout(root:Path)->tuple[dict,bytes]:
         if (not candidate.is_file() or candidate.is_symlink()
             or not candidate.resolve().is_relative_to(root) or
             candidate.stat().st_size!=row["bytes"] or
+            (candidate.stat().st_mode & 0o022) or
             digest(candidate)!=row["sha256"]):
             raise ModelPackageError("A model member is missing, mutated or symlinked.")
         listed.add(name)
@@ -207,7 +211,7 @@ def freeze_model_directory(directory:str|Path,*,execute:bool=False)->dict:
     total=0
     for name,p in sorted(names):
         size=p.stat().st_size
-        if not 0<size<=MAX_FILE_BYTES:
+        if not 0<size<=MAX_FILE_BYTES or (p.stat().st_mode & 0o022):
             raise ModelPackageError("Model member size outside bounded limits.")
         total+=size
         if total>MAX_PACKAGE_BYTES:
