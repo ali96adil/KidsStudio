@@ -86,6 +86,12 @@ class MediaRecipes:
                 (("project_report",) if kind == "godot_render" else
                  ("episode_recipe",) if kind == "episode_assemble" else ("stage_recipe",))
             )
+            if kind == "episode_assemble" and isinstance(inputs,dict):
+                provided=set(inputs)
+                if provided not in ({"episode_recipe"},
+                                    {"episode_recipe","scene_evidence"}):
+                    raise MediaError("Only approved episode and optional scene evidence allowed.")
+                names=tuple(sorted(provided))
             if (not isinstance(inputs, dict) or not isinstance(pins, dict) or
                 set(inputs) != set(names) or set(pins) != set(names)):
                 raise MediaError("Recipe input names/hash pins do not match.")
@@ -122,6 +128,17 @@ class MediaRecipes:
             path = _private_path(filename, directory=False)
             if _sha(path) != recipe["sha256"][name]:
                 raise MediaError("Pinned media source changed; owner review required.")
+        if kind == "episode_assemble":
+            assembler=EpisodeAssembler(recipe["inputs"]["episode_recipe"])
+            if len(assembler.clips)>1 and "scene_evidence" not in recipe["inputs"]:
+                raise MediaError("Multi-scene montage requires frozen M14 approval evidence.")
+            if "scene_evidence" in recipe["inputs"]:
+                from .scene_catalogue import verify_scene_seal
+                try:
+                    verify_scene_seal(recipe["inputs"]["episode_recipe"],
+                                      recipe["inputs"]["scene_evidence"])
+                except (OSError,ValueError,TypeError,KeyError) as exc:
+                    raise MediaError("Frozen M14 scene evidence no longer matches media.") from exc
         if kind == "character_generate":
             source = recipe["inputs"]
             audit_character_workflow(
