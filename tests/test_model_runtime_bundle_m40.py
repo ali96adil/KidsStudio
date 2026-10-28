@@ -141,6 +141,21 @@ class PrivateModelBundle40(unittest.TestCase):
                 self.load()
         self.save()
 
+    def test_bundle_manifest_cannot_be_outside_private_root_or_shared(self):
+        # A separately pinned manifest still must live in the same
+        # owner-private model root, not a shared temporary directory.
+        other=self.av.root/"foreign_model_bundle.json"
+        other.write_bytes(self.file.read_bytes())
+        with self.assertRaises(ModelBundleError):
+            LocalModelBundle(other,digest(other))
+        before=self.root.stat().st_mode
+        try:
+            self.root.chmod(0o777)
+            with self.assertRaises(ModelBundleError):
+                self.load()
+        finally:
+            self.root.chmod(before & 0o777)
+
     def test_no_execute_voice_cli_is_read_only_and_ignores_fake_m34_results(self):
         argv=["--manifest",str(self.file),
               "--manifest-sha256",digest(self.file),
