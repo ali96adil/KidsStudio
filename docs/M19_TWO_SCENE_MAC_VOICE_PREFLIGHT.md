@@ -26,7 +26,8 @@ private root (these paths below are placeholders, not real discovered paths):
 - M10 `mac_contract.json`, referencing the approved **parent** episode
   script, original Bunny asset and exact Chatterbox/LTX checkpoint bytes;
 - M13-style `scene_plan.json` with exactly two ordered, distinct scene
-  script SHA256 values and the parent episode-script SHA256;
+  script SHA256 values and the parent episode-script SHA256, **plus its exact
+  owner-recorded plan SHA256** from M13 registration;
 - two original independent, already-owner-reviewed scene text files;
 - two M6 `voice_synthesize` recipes, each pinning the appropriate scene
   script as *both* its `script` and `inputs.script`;
@@ -44,6 +45,7 @@ a workstation inspection, is:
 studio-two-scene-preflight \
   --mac-contract /PRIVATE/KidsStudio/mac_contract.json \
   --scene-plan /PRIVATE/KidsStudio/scene_plan.json \
+  --scene-plan-sha256 EXACT_OWNER_RECORDED_M13_PLAN_SHA256 \
   --scene-1-script /PRIVATE/KidsStudio/scripts/scene01.txt \
   --scene-1-voice-recipe /PRIVATE/KidsStudio/recipes/scene01_voice.json \
   --scene-2-script /PRIVATE/KidsStudio/scripts/scene02.txt \
@@ -63,7 +65,7 @@ The new synthetic tests verify:
 1. Two different source scene scripts can match the *same* M10 Mac contract
    while preserving each individual exact recipe/source pin.
 2. Source/recipe swap or altered script bytes fails.
-3. Parent episode SHA mismatch or duplicate scene hashes fails.
+3. Parent episode SHA mismatch, **changed approved scene-plan bytes**, or duplicate scene hashes fails.
 4. Replacing the approved Chatterbox wrapper with the LTX wrapper fails.
 5. The existing M11 parent-script handoff remains strict, so no legacy
    behavior is widened.
