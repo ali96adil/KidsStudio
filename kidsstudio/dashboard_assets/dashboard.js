@@ -112,6 +112,14 @@
     host.append(make("p","small-explainer",
       "فحص الجودة M7: "+(states[qa.state]||"تحتاج مراجعة فنية")+" · "+
       fmt(qa.criteria_passed||0)+" من 11 معياراً موثقاً"));
+    const scenes=episode.scene_progress||{total:0,voice_approved:0,ltx_approved:0,blocked:0};
+    if (scenes.total>0) {
+      host.append(make("p","small-explainer",
+        "المشاهد: "+fmt(scenes.total)+
+        " · صوت معتمد "+fmt(scenes.voice_approved)+
+        " · تحريك معتمد "+fmt(scenes.ltx_approved)+
+        (scenes.blocked ? " · مهام متوقفة "+fmt(scenes.blocked) : "")));
+    }
     const continuity=episode.audio_continuity||{state:"NOT_CONFIGURED"};
     const continuityText={
       NOT_CONFIGURED:"فحص الاستمرارية الصوتية غير مفعّل بعد",
