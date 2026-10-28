@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import wave
 
 from kidsstudio.audio_continuity import compare_voice_to_a2v
@@ -129,7 +130,7 @@ class SynchronizedAV37(unittest.TestCase):
         return review_synchronized(**args)
 
     def test_actual_soundtrack_real_pcm_and_frames_bound_to_two_mock_AV_models(self):
-        with unittest.mock.patch.dict(os.environ,{
+        with patch.dict(os.environ,{
             "KIDS_STUDIO_SCENE_QA_RUNNER_KEY":"PRIVATE_SYNTHETIC_SIGNING_KEY",
             "GOOGLE_CLIENT_SECRET":"PRIVATE_MOCK_OAUTH_SECRET"}):
             result=self.review()
