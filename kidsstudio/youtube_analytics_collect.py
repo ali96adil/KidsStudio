@@ -140,7 +140,7 @@ def _decode_api(obj:dict)->tuple[int,float,float,float]|None:
             (minutes,duration,percentage)) or
         not 0<=minutes<=10**10 or
         not 0<=duration<=7200 or
-        not 0<=percentage<=100):
+        not 0<=percentage<=400):
         raise AnalyticsCollectionError("Analytics API returned invalid metric values.")
     return views,float(minutes),float(duration),float(percentage)
 
