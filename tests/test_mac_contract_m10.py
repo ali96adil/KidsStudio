@@ -37,6 +37,11 @@ class MacContractTests(unittest.TestCase):
             file.write_bytes(("synthetic:"+role).encode())
             self.assets[role]=file
         self.interpreter=Path(sys.executable).resolve()
+        self.mock_ffmpeg=self.primary/"ffmpeg"
+        self.mock_ffprobe=self.primary/"ffprobe"
+        for tool in (self.mock_ffmpeg,self.mock_ffprobe):
+            tool.write_text("#!/bin/sh\nexit 0\n")
+            tool.chmod(0o700)
         self.checkpoint={}
         self.engines=[]
         for kind,engine in (("voice_synthesize","chatterbox_multilingual_mlx"),
@@ -58,8 +63,13 @@ class MacContractTests(unittest.TestCase):
             "private_roots":[str(self.primary),str(self.other)],
             "assets":[{"role":role,"path":str(f),"sha256":sha(f)}
                       for role,f in self.assets.items()],
-            "tools":[{"role":role,"path":str(self.interpreter),
-                      "sha256":sha(self.interpreter)}
+            "tools":[{"role":role,
+                      "path":str(self.mock_ffmpeg if role=="ffmpeg" else
+                                 self.mock_ffprobe if role=="ffprobe" else
+                                 self.interpreter),
+                      "sha256":sha(self.mock_ffmpeg if role=="ffmpeg" else
+                                   self.mock_ffprobe if role=="ffprobe" else
+                                   self.interpreter)}
                      for role in ("voice_python","ltx_python","ffmpeg","ffprobe")],
             "engine_manifests":self.engines,
             "minimum_free_gib":20,
@@ -122,6 +132,14 @@ class MacContractTests(unittest.TestCase):
         self.save()
         (self.primary/".git").mkdir()
         with self.assertRaises(ValueError):
+            self.run_contract()
+
+    def test_python_masquerading_as_ffmpeg_is_rejected(self):
+        wrong=next(tool for tool in self.data["tools"] if tool["role"]=="ffmpeg")
+        wrong["path"]=str(self.interpreter)
+        wrong["sha256"]=sha(self.interpreter)
+        self.save()
+        with self.assertRaises(MacIntakeError):
             self.run_contract()
 
     def test_cli_config_does_not_create_run_folders(self):
