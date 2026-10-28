@@ -124,7 +124,11 @@ def validate_plan(plan: dict, media: str | Path, readiness: str | Path,
         or (report["series_id"],report["episode_number"],report["render_job_id"],
             report["video_sha256"])!=
            (sid,ordinal,plan["render_job_id"],plan["master_sha256"])
-        or report["owner_final_qa"] is not True
+        or not (
+            report["owner_final_qa"] is True and
+            report.get("ai_internal_review_approved",False) is False
+            or report["owner_final_qa"] is False and
+            report.get("ai_internal_review_approved") is True)
         or report["upload_performed"] is not False
         or report["public_release_authorized"] is not False):
         raise YouTubePrivateError("Current owner-pinned M8 archive readiness mismatch.")
