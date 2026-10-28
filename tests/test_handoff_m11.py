@@ -36,6 +36,11 @@ class HandoffTests(unittest.TestCase):
         self.assets["bunny_reference"]=self.original
         self.wav=self.root/"approved_voice.wav";self.wav.write_bytes(b"approved voice" * 16)
         self.python=Path(sys.executable).resolve()
+        self.ffmpeg=self.root/"ffmpeg"
+        self.ffprobe=self.root/"ffprobe"
+        for tool in (self.ffmpeg,self.ffprobe):
+            tool.write_text("#!/bin/sh\nexit 0\n")
+            tool.chmod(0o700)
         self.engine={}
         for kind,name in (("voice_synthesize","chatterbox_multilingual_mlx"),
                           ("ltx_animate","ltx_2_3_mlx")):
@@ -56,7 +61,11 @@ class HandoffTests(unittest.TestCase):
             "private_roots":[str(self.root),str(self.external)],
             "assets":[{"role":role,"path":str(f),"sha256":sha(f)}
                       for role,f in self.assets.items()],
-            "tools":[{"role":role,"path":str(self.python),"sha256":sha(self.python)}
+            "tools":[{"role":role,
+                      "path":str(self.ffmpeg if role=="ffmpeg" else
+                                 self.ffprobe if role=="ffprobe" else self.python),
+                      "sha256":sha(self.ffmpeg if role=="ffmpeg" else
+                                   self.ffprobe if role=="ffprobe" else self.python)}
                      for role in ("voice_python","ltx_python","ffprobe","ffmpeg")],
             "engine_manifests":[{"kind":k,"path":str(f),"sha256":sha(f)}
                                 for k,f in self.engine.items()],
@@ -98,7 +107,7 @@ class HandoffTests(unittest.TestCase):
           "engine_manifest":{"path":str(manifest),"sha256":sha(manifest)},
           "voice_rights":"INTERNAL_TEST_ONLY",
           "limits":{"timeout_seconds":1800,"max_output_bytes":1_000_000},
-          "ffprobe":str(self.python)
+          "ffprobe":str(self.ffprobe)
         }
 
     def check(self,ltx=False):
