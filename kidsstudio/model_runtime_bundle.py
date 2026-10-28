@@ -90,8 +90,9 @@ class LocalModelBundle:
         if not rawroot.is_absolute() or rawroot.is_symlink():
             raise ModelBundleError("Private model root must be an absolute directory.")
         root=_ensure_private(rawroot)
-        if not root.is_dir():
-            raise ModelBundleError("Missing private model root.")
+        if (not root.is_dir() or not path.is_relative_to(root) or
+            (root.stat().st_mode & 0o022)):
+            raise ModelBundleError("Owner model bundle must be inside a non-shared private root.")
         self.root=root
         tools=obj["tools"]
         if not isinstance(tools,dict) or set(tools)!={"ffmpeg","ffprobe"}:
