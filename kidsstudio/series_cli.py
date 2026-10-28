@@ -9,6 +9,7 @@ import sys
 from .series_manager import SeriesError, SeriesManager
 from .studio_queue import QueueError, StudioQueue
 from .studio_stage_ledger import StageLedger, StageLedgerError
+from .studio_quality_ledger import QualityLedger, QualityGateError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,15 +72,37 @@ def main(argv: list[str] | None = None) -> int:
     retry_stage.add_argument("episode",type=int)
     retry_stage.add_argument("--stage",required=True,choices=["voice_synthesize","ltx_animate"])
     retry_stage.add_argument("--reason",required=True)
+    commands.add_parser("init-quality")
+    qualitytech=commands.add_parser("register-technical-qa")
+    qualitytech.add_argument("series_id")
+    qualitytech.add_argument("episode",type=int)
+    qualitytech.add_argument("--report",required=True,type=Path)
+    qualityhuman=commands.add_parser("submit-human-qa")
+    qualityhuman.add_argument("series_id")
+    qualityhuman.add_argument("episode",type=int)
+    qualityhuman.add_argument("--review",required=True,type=Path)
+    commands.add_parser("quality-status")
     args=parser.parse_args(argv)
 
     try:
         queue=StudioQueue(args.db)
         control=SeriesManager(queue)
         stages=StageLedger(queue)
+        quality=QualityLedger(queue)
         if args.cmd=="init":
             control.initialize()
             result={"status":"SCHEMA_READY"}
+        elif args.cmd=="init-quality":
+            quality.initialize()
+            result={"status":"QUALITY_LEDGER_READY"}
+        elif args.cmd=="register-technical-qa":
+            quality.register_technical(args.series_id,args.episode,args.report)
+            result={"status":"TECH_PASSED_WAITING_HUMAN"}
+        elif args.cmd=="submit-human-qa":
+            quality.submit_owner_review(args.series_id,args.episode,args.review)
+            result={"status":"READY_FOR_OWNER_EPISODE_APPROVAL"}
+        elif args.cmd=="quality-status":
+            result={"quality":quality.snapshot()}
         elif args.cmd=="init-stages":
             stages.initialize()
             result={"status":"STAGE_LEDGER_READY"}
@@ -130,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
             result={"status":"SERIES_PRODUCTION_COMPLETED"}
         else:
             result=control.snapshot()
-    except (SeriesError,StageLedgerError,QueueError,OSError,ValueError,KeyError,TypeError) as exc:
+    except (SeriesError,StageLedgerError,QualityGateError,QueueError,OSError,ValueError,KeyError,TypeError) as exc:
         print("SERIES_ERROR: "+str(exc),file=sys.stderr)
         return 2
     print(json.dumps(result,ensure_ascii=False,indent=2))
