@@ -360,6 +360,8 @@ def main(argv:list[str]|None=None)->int:
     p=argparse.ArgumentParser(prog="studio-qwen-omni-adapter")
     p.add_argument("--model",type=Path,required=True)
     p.add_argument("--inspect",action="store_true")
+    p.add_argument("--execute",action="store_true",
+                   help="Explicitly allow expensive local model inference.")
     p.add_argument("--model-sha256")
     p.add_argument("--variant",choices=("3b","7b"),default="3b")
     p.add_argument("--role",choices=tuple(CRITERIA))
@@ -380,6 +382,12 @@ def main(argv:list[str]|None=None)->int:
                 expected_model_sha=x.model_sha256,variant=x.variant)
             print(json.dumps(result,ensure_ascii=False,indent=2))
             return 0 if result["status"].startswith("M42_RESOURCE_SCREEN_PASSED") else 1
+        if not x.execute:
+            print(json.dumps({"status":"M42_EXPLICIT_EXECUTE_REQUIRED_NO_MODEL_RUN",
+                "model_inference_performed":False,
+                "model_quality_qualified":False,
+                "public_release_authorized":False}))
+            return 0
         if not (x.role and x.wav and x.script and x.output):
             raise OmniAdapterError("Explicit independent role and original files required.")
         if x.model_sha256 and checkpoint_digest(x.model)!=x.model_sha256:
