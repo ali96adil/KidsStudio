@@ -202,6 +202,10 @@ def review_synchronized(*,series_id:str,episode:int,scene:int,
         "actual_audio_video_models_qualified_by_ci":False,
         "public_release_authorized":False
     }
+    lineage_bytes=json.dumps(lineage,sort_keys=True,ensure_ascii=False,
+        separators=(",",":"),allow_nan=False).encode("utf-8")
+    lineage["runner_hmac_sha256"]=hmac.new(
+        runner_key,lineage_bytes,hashlib.sha256).hexdigest()
     lineage_sha=_write(out/"av_runner_lineage.json",lineage)
     # The M28 report itself remains schema-compatible with the Pi importer.
     unsigned={
