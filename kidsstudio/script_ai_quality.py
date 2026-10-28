@@ -285,8 +285,10 @@ def main(argv:list[str]|None=None)->int:
         return 0
     try:
         q=StudioQueue(args.db)
-        result=ScriptAIQuality(q,ChatRouter(AIConfig(args.providers)),
-            args.artifacts).evaluate(args.series,args.episode,
+        reviewer=ScriptAIQuality(q,ChatRouter(AIConfig(args.providers)),
+                                args.artifacts)
+        reviewer.initialize()
+        result=reviewer.evaluate(args.series,args.episode,
                 language=args.language,objective=args.objective)
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0 if result["status"]=="AI_SCRIPT_PRIVATE_READY" else 1
