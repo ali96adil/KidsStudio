@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 
 from kidsstudio.model_pilot_probe import PilotProbeError,run_probe,main
+from kidsstudio.model_origin_attestation import sign_origin_draft
 from kidsstudio.qwen_omni_local import inspect_local
 from kidsstudio.real_media_evidence import digest
 from test_qwen_omni_local_m42 import LocalOmni42
@@ -63,6 +64,38 @@ class MacProbe43(unittest.TestCase):
             "'transcript_sha256':sha(x.transcript)})\n"
             "Path(x.output).write_text(json.dumps(result))\n"
         ))
+        self.origin_key=b"M44_SYNTHETIC_OWNER_SIGNING_KEY_NOT_FOR_PRODUCTION___"
+        self.license=self.root/"qwen_7b_license_COPY.txt"
+        self.license.write_text(
+            "Apache License\\nVersion 2.0, January 2004\\n"
+            "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\\n"
+            "This synthetic fixture is NOT actual licensed-source evidence. "
+            "Its only purpose is to test a private HMAC record and byte binding. "
+            "It must not be used for commercial production. "*3,encoding="utf-8")
+        self.origin_draft=self.root/"model_origin_draft.json"
+        self.origin_draft.write_text(json.dumps({
+            "schema_version":1,
+            "checkpoint_package_sha256":self.x.sha,
+            "upstream_provider":"huggingface",
+            "upstream_repository":"Qwen/Qwen2.5-Omni-7B",
+            "upstream_revision":"a"*40,
+            "source_identity":"official_repository_claim",
+            "model_variant":"7b",
+            "license_spdx_claim":"Apache-2.0",
+            "license_copy_path":str(self.license),
+            "license_copy_sha256":digest(self.license),
+            "source_reviewed_by_owner":True,
+            "license_reviewed_by_owner":True,
+            "usage_scope":"local_diagnostic_only",
+            "owner_review_note":"Synthetic review fixture, not a genuine owner source or commercial license review.",
+            "model_quality_qualified":False,
+            "youtube_private_upload_authorized":False,
+            "public_release_authorized":False
+        }),encoding="utf-8")
+        self.origin_receipt=self.root/"model_origin_receipt.json"
+        sign_origin_draft(model=self.x.model,model_sha256=self.x.sha,
+            draft=self.origin_draft,draft_sha256=digest(self.origin_draft),
+            out=self.origin_receipt,owner_key=self.origin_key,execute=True)
         self.probe_root=self.root/"one_pilot"
         self.base={
             "adapter":str(self.adapter),
@@ -77,7 +110,10 @@ class MacProbe43(unittest.TestCase):
             "transcript":self.x.transcript,
             "transcript_sha256":digest(self.x.transcript),
             "out_dir":self.probe_root,
-            "resource_screen":self.screen
+            "resource_screen":self.screen,
+            "origin_receipt":self.origin_receipt,
+            "origin_receipt_sha256":digest(self.origin_receipt),
+            "owner_origin_key":self.origin_key
         }
 
     def screen(self,*,model,expected_model_sha,variant):
@@ -157,6 +193,19 @@ class MacProbe43(unittest.TestCase):
         self.assertFalse(report["model_quality_qualified"])
         self.assertFalse(report["private_upload_permitted"])
         self.assertTrue((self.probe_root/"m42_diagnostic.json").exists())
+
+    def test_execute_without_owner_origin_record_never_launches(self):
+        with self.assertRaises(PilotProbeError):
+            self.call(execute=True,origin_receipt=None)
+        self.assertFalse(self.probe_root.exists())
+
+    def test_different_or_changed_license_record_cannot_launch(self):
+        with self.assertRaises(ValueError):
+            self.call(execute=True,origin_receipt_sha256="e"*64)
+        self.license.write_text(self.license.read_text()+"MUTATED")
+        with self.assertRaises(ValueError):
+            self.call(execute=True)
+        self.assertFalse(self.probe_root.exists())
 
     def test_malicious_pass_report_is_rejected_before_receipt(self):
         original=self.adapter.read_text()
