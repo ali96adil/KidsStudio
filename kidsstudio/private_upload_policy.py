@@ -114,7 +114,7 @@ class PrivateUploadPolicy:
             AND name='studio_quality_reviews'""").fetchone()
         if not qa_exists:
             raise PrivatePolicyError("Final technical QA schema required.")
-        qa=db.execute("""SELECT state,checks_passed,media_sha256 FROM
+        qa=db.execute("""SELECT state,checks_passed,media_sha256,review_report_sha256 FROM
             studio_quality_reviews WHERE series_id=? AND ordinal=?
             AND render_job_id=?""",(sid,ordinal,render_job)).fetchone()
         if (not qa or qa["state"] not in (
