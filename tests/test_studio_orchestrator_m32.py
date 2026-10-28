@@ -347,6 +347,61 @@ class Orchestration32(unittest.TestCase):
         self.assertEqual(self.coord.status(self.plan)["next_action"],
                          "M48_ASSEMBLY_CATALOGUE_NOT_BOUND")
 
+    def test_m50_scene_plan_change_after_status_cannot_enqueue(self):
+        """A stale green snapshot must not override a new DB scene plan."""
+        self._complete_deferred_scene_stages()
+        evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
+        self.coord.bind_assembly(self.plan,evidence_file=evidence,
+            catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        self.assertEqual(self.coord.status(self.plan)["next_action"],
+                         "ASSEMBLE_FINAL_EPISODE")
+        original=self.coord.series.queue_render
+        def changed_between_checks(*args,**kwargs):
+            with self.queue._connection(write=True) as db:
+                db.execute("""UPDATE studio_scene_plans SET plan_sha256=?
+                    WHERE series_id='colors-ar' AND ordinal=1""",("f"*64,))
+            return original(*args,**kwargs)
+        self.coord.series.queue_render=changed_between_checks
+        try:
+            with self.assertRaises(SeriesError):
+                self.coord.tick(self.plan)
+        finally:
+            self.coord.series.queue_render=original
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+        with self.queue._connection() as db:
+            episode=db.execute("""SELECT state FROM studio_episodes
+                WHERE series_id='colors-ar' AND ordinal=1""").fetchone()
+        self.assertEqual(episode["state"],"SCRIPT_APPROVED")
+
+    def test_m50_catalogue_binding_change_after_status_cannot_enqueue(self):
+        """The SHA read by tick must still match at atomic job insertion."""
+        self._complete_deferred_scene_stages()
+        evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
+        self.coord.bind_assembly(self.plan,evidence_file=evidence,
+            catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        self.assertEqual(self.coord.status(self.plan)["next_action"],
+                         "ASSEMBLE_FINAL_EPISODE")
+        original=self.coord.series.queue_render
+        def changed_between_checks(*args,**kwargs):
+            with self.queue._connection(write=True) as db:
+                db.execute("""UPDATE studio_orchestrator_assembly_bindings
+                    SET catalogue_sha256=? WHERE series_id='colors-ar'
+                    AND ordinal=1""",("f"*64,))
+            return original(*args,**kwargs)
+        self.coord.series.queue_render=changed_between_checks
+        try:
+            with self.assertRaises(SeriesError):
+                self.coord.tick(self.plan)
+        finally:
+            self.coord.series.queue_render=original
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+        with self.queue._connection() as db:
+            episode=db.execute("""SELECT state FROM studio_episodes
+                WHERE series_id='colors-ar' AND ordinal=1""").fetchone()
+        self.assertEqual(episode["state"],"SCRIPT_APPROVED")
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
