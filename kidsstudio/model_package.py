@@ -83,7 +83,7 @@ def _layout(root:Path)->tuple[dict,bytes]:
         part=PurePosixPath(name)
         if (part.is_absolute() or any(segment in ("",".","..")
              or segment.startswith(".") for segment in part.parts) or
-            name in listed or name==PACKAGE_NAME or
+            name in listed or part.as_posix()!=name or name==PACKAGE_NAME or
             part.suffix.lower() not in EXTENSIONS):
             raise ModelPackageError("Duplicate, executable or escaping model path.")
         if (not isinstance(row["sha256"],str) or
@@ -140,7 +140,7 @@ def verify_checkpoint(file:str|Path,expected_sha256:str, *,
             raise ModelPackageError("Single-file checkpoint changed or unsupported.")
     elif p.is_dir() and allow_directory:
         _,raw=_layout(p)
-        if __import__("hashlib").sha256(raw).hexdigest()!=expected_sha256:
+        if hashlib.sha256(raw).hexdigest()!=expected_sha256:
             raise ModelPackageError("Package manifest differs from pinned digest.")
     else:
         raise ModelPackageError("Checkpoint file or pinned model directory missing.")
@@ -161,7 +161,7 @@ def checkpoint_digest(file:str|Path)->str:
         return digest(p)
     if p.is_dir():
         _,raw=_layout(p)
-        return __import__("hashlib").sha256(raw).hexdigest()
+        return hashlib.sha256(raw).hexdigest()
     raise ModelPackageError("Checkpoint vanished.")
 
 
