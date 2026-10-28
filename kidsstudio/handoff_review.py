@@ -38,7 +38,8 @@ def _match(obj: dict, group: str, role: str, path: Path, sha: str) -> None:
 
 
 def _stage(stage_file: str | Path, kind: str, root: Path, obj: dict,
-           contract_engines: dict[str,dict]) -> dict[str,Any]:
+           contract_engines: dict[str,dict], *,
+           expected_scene_script: tuple[Path, str] | None = None) -> dict[str,Any]:
     stage=StagePlan(stage_file)
     if stage.kind!=kind or stage.root!=root:
         raise HandoffError("Stage kind or private root differs from Mac contract.")
@@ -57,12 +58,29 @@ def _stage(stage_file: str | Path, kind: str, root: Path, obj: dict,
     if (stage.engine_manifest!=Path(engine["path"]).resolve() or
         digest(stage.engine_manifest)!=engine["sha256"]):
         raise HandoffError("Engine manifest differs from qualified Mac inventory.")
-    _match(obj,"assets","approved_script",
-           stage.script,stage.data["script"]["sha256"])
-    if kind=="voice_synthesize":
+    if expected_scene_script is None:
+        # Legacy M11 full-episode static handoff requires the same parent
+        # approved_script recorded in the Mac inventory.
         _match(obj,"assets","approved_script",
-               stage.inputs["script"],stage.data["inputs"]["script"]["sha256"])
+               stage.script,stage.data["script"]["sha256"])
+        if kind=="voice_synthesize":
+            _match(obj,"assets","approved_script",
+                   stage.inputs["script"],stage.data["inputs"]["script"]["sha256"])
     else:
+        # M19 may use a DIFFERENT per-scene owner-approved script. Only the
+        # two-scene scene-plan validator may supply this override; it has
+        # already pinned the episode to the Mac contract and each scene to
+        # its explicit source bytes. Do not silently use the parent script.
+        if kind!="voice_synthesize":
+            raise HandoffError("Scene script override is voice-only.")
+        approved_path, approved_sha = expected_scene_script
+        if (stage.script != approved_path or
+            stage.data["script"]["sha256"] != approved_sha or
+            stage.inputs["script"] != approved_path or
+            stage.data["inputs"]["script"]["sha256"] != approved_sha or
+            digest(approved_path) != approved_sha):
+            raise HandoffError("Scene voice recipe differs from approved scene script.")
+    if kind=="ltx_animate":
         original,origin_sha=_approved(obj,"assets","bunny_reference")
         character=stage.inputs["reference_image"]
         local_sha=stage.data["inputs"]["reference_image"]["sha256"]
