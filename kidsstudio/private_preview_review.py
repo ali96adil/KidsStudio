@@ -169,6 +169,60 @@ class PreviewReview:
                 "public_release_authorized":False,
                 "upload_performed_by_this_code":False}
 
+    def record_verified_upload(self, report_file: str, expected_report_sha256: str) -> dict:
+        """Import owner-transferred M25 PRIVATE API result, pinned to bytes.
+
+        This verifies the report FORMAT and current Pi render lineage; it
+        cannot cryptographically attest that the untrusted file truly came
+        from Google's OAuth response. Never treats this as PUBLIC consent.
+        """
+        import hashlib
+        from pathlib import Path
+        from .episode_assembly import _ensure_private
+        p=Path(report_file).expanduser()
+        if (not p.is_absolute() or p.is_symlink() or p.suffix.lower()!=".json"
+            or not isinstance(expected_report_sha256,str)
+            or not DIGEST.fullmatch(expected_report_sha256)):
+            raise PreviewReviewError("Private absolute owner-pinned API report required.")
+        p=p.resolve()
+        _ensure_private(p.parent)
+        if not p.is_file() or not 0<p.stat().st_size<=12000:
+            raise PreviewReviewError("Missing/oversized M25 private status report.")
+        data=p.read_bytes()
+        if hashlib.sha256(data).hexdigest()!=expected_report_sha256:
+            raise PreviewReviewError("Owner-pinned YouTube report bytes changed.")
+        try:r=json.loads(data)
+        except (ValueError,TypeError) as exc:
+            raise PreviewReviewError("Malformed owner-transferred API report.") from exc
+        required={"schema_version","status","series_id","episode_number",
+                  "render_job_id","video_sha256","video_id","channel_id",
+                  "youtube_privacy","processing_status",
+                  "platform_privacy_verified","ready_for_owner_review",
+                  "public_release_authorized"}
+        if (not isinstance(r,dict) or set(r)!=required
+            or type(r["schema_version"]) is not int or r["schema_version"]!=1
+            or r["status"]!="YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING"
+            or r["youtube_privacy"]!="private"
+            or r["processing_status"]!="succeeded"
+            or r["platform_privacy_verified"] is not True
+            or r["ready_for_owner_review"] is not True
+            or r["public_release_authorized"] is not False
+            or not isinstance(r["channel_id"],str)
+            or not re.fullmatch(r"UC[A-Za-z0-9_-]{22}",r["channel_id"])):
+            raise PreviewReviewError("Current processed PRIVATE YouTube status required.")
+        recorded=self.record_private_upload(
+            r["series_id"],r["episode_number"],
+            video_id=r["video_id"],render_job_id=r["render_job_id"],
+            master_sha256=r["video_sha256"])
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_private_previews SET
+                platform_privacy_verified=1 WHERE video_id=? AND
+                render_job_id=? AND master_sha256=?""",
+                (r["video_id"],r["render_job_id"],r["video_sha256"]))
+        return {**recorded,"status":"PRIVATE_UPLOAD_API_REPORT_IMPORTED_AWAITING_OWNER",
+                "platform_privacy_verified":True,
+                "youtube_visibility_currently_guaranteed":False}
+
     @staticmethod
     def _active(db: sqlite3.Connection, video_id: str) -> sqlite3.Row:
         row=db.execute("SELECT * FROM studio_private_previews WHERE video_id=?",
@@ -307,7 +361,7 @@ class PreviewReview:
                     "version":row["version"],
                     "state":row["state"],
                     "claimed_visibility":"PRIVATE",
-                    "platform_privacy_verified":False,
+                    "platform_privacy_verified":bool(row["platform_privacy_verified"]),
                     "recorded_at":row["recorded_at"],
                     "reviewed_at":row["reviewed_at"],
                     "comments":[dict(comment) for comment in notes],
