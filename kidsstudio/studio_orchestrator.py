@@ -147,7 +147,7 @@ class StudioOrchestrator:
                 "public_release_authorized":False}
 
     def bind_assembly(self,filename:str|Path,*,evidence_file:str|Path,
-                      catalogue_sha256:str)->dict:
+                      catalogue_file:str|Path,catalogue_sha256:str)->dict:
         """M48: one-time owner binding AFTER all exact scene stages pass QA.
 
         Pi checks owner-supplied Mac M14 metadata against Pi job ledger.
@@ -189,6 +189,45 @@ class StudioOrchestrator:
             len(manifest["scenes"])!=len(plan["scenes"])):
             raise OrchestrationError("M14 evidence is not the current immutable plan.")
         evidence_sha=digest(source)
+        # M49: verify the EXACT bytes of the frozen M14 catalogue as seen
+        # by the Pi. A freehand SHA string must never be enough to bind a job.
+        # These metadata copies may be transferred from Mac to Pi, but
+        # their original Mac paths must remain unchanged in the JSON.
+        raw_catalogue=Path(catalogue_file).expanduser()
+        if (not raw_catalogue.is_absolute() or raw_catalogue.is_symlink()
+            or raw_catalogue.suffix.lower()!=".json"):
+            raise OrchestrationError("Private absolute non-symlink catalogue required.")
+        local_catalogue=raw_catalogue.resolve()
+        _ensure_private(local_catalogue.parent)
+        if (not local_catalogue.is_file() or
+            not 40<=local_catalogue.stat().st_size<=60000 or
+            digest(local_catalogue)!=catalogue_sha256):
+            raise OrchestrationError("Frozen M14 catalogue bytes do not match owner SHA.")
+        try:
+            catalogue=json.loads(local_catalogue.read_text(encoding="utf-8"))
+        except (OSError,UnicodeError,ValueError) as exc:
+            raise OrchestrationError("Malformed M14 catalogue JSON.") from exc
+        if (not isinstance(catalogue,dict) or set(catalogue)!=
+                {"schema_version","recipes"} or catalogue["schema_version"]!=1
+                or not isinstance(catalogue["recipes"],dict) or
+                set(catalogue["recipes"])!={plan["assembly"]["recipe_id"]}):
+            raise OrchestrationError("Catalogue must contain exactly the owner-pinned episode recipe.")
+        item=catalogue["recipes"][plan["assembly"]["recipe_id"]]
+        if (not isinstance(item,dict) or set(item)!=
+                {"kind","output_root","inputs","sha256"} or
+            item["kind"]!="episode_assemble" or
+            not isinstance(item["output_root"],str) or
+            not item["output_root"].startswith("/") or
+            not isinstance(item["inputs"],dict) or
+            set(item["inputs"])!={"episode_recipe","scene_evidence"} or
+            any(not isinstance(p,str) or not p.startswith("/")
+                for p in item["inputs"].values()) or
+            not isinstance(item["sha256"],dict) or
+            set(item["sha256"])!={"episode_recipe","scene_evidence"} or
+            item["sha256"]["scene_evidence"]!=evidence_sha or
+            item["sha256"]["episode_recipe"]!=
+                manifest["assembly_recipe_sha256"]):
+            raise OrchestrationError("Catalogue recipe is not the current M14 evidence and montage.")
         sid=plan["series_id"];num=plan["episode_number"]
         from .studio_scenes import assert_scenes_ready
         with self.queue._connection(write=True) as db:
@@ -497,6 +536,7 @@ def main(argv:list[str]|None=None)->int:
     p.add_argument("--plan",type=Path)
     p.add_argument("command",choices=["init","pin","status","tick","bind-assembly"])
     p.add_argument("--evidence",type=Path)
+    p.add_argument("--catalogue",type=Path)
     p.add_argument("--catalogue-sha256")
     args=p.parse_args(argv)
     try:
@@ -510,10 +550,12 @@ def main(argv:list[str]|None=None)->int:
             if args.plan is None:
                 raise OrchestrationError("Private --plan required.")
             if args.command=="bind-assembly":
-                if args.evidence is None or args.catalogue_sha256 is None:
-                    raise OrchestrationError("M14 evidence and catalogue SHA required.")
+                if (args.evidence is None or args.catalogue is None or
+                    args.catalogue_sha256 is None):
+                    raise OrchestrationError("M14 evidence, catalogue file and SHA required.")
                 result=coord.bind_assembly(
                     args.plan,evidence_file=args.evidence,
+                    catalogue_file=args.catalogue,
                     catalogue_sha256=args.catalogue_sha256)
             else:
                 result=(coord.pin(args.plan) if args.command=="pin" else
