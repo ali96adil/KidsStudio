@@ -102,6 +102,14 @@ class PiVisualReviewBridge36(unittest.TestCase):
             self.assertEqual(evidence["technical_sha256"],digest(self.vision.m10))
             self.assertEqual(evidence["report_sha256"],
                 digest(self.vision.root/"vision"/"signed_m28.json"))
+        from kidsstudio.studio_dashboard import build_snapshot
+        overview=build_snapshot(self.host.queue)
+        episode=next(e for e in overview["episodes"]
+                     if e["series_id"]=="colors-ar" and e["ordinal"]==1)
+        visual=episode["visual_av_review"]
+        self.assertEqual(visual["state"],"M36_AV_AUDIO_REVIEW_REQUIRED")
+        self.assertEqual(visual["scenes_waiting_audio_video"],1)
+        self.assertFalse(visual["lip_sync_verified"])
         self.assertFalse(out["public_release_authorized"])
 
     def test_exact_m10_replay_no_duplicate_receipt(self):
