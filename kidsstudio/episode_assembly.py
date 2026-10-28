@@ -277,9 +277,19 @@ class EpisodeAssembler:
             listing.write_text("ffconcat version 1.0\n" +
                 "".join(f"file '{p.name}'\n" for p in normalized),encoding="utf-8")
             master = run_dir / "episode_qa_master.mp4"
+            # Stream-copying MP4 concat preserves the frames, but AAC priming
+            # can shift packet timestamps at scene boundaries. FFprobe then
+            # reports a non-CFR r_frame_rate even with 24fps normalized clips,
+            # and M7 correctly rejects the purported 24fps final master.
+            # Explicit final video fps normalization makes the delivered
+            # master CFR; map and re-encode its audio track as well.
             self.runner([self.ffmpeg,"-hide_banner","-loglevel","error",
                          "-nostdin","-n","-safe","0","-f","concat",
-                         "-i",str(listing),"-c","copy","-movflags","+faststart",
+                         "-i",str(listing),"-map","0:v:0","-map","0:a:0",
+                         "-vf","fps=24,format=yuv420p",
+                         "-c:v","libx264","-preset","medium","-crf","18",
+                         "-c:a","aac","-ar","48000","-ac","2","-b:a","160k",
+                         "-movflags","+faststart",
                          str(master)],timeout=1800)
             final = self.prober(master,self.ffprobe)
             if (final["width"],final["height"]) != (1280,720):
