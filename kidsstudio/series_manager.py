@@ -430,6 +430,38 @@ class SeriesManager:
                 (review_note.strip(),time.time(),series_id,ordinal))
             self._audit(db,series_id,ordinal,"EPISODE_APPROVED_INTERNAL_ONLY")
 
+    def finalize_ai_private(self,series_id: str,ordinal: int) -> dict:
+        """Internal readiness ONLY; owner decides after the PRIVATE upload."""
+        with self.queue._connection(write=True) as db:
+            ep=db.execute("""SELECT state,render_job_id,source_sha256 FROM
+                studio_episodes WHERE series_id=? AND ordinal=?""",
+                (series_id,ordinal)).fetchone()
+            if not ep or ep["state"]!="RENDERED_QA_PENDING":
+                raise SeriesError("Current completed MP4 awaiting independent AI QA required.")
+            qa=db.execute("""SELECT * FROM studio_quality_reviews WHERE
+                series_id=? AND ordinal=? AND render_job_id=?""",
+                (series_id,ordinal,ep["render_job_id"])).fetchone()
+            ai=db.execute("""SELECT * FROM studio_ai_final_reviews WHERE
+                series_id=? AND ordinal=? AND render_job_id=?""",
+                (series_id,ordinal,ep["render_job_id"])).fetchone()
+            if (not qa or qa["state"]!="AI_INTERNAL_READY_PRIVATE_ONLY" or
+                qa["checks_passed"]!=11 or not qa["tech_report_sha256"] or
+                not ai or ai["status"]!="AI_INTERNAL_READY_PRIVATE_ONLY" or
+                ai["script_sha256"]!=ep["source_sha256"] or
+                ai["review_bundle_sha256"]!=qa["review_report_sha256"] or
+                qa["media_sha256"]!=ai["media_sha256"]):
+                raise SeriesError("Two independent AI reviews and all source evidence required.")
+            db.execute("""UPDATE studio_episodes SET
+                state='EPISODE_APPROVED',
+                owner_review_note='AI_INTERNAL_PRIVATE_ONLY_NO_OWNER_VIDEO_REVIEW',
+                updated_at=? WHERE series_id=? AND ordinal=?""",
+                (self.queue.clock(),series_id,ordinal))
+            self._audit(db,series_id,ordinal,
+                        "M27_AI_INTERNAL_READY_OWNER_REVIEW_AFTER_PRIVATE_ONLY")
+        return {"status":"AI_INTERNAL_READY_FOR_PRIVATE_UPLOAD",
+                "owner_post_upload_review_required":True,
+                "public_release_authorized":False}
+
     def complete_series(self, series_id: str) -> None:
         with self.queue._connection(write=True) as db:
             series=db.execute("""SELECT state FROM studio_series WHERE series_id=?""",
