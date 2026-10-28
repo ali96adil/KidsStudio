@@ -210,6 +210,28 @@ class SynchronizedAV37(unittest.TestCase):
             episode=1,scene=1,report_dir=folder,m10_report=self.m10,
             rights_file=self.rights,runner_key=self.key)
         self.assertEqual(dry["status"],"M37_SIGNED_CURRENT_PI_PREFLIGHT_NO_WRITES")
+        with self.assertRaises(AVImportError):
+            import_synchronized(queue=h.queue,series_id="colors-ar",
+                episode=1,scene=1,report_dir=folder,m10_report=self.m10,
+                rights_file=self.rights,
+                runner_key=b"BAD_PRIVATE_KEY_DIFFERENT_FROM_ORIGINAL_XXX",
+                execute=True)
+        h.queue.set_paused(True)
+        with self.assertRaises(AVImportError):
+            import_synchronized(queue=h.queue,series_id="colors-ar",
+                episode=1,scene=1,report_dir=folder,m10_report=self.m10,
+                rights_file=self.rights,runner_key=self.key,execute=True)
+        h.queue.set_paused(False)
+        lineage=folder/"av_runner_lineage.json"
+        original=lineage.read_bytes()
+        damaged=json.loads(original)
+        damaged["reviewers"][0]["model_sha256"]="d"*64
+        lineage.write_text(json.dumps(damaged))
+        with self.assertRaises(AVImportError):
+            import_synchronized(queue=h.queue,series_id="colors-ar",
+                episode=1,scene=1,report_dir=folder,m10_report=self.m10,
+                rights_file=self.rights,runner_key=self.key,execute=True)
+        lineage.write_bytes(original)
         applied=import_synchronized(queue=h.queue,series_id="colors-ar",
             episode=1,scene=1,report_dir=folder,m10_report=self.m10,
             rights_file=self.rights,runner_key=self.key,execute=True)
