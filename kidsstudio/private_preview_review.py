@@ -234,6 +234,34 @@ class PreviewReview:
                 "public_release_authorized":False,
                 "youtube_visibility_changed":False}
 
+    def candidates(self) -> list[dict]:
+        """Only currently approved local master identities; no source paths."""
+        with self.queue._connection() as db:
+            records=db.execute("""SELECT series_id,ordinal,title FROM
+                studio_episodes WHERE state='EPISODE_APPROVED'
+                ORDER BY series_id,ordinal LIMIT 120""").fetchall()
+            ready=[]
+            for row in records:
+                try:
+                    job,sha=self._current_render(db,row["series_id"],row["ordinal"])
+                except PreviewReviewError:
+                    continue
+                latest=db.execute("""SELECT state FROM studio_private_previews
+                    WHERE series_id=? AND ordinal=?
+                    ORDER BY version DESC LIMIT 1""",
+                    (row["series_id"],row["ordinal"])).fetchone()
+                if latest and latest["state"]!="REVISION_REQUESTED":
+                    continue
+                ready.append({
+                    "series_id":row["series_id"],
+                    "episode_number":row["ordinal"],
+                    "title":row["title"],
+                    "render_job_id":job,
+                    "master_sha256":sha,
+                    "recording_allowed":True,
+                })
+        return ready
+
     def snapshot(self, *, limit: int = 50) -> dict[str, Any]:
         if type(limit) is not int or not 1<=limit<=100:
             raise PreviewReviewError("Invalid review query bound.")
