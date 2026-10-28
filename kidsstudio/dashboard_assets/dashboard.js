@@ -120,7 +120,11 @@
         "المشاهد: "+fmt(scenes.total)+
         " · صوت معتمد "+fmt(scenes.voice_approved)+
         " · تحريك معتمد "+fmt(scenes.ltx_approved)+
-        (scenes.blocked ? " · مهام متوقفة "+fmt(scenes.blocked) : "")));
+        (scenes.blocked ? " · مهام متوقفة "+fmt(scenes.blocked) : "")+
+        (scenes.repairs_queued_total ?
+          " · إعادة إنتاج محدودة "+fmt(scenes.repairs_queued_total):"")+
+        (scenes.repairs_current_pending ?
+          " · تصحيحات نشطة "+fmt(scenes.repairs_current_pending):"")));
     }
     const aiScene=episode.ai_scene_reviews||{state:"NOT_STARTED"};
     if (aiScene.state!=="NOT_STARTED") {
