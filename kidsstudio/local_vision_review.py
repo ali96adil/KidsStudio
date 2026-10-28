@@ -282,6 +282,16 @@ def sign_after_m10(*,pending_report:str|Path,
         abs(m10["estimated_lag_seconds"])>.6):
         raise LocalVisionError("Current source voice and signed-review M10 mismatch.")
     reviewers=pending["reviewers"]
+    # The M29 runner receives sampled silent PNG frames, not synchronized
+    # audio. Even when a model confidently asserts PASS, that cannot verify
+    # lip movements or audible voice continuity. An audio/video-capable
+    # follow-on reviewer must supply that evidence separately.
+    motion_checks=reviewers[0].get("checks",{}) if isinstance(reviewers[0],dict) else {}
+    if any(isinstance(motion_checks.get(name),dict) and
+           motion_checks[name].get("decision")=="PASS"
+           for name in ("lip_sync","voice_continuity")):
+        raise LocalVisionError(
+            "Silent frame-only review cannot certify lip-sync or voice continuity.")
     if (reviewers[0].get("role")!="motion_sync" or
         reviewers[1].get("role")!="visual_child_safety" or
         reviewers[0].get("provider_id")==reviewers[1].get("provider_id") or
