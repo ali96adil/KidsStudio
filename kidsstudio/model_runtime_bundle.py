@@ -16,6 +16,7 @@ import re
 import sys
 
 from .episode_assembly import digest, _ensure_private
+from .model_package import verify_checkpoint, checkpoint_digest, ModelPackageError
 from .real_media_evidence import private_file, _binary, EvidenceCaptureError
 from .local_audio_review import AudioRunner, AudioModelError, review_voice
 from .voice_qa import VoiceQAError
@@ -46,20 +47,16 @@ def _exact_file(file:str,expected:str,root:Path,*,executable:bool,
         not isinstance(expected,str) or not SHA.fullmatch(expected)):
         raise ModelBundleError("Explicit absolute file SHA256 is required.")
     source=Path(file).expanduser()
-    if source.is_symlink() or not source.is_file():
-        raise ModelBundleError("Model/runner must be an existing non-symlink file.")
-    real=source.resolve()
+    if source.is_symlink():
+        raise ModelBundleError("Symlinked model or executable denied.")
     if model:
-        if not _inside(real,root) or source.suffix.lower() not in (
-                ".bin",".gguf",".safetensors"):
-            raise ModelBundleError("Model must be under private root and have supported extension.")
-        if not 100<=real.stat().st_size<=MAX_MODEL_BYTES:
-            raise ModelBundleError("Model checkpoint missing or unbounded.")
-        private_file(real,source.suffix.lower(),max_bytes=MAX_MODEL_BYTES)
-    elif executable:
-        real=Path(_binary(str(source)))
+        return verify_checkpoint(source,expected,private_root=root,
+                                 allow_directory=True)
+    if not source.is_file():
+        raise ModelBundleError("Executable must be a regular file.")
+    real=Path(_binary(str(source)))
     if digest(real)!=expected:
-        raise ModelBundleError("Executable or model contents differ from pinned SHA256.")
+        raise ModelBundleError("Executable bytes differ from pinned digest.")
     return real
 
 
@@ -277,7 +274,7 @@ def main(argv:list[str]|None=None)->int:
             runner_key=os.environ.get("KIDS_STUDIO_SCENE_QA_RUNNER_KEY","").encode())
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0
-    except (ModelBundleError,AudioModelError,AVReviewError,EvidenceCaptureError,
+    except (ModelBundleError,ModelPackageError,AudioModelError,AVReviewError,EvidenceCaptureError,
             VoiceQAError,SceneError,AudioContinuityError,
             OSError,ValueError,TypeError,KeyError) as exc:
         print("M40_MODEL_BUNDLE_BLOCKED: "+type(exc).__name__,file=sys.stderr)
