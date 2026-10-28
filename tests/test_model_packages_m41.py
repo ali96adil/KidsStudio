@@ -159,6 +159,30 @@ class ShardedCheckpoint41(unittest.TestCase):
         self.assertNotEqual(digest(self.package),original)
         self.save()
 
+    def test_shared_writable_package_member_and_directory_fail_closed(self):
+        package_sha=digest(self.package)
+        original_dir=self.dir.stat().st_mode & 0o777
+        try:
+            self.dir.chmod(0o777)
+            with self.assertRaises(ModelPackageError):
+                verify_checkpoint(self.dir,package_sha)
+        finally:
+            self.dir.chmod(original_dir)
+        original=self.weights.stat().st_mode & 0o777
+        try:
+            self.weights.chmod(0o666)
+            with self.assertRaises(ModelPackageError):
+                verify_checkpoint(self.dir,package_sha)
+        finally:
+            self.weights.chmod(original)
+        original=self.package.stat().st_mode & 0o777
+        try:
+            self.package.chmod(0o666)
+            with self.assertRaises(ModelPackageError):
+                verify_checkpoint(self.dir,package_sha)
+        finally:
+            self.package.chmod(original)
+
     def test_whisper_cpp_cannot_be_replaced_with_a_directory(self):
         cfg=copy.deepcopy(self.h.config)
         cfg["reviewers"]["asr_whispercpp"]["model"]=str(self.dir)
