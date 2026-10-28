@@ -179,8 +179,10 @@ def review_voice(*,series_id:str,episode:int,scene:int,job_id:str,
                         ("child_audio_safety",second)):
         answer=runner.evaluate(role=role,wav=wav,script=script,
                    transcript=transcript,language=language,out_dir=out)
-        if digest(wav)!=wav_sha or digest(script)!=script_sha:
-            raise AudioModelError("Original media or script mutated during inference.")
+        if (digest(wav)!=wav_sha or digest(script)!=script_sha or
+            digest(Path(runner.binary))!=runner.binary_sha or
+            digest(runner.model)!=runner.model_sha):
+            raise AudioModelError("Source or approved model changed during inference.")
         reviewers.append({
             "role":role,"provider_id":runner.provider_id,
             "model_id":runner.model_id,
