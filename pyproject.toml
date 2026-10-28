@@ -44,6 +44,7 @@ studio-owner-review = "kidsstudio.owner_review_ui:main"
 studio-youtube-private-upload = "kidsstudio.youtube_private_upload:main"
 studio-private-policy = "kidsstudio.private_policy_cli:main"
 studio-private-upload-agent = "kidsstudio.private_upload_agent:main"
+studio-capture-real-evidence = "kidsstudio.real_media_evidence:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
