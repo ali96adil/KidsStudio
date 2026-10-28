@@ -35,6 +35,19 @@ GitHub CI explicitly installs FFmpeg/FFprobe in both Python jobs; the
 integration test **fails** if either binary is missing. No test silently
 skips actual subprocess media execution.
 
+## Defect discovered and corrected
+
+The first M18 real integration run failed safely: although both normalized
+clips were 24fps, MP4 concat `-c copy` shifted boundary packet timestamps
+around AAC priming. The resulting final master exposed a non-24
+`r_frame_rate`, so M7 correctly returned `TECH_FAILED` before full decode.
+On disposable local synthetic files, explicit final 24fps H.264/AAC
+encoding yielded exact `24/1` output and successful full decode.
+M4 now final-encodes the concatenated QA master with `fps=24` instead of
+trusting container stream copy. M18 is the regression test; final CI must
+pass before claiming the gate is green. It may add a second encode pass,
+which is preferable here to silently accepting inconsistent frame timing.
+
 ## Interpretation and remaining acceptance
 
 Passing M18 establishes real ffmpeg/ffprobe final-master technical checks
