@@ -119,6 +119,88 @@ class Coordinator:
                 raise TransportError("Pilot observation requires voice worker access.")
             from .live_pilot_gate import observe_live_scene_plan
             return observe_live_scene_plan(self.queue, request)
+        if action == "pilot-voice-lease-check":
+            if "voice_synthesize" not in capabilities:
+                raise TransportError("Pilot lease check requires voice worker capability.")
+            if set(request)!={"job_id","generation","pilot_plan_sha256",
+                               "script_sha256","recipe_id","pilot_scene"}:
+                raise TransportError("Invalid pilot lease check fields.")
+            leased=self._lease(request,worker_id)
+            if leased["kind"]!="voice_synthesize":
+                raise TransportError("Pilot voice lease kind mismatch.")
+            from .studio_scenes import SHA, RECIPE
+            plan_sha=request["pilot_plan_sha256"]
+            script_sha=request["script_sha256"]
+            recipe_id=request["recipe_id"]
+            if (not isinstance(plan_sha,str) or not SHA.fullmatch(plan_sha) or
+                not isinstance(script_sha,str) or not SHA.fullmatch(script_sha) or
+                not isinstance(recipe_id,str) or not RECIPE.fullmatch(recipe_id) or
+                type(request["pilot_scene"]) is not int or request["pilot_scene"]!=1):
+                raise TransportError("Invalid pinned pilot lease metadata.")
+            try:
+                payload=json.loads(leased["payload"])
+            except (TypeError,ValueError):
+                raise TransportError("Pilot lease payload malformed.") from None
+            expected={"recipe_id":recipe_id,"script_sha256":script_sha,
+                      "pilot_plan_sha256":plan_sha,"pilot_scene":1}
+            if payload!=expected:
+                raise TransportError("Pilot worker input differs from Pi lease.")
+            # Use one consistent SQLite read transaction after the lease
+            # check; repeat lease identity INSIDE the same transaction.
+            with self.queue._connection() as db:
+                db.execute("BEGIN")
+                now=self.queue.clock()
+                current=db.execute("SELECT * FROM jobs WHERE job_id=?",
+                                   (leased["job_id"],)).fetchone()
+                if (not current or current["state"]!="LEASED" or
+                    current["worker_id"]!=worker_id or
+                    current["generation"]!=leased["generation"] or
+                    current["lease_expires"]<=now or
+                    db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()[0]):
+                    raise TransportError("Pilot lease was revoked or coordinator paused.")
+                rows=db.execute("""SELECT st.series_id,st.ordinal,st.scene,
+                    st.stage,st.state,st.scene_script_sha256,
+                    e.state AS episode_state,e.source_sha256,
+                    e.owner_review_note,s.state AS series_state,
+                    p.plan_sha256,p.episode_script_sha256,sc.script_sha256
+                    FROM studio_scene_stages st
+                    JOIN studio_episodes e ON e.series_id=st.series_id AND
+                        e.ordinal=st.ordinal
+                    JOIN studio_series s ON s.series_id=st.series_id
+                    JOIN studio_scene_plans p ON p.series_id=st.series_id
+                        AND p.ordinal=st.ordinal
+                    JOIN studio_scenes sc ON sc.series_id=st.series_id
+                        AND sc.ordinal=st.ordinal AND sc.scene=st.scene
+                    WHERE st.job_id=?""",(leased["job_id"],)).fetchall()
+                if len(rows)!=1:
+                    raise TransportError("Pilot stage lineage not unique.")
+                item=rows[0]
+                if (item["scene"]!=1 or item["stage"]!="voice_synthesize" or
+                    item["state"]!="QUEUED" or
+                    item["scene_script_sha256"]!=script_sha or
+                    item["script_sha256"]!=script_sha or
+                    item["plan_sha256"]!=plan_sha or
+                    item["episode_script_sha256"]!=item["source_sha256"] or
+                    item["episode_state"]!="SCRIPT_APPROVED" or
+                    item["series_state"]!="ACTIVE" or
+                    not isinstance(item["owner_review_note"],str) or
+                    len(item["owner_review_note"].strip())<5):
+                    raise TransportError("Pilot plan/parent/scene/approval changed.")
+                if (db.execute("""SELECT COUNT(*) FROM studio_scene_stages
+                    WHERE series_id=? AND ordinal=?""",
+                    (item["series_id"],item["ordinal"])).fetchone()[0]!=1 or
+                    not db.execute("""SELECT 1 FROM studio_series_audit
+                    WHERE series_id=? AND ordinal=?
+                    AND action='SCRIPT_APPROVED_BY_OWNER'""",
+                    (item["series_id"],item["ordinal"])).fetchone()):
+                    raise TransportError("Pilot duplicate stages or owner audit missing.")
+                db.execute("COMMIT")
+            return {"status":"PINNED_SINGLE_VOICE_LEASE_CURRENT_NOT_EXECUTED",
+                    "job_id":leased["job_id"],"generation":leased["generation"],
+                    "pilot_scene":1,"pilot_plan_sha256":plan_sha,
+                    "script_sha256":script_sha,"recipe_id":recipe_id,
+                    "model_execution_authorized":False,"publication_approved":False}
+
         if action == "claim":
             job = self.queue.claim(worker_id=worker_id,
                                    capabilities=sorted(capabilities), lease_seconds=600)
@@ -297,7 +379,8 @@ def create_handler(coordinator: Coordinator):
             path = self.path
             if path not in ("/v1/claim", "/v1/heartbeat", "/v1/review-source",
                             "/v1/complete", "/v1/complete-media", "/v1/fail",
-                            "/v1/pilot-readiness"):
+                            "/v1/pilot-readiness",
+                            "/v1/pilot-voice-lease-check"):
                 self._reply(404, {"error": "NOT_FOUND"})
                 return
             length = self.headers.get("Content-Length")
