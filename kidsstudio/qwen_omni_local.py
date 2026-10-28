@@ -247,7 +247,8 @@ def review_unqualified(*,role:str,model:str|Path,wav:str|Path,
                        transcript:str|Path|None=None,
                        mp4:str|Path|None=None,
                        frames_manifest:str|Path|None=None,
-                       device:str="mps",ffprobe:str|None=None,
+                       device:str="mps",variant:str="3b",
+                       ffprobe:str|None=None,
                        run_inference:Callable|None=None)->dict:
     """Render M34/M37 JSON adapter schema; no uncalibrated PASS allowed."""
     if role not in CRITERIA:
@@ -284,6 +285,8 @@ def review_unqualified(*,role:str,model:str|Path,wav:str|Path,
             raise OmniAdapterError("Missing bounded real frame observations.")
         frame_digest=digest(frames)
     else:
+        if mp4 is not None or frames_manifest is not None:
+            raise OmniAdapterError("Audio-only role cannot claim audiovisual evidence.")
         if transcript is None:
             raise OmniAdapterError("Voice review needs pinned ASR transcript.")
         transcript_file=private_file(transcript,".txt",max_bytes=12000)
@@ -304,7 +307,8 @@ def review_unqualified(*,role:str,model:str|Path,wav:str|Path,
     # A test-injected backend is intentionally synthetic and still receives
     # only UNSURE verdicts; it can never grant production permission.
     if run_inference is None:
-        screen=inspect_local(model=model_path,expected_model_sha=model_sha)
+        screen=inspect_local(model=model_path,expected_model_sha=model_sha,
+                             variant=variant)
         if screen["status"]!="M42_RESOURCE_SCREEN_PASSED_MODEL_NOT_RUN":
             raise OmniAdapterError("Owner Mac resource preflight is blocked.")
     backend=run_inference if run_inference is not None else infer_local_qwen
@@ -395,7 +399,8 @@ def main(argv:list[str]|None=None)->int:
         result=review_unqualified(role=x.role,model=x.model,
             wav=x.wav,script=x.script,output=x.output,
             transcript=x.transcript,mp4=x.mp4,
-            frames_manifest=x.frames_manifest,device=x.device)
+            frames_manifest=x.frames_manifest,device=x.device,
+            variant=x.variant)
         print(json.dumps(result,ensure_ascii=False))
         return 0
     except (OmniAdapterError,ModelPackageError,EvidenceCaptureError,
