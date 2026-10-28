@@ -178,8 +178,8 @@ class LearningLedger:
                 raise LearningError("Only unique seven-day reporting windows supported.")
             published=date.fromisoformat(profile["published_date"])
             snapshot=date.fromisoformat(day)
-            if (snapshot-published).days<WINDOW_DAYS or
-                (snapshot-published).days>180):
+            age_days=(snapshot-published).days
+            if age_days<WINDOW_DAYS or age_days>180:
                 raise LearningError("Metrics date outside comparable published age.")
             for key in ("views","impressions"):
                 if type(item[key]) is not int or not 0<=item[key]<=10**10:
