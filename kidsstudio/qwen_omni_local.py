@@ -81,6 +81,18 @@ def inspect_local(*,model:str|Path,expected_model_sha:str,
     if (not isinstance(data,dict) or data.get("model_type") not in
         ("qwen2_5_omni","qwen2_5_omni_thinker")):
         raise OmniAdapterError("Bundle is not Qwen2.5-Omni.")
+    # Upstream Qwen/Qwen2.5-Omni configurations are architecturally
+    # distinguishable. A CLI --variant alone must NOT launder the
+    # research-only 3B weights as a commercially licensed 7B model.
+    # Model metadata can still be forged; genuine source provenance and
+    # commercial license evidence need independent owner verification.
+    thinker=data.get("thinker_config")
+    text_cfg=thinker.get("text_config") if isinstance(thinker,dict) else None
+    signature=(
+        (text_cfg.get("hidden_size"),text_cfg.get("num_hidden_layers"))
+        if isinstance(text_cfg,dict) else None)
+    identified=({(2048,36):"3b",(3584,28):"7b"}.get(signature)
+                if signature is not None else None)
     os_name=system if system is not None else platform.system()
     architecture=arch if arch is not None else platform.machine()
     correct_mac=(os_name=="Darwin" and architecture in ("arm64","aarch64"))
@@ -100,8 +112,15 @@ def inspect_local(*,model:str|Path,expected_model_sha:str,
     floor=MIN_GIB[variant]*(1024**3)
     disk_floor=DISK_GIB[variant]*(1024**3)
     ready=(correct_mac and memory>=floor and free>=disk_floor
-           and all(available.values()))
+           and all(available.values()) and identified==variant
+           and identified=="7b")
     blockers=[]
+    if identified is None:
+        blockers.append("MODEL_ARCHITECTURE_UNVERIFIED")
+    elif identified!=variant:
+        blockers.append("MODEL_VARIANT_CONFLICTS_WITH_PINNED_CONFIG")
+    if identified=="3b":
+        blockers.append("QWEN_OMNI_3B_RESEARCH_LICENSE_BLOCKS_COMMERCIAL_PILOT")
     if not correct_mac: blockers.append("APPLE_SILICON_MAC_REQUIRED")
     if memory<floor: blockers.append("RAM_BELOW_CONSERVATIVE_PILOT_FLOOR")
     if free<disk_floor: blockers.append("DISK_BELOW_CONSERVATIVE_PILOT_FLOOR")
@@ -111,6 +130,12 @@ def inspect_local(*,model:str|Path,expected_model_sha:str,
         "status":("M42_RESOURCE_SCREEN_PASSED_MODEL_NOT_RUN" if ready
                   else "M42_RESOURCE_SCREEN_BLOCKED"),
         "model_package_sha256":expected_model_sha,"variant":variant,
+        "architecture_identified_from_config":identified,
+        "commercial_license_status":(
+            "RESEARCH_LICENSE_BLOCKED" if identified=="3b" else
+            "APACHE_2_0_SOURCE_CLAIM_UNVERIFIED" if identified=="7b"
+            else "UNKNOWN_BLOCKED"),
+        "source_provenance_independently_verified":False,
         "physical_memory_gib":round(memory/1024**3,2),
         "available_disk_gib":round(free/1024**3,2),
         "conservative_memory_screen_gib":MIN_GIB[variant],
