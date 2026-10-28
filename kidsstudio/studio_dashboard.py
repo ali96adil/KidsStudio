@@ -104,6 +104,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
     quality_states={}
     audio_states={}
     scene_states={}
+    scene_ai_states={}
     preview_states={}
     preview_summary={"state":"NOT_CONFIGURED","pending_review":0,
                      "revision_requests":0,"approved":0,"approved_with_notes":0}
@@ -176,6 +177,22 @@ def build_snapshot(queue: StudioQueue) -> dict:
                         state["ltx_approved"]+=1
                 if item["state"]=="BLOCKED":
                     state["blocked"]+=1
+        ai_scene_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_scene_ai_reviews'""").fetchone())
+        if ai_scene_tracking_installed:
+            for item in db.execute("""SELECT series_id,ordinal,stage,state
+                FROM studio_scene_ai_reviews"""):
+                key=(item["series_id"],item["ordinal"])
+                ai=scene_ai_states.setdefault(key,{
+                    "state":"AI_SCENE_REVIEW_TRACKED_NOT_MODEL_INFERENCE_PROOF",
+                    "voice_ready":0,"ltx_ready":0,"needs_fix":0})
+                if item["state"]=="AI_SCENE_READY_PRIVATE_ONLY":
+                    if item["stage"]=="voice_synthesize":
+                        ai["voice_ready"]+=1
+                    if item["stage"]=="ltx_animate":
+                        ai["ltx_ready"]+=1
+                elif item["state"]=="AI_SCENE_NEEDS_FIX":
+                    ai["needs_fix"]+=1
         audio_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_audio_checks'""").fetchone())
         if audio_tracking_installed:
@@ -241,6 +258,9 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "status_label":label,"tone":tone,"revision":ep["revision"],
             "scene_progress":scene_states.get((ep["series_id"],ep["ordinal"]),{
                 "total":0,"voice_approved":0,"ltx_approved":0,"blocked":0}),
+            "ai_scene_reviews":scene_ai_states.get((ep["series_id"],ep["ordinal"]),{
+                "state":"NOT_STARTED",
+                "voice_ready":0,"ltx_ready":0,"needs_fix":0}),
             "audio_continuity":audio_states.get((ep["series_id"],ep["ordinal"]),
                   {"state":"NOT_RECORDED" if audio_tracking_installed else "NOT_CONFIGURED",
                    "correlation":None}),
