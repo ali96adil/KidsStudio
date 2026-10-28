@@ -62,7 +62,7 @@ def inspect_studio(queue: StudioQueue, *, backup_file: str | Path | None = None,
     if not queue.path.is_file():
         raise AcceptanceError("Existing Studio Brain DB required; nothing was auto-initialized.")
     with queue._connection() as db:
-        if db.execute("PRAGMA integrity_check").fetchall()!=[("ok",)]:
+        if [row[0] for row in db.execute("PRAGMA integrity_check")]!=["ok"]:
             raise AcceptanceError("Studio Brain SQLite integrity check failed.")
         if db.execute("PRAGMA foreign_key_check").fetchall():
             raise AcceptanceError("Studio Brain has broken foreign-key references.")
