@@ -279,8 +279,19 @@ class SceneRepair:
                 "new_job_id":new_job,"new_recipe_id":candidate,
                 "retained_other_scenes":True,"public_release_authorized":False}
 
-    def run_once(self)->dict:
-        """Atomically consider current negative AI scenes, queue at most one."""
+    def run_once(self,*,series_id:str|None=None,
+                 ordinal:int|None=None)->dict:
+        """Atomically consider one episode or the full repair queue.
+
+        M32 constrains the scope to its single frozen episode. M31 legacy
+        CLI without filters retains the old all-series behavior.
+        """
+        if (series_id is None)!=(ordinal is None):
+            raise RepairError("Both target series and episode required together.")
+        if series_id is not None and (
+            not isinstance(series_id,str) or not ID.fullmatch(series_id) or
+            type(ordinal) is not int or not 1<=ordinal<=120):
+            raise RepairError("Invalid scoped M31 repair selector.")
         with self.queue._connection(write=True) as db:
             pause=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
             if not pause or pause["paused"]:
@@ -290,8 +301,11 @@ class SceneRepair:
                   p.series_id=s.series_id AND p.ordinal=s.ordinal AND
                   p.scene=s.scene AND p.stage=s.stage
                 WHERE s.state='PENDING_QA'
+                AND (? IS NULL OR s.series_id=?)
+                AND (? IS NULL OR s.ordinal=?)
                 ORDER BY s.series_id,s.ordinal,s.scene,
-                CASE s.stage WHEN 'voice_synthesize' THEN 0 ELSE 1 END""").fetchall()
+                CASE s.stage WHEN 'voice_synthesize' THEN 0 ELSE 1 END""",
+                (series_id,series_id,ordinal,ordinal)).fetchall()
             for row in rows:
                 result=self._try_one(db,row)
                 if result is not None:
