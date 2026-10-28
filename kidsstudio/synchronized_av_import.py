@@ -53,6 +53,7 @@ def import_synchronized(*,queue:StudioQueue,series_id:str,episode:int,
     obs,obs_sha=_read(obs_path)
     m10,tech_sha=_read(m10_report)
     rights,rights_sha=_read(rights_file)
+    lineage,lineage_sha=_read(folder/"av_runner_lineage.json")
     if (report.get("schema_version")!=1 or
         report.get("series_id")!=series_id or
         report.get("episode_number")!=episode or
@@ -91,6 +92,36 @@ def import_synchronized(*,queue:StudioQueue,series_id:str,episode:int,
         roles[1].get("role")!="visual_child_safety" or
         roles[0].get("provider_id")==roles[1].get("provider_id")):
         raise AVImportError("Two genuinely distinct reviewer roles required.")
+    # The worker's independent model/checkpoint provenance must be signed,
+    # with the exact same source and role/model IDs as its M28 judgment.
+    sig=lineage.get("runner_hmac_sha256")
+    claim={k:v for k,v in lineage.items() if k!="runner_hmac_sha256"}
+    encoded=json.dumps(claim,sort_keys=True,ensure_ascii=False,
+        separators=(",",":"),allow_nan=False).encode("utf-8")
+    lineage_reviewers=lineage.get("reviewers")
+    if (not isinstance(sig,str) or not SHA.fullmatch(sig) or
+        not hmac.compare_digest(sig,hmac.new(
+            runner_key,encoded,hashlib.sha256).hexdigest()) or
+        lineage.get("schema_version")!=1 or
+        lineage.get("mp4_sha256")!=report["artifact_sha256"] or
+        lineage.get("wav_sha256")!=obs["source_voice_sha256"] or
+        lineage.get("script_sha256")!=report["script_sha256"] or
+        lineage.get("m10_sha256")!=tech_sha or
+        lineage.get("frame_manifest_sha256")!=obs.get("frame_manifest_sha256") or
+        lineage.get("actual_audio_video_models_qualified_by_ci") is not False or
+        lineage.get("public_release_authorized") is not False or
+        not isinstance(lineage_reviewers,list) or len(lineage_reviewers)!=2):
+        raise AVImportError("Signed local AV model/checkpoint lineage absent or modified.")
+    for review,pinned in zip(roles,lineage_reviewers):
+        if (not isinstance(pinned,dict) or
+            set(pinned)!={"role","provider_id","model_id",
+                          "binary_sha256","model_sha256"} or
+            any(review.get(k)!=pinned.get(k)
+                for k in ("role","provider_id","model_id")) or
+            any(not isinstance(pinned.get(k),str) or
+                not SHA.fullmatch(pinned[k])
+                for k in ("binary_sha256","model_sha256"))):
+            raise AVImportError("M37 independently pinned model identity mismatch.")
     with queue._connection() as db:
         pause=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
         if not pause or pause["paused"]:
@@ -149,6 +180,7 @@ def import_synchronized(*,queue:StudioQueue,series_id:str,episode:int,
         return {"status":"M37_SIGNED_CURRENT_PI_PREFLIGHT_NO_WRITES",
                 "scene":scene,"job_id":report["job_id"],
                 "signed_report_sha256":report_sha,"m10_sha256":tech_sha,
+                "model_lineage_sha256":lineage_sha,
                 "existing_internal_review":bool(prior),
                 "actual_models_qualified_by_this_command":False,
                 "public_release_authorized":False}
@@ -173,6 +205,7 @@ def import_synchronized(*,queue:StudioQueue,series_id:str,episode:int,
             state="M37_AI_LTX_NEEDS_FIX_PRIVATE_ONLY"
     return {"status":state,"scene":scene,"job_id":report["job_id"],
             "signed_report_sha256":report_sha,"m10_sha256":tech_sha,
+            "model_lineage_sha256":lineage_sha,
             "models_executed_by_this_command":False,
             "owner_post_private_video_review_required":True,
             "public_release_authorized":False}
