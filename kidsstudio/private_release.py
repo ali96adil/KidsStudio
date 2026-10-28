@@ -122,6 +122,17 @@ def check_readiness(queue: StudioQueue, archive_dir: str | Path,
                     audio["a2v_sha256"]!=ltx["artifact_sha256"] or
                     audio["status"]!="TECH_COMPATIBLE_OWNER_LIPSYNC_REVIEW_PENDING"):
                     raise PrivateReleaseError("Current LTX audio technical evidence missing.")
+        if db.execute("""SELECT 1 FROM sqlite_master WHERE
+                type='table' AND name='studio_scene_plans'""").fetchone():
+            plan=db.execute("""SELECT 1 FROM studio_scene_plans
+                WHERE series_id=? AND ordinal=?""",
+                (series_id,ordinal)).fetchone()
+            if plan:
+                from .studio_scenes import assert_scenes_ready, SceneError
+                try:
+                    assert_scenes_ready(db,series_id,ordinal,ep["source_sha256"])
+                except SceneError as exc:
+                    raise PrivateReleaseError("Scene-level QA not complete.") from exc
     items={x["role"]:x["sha256"] for x in archive["files"]}
     for role, expected in (
         ("episode_master",video_sha),
