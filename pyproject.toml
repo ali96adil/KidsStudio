@@ -30,6 +30,7 @@ studio-mac-contract = "kidsstudio.mac_contract:main"
 studio-audio-continuity = "kidsstudio.audio_continuity:main"
 studio-import-bunny = "kidsstudio.private_asset_intake:main"
 studio-handoff-review = "kidsstudio.handoff_review:main"
+studio-assembly-lineage = "kidsstudio.assembly_lineage:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
