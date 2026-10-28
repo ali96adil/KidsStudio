@@ -42,6 +42,8 @@ case-SHA label table as proof of a trained model's real perception.
 Canary SHA matching shows only byte consistency, not whether any
 unsafe visuals or audio timing defects were independently confirmed.
 
+M46 optional inputs: `--mps-runtime-receipt`, `--mps-runtime-receipt-sha256`, `--mps-worker-report`, `--mps-worker-sha256`, and `--mps-python`. Both private reports and exact interpreter bytes are verified, but even a byte-perfect result only establishes a local scalar/report claim and keeps every model and publication gate closed.
+
 The **current** Mac resource prescreen runs again, so a previous M43
 report claiming a powerful Mac cannot make a Linux CI host or a
 smaller actual Mac pass the real hardware screen.
@@ -60,6 +62,7 @@ PRIVATE/PUBLIC upload. Existing or symlinked output paths are rejected.
 | M44_OWNER_ORIGIN_ATTESTATION | Rehash receipt and copied license; HMAC | Authenticated owner's source claim, not independent provenance |
 | M42_CURRENT_MAC_RESOURCE_SCREEN | Re-inspect local resources and 7B identity | Screening only, no MPS inference |
 | M43_PINNED_PILOT_OBSERVATION | Rehash original WAV/MP4/script/transcript/frames, adapter and diagnostic | Output integrity with UNSURE decisions only |
+| M46_MPS_SCALAR_API_COMPAT | Optionally rehash M46 worker + parent receipts and installed Python executable | Installed API/scalar test claim only; not full-model load or verified GPU qualification |
 | M39_CANARY_CONTRAST_EVIDENCE | Rehash four clips and compare score report | Observed test results with no independently proven semantic truth |
 
 Additional mandatory blockers **always remain**:
