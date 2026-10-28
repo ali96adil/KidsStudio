@@ -59,9 +59,9 @@ evidence; a fresh run requires a new directory name.
 studio-model-pilot \
   --adapter /PRIVATE/bin/studio-qwen-omni-adapter \
   --adapter-sha256 <actual-binary-digest> \
-  --model /PRIVATE/models/qwen2_5_omni_3b \
+  --model /PRIVATE/models/qwen2_5_omni_7b \
   --model-sha256 <actual-complete-package-digest> \
-  --variant 3b --role pronunciation \
+  --variant 7b --role pronunciation \
   --wav /PRIVATE/scene01.wav --wav-sha256 <actual-WAV-digest> \
   --script /PRIVATE/scene01.txt --script-sha256 <actual-script-digest> \
   --transcript /PRIVATE/asr-scene01.txt \
@@ -86,6 +86,29 @@ intentionally cannot emit PASS yet.
 
 Official upstream reference for the optional Qwen candidate:
 https://github.com/huggingface/transformers/blob/main/docs/source/en/model_doc/qwen2_5_omni.md
+
+## Commercial license and identity gate
+
+This project is intended to support a potentially monetized YouTube Kids
+channel. **Qwen2.5-Omni-3B is research-licensed, not approved for
+commercial production.** Its published LICENSE explicitly limits use to
+non-commercial research/evaluation absent additional permission:
+https://huggingface.co/Qwen/Qwen2.5-Omni-3B/blob/main/LICENSE
+
+The 7B version's official weights are listed as Apache-2.0:
+https://huggingface.co/Qwen/Qwen2.5-Omni-7B/blob/main/LICENSE
+
+M42/M43 rejects commercial 3B pilots even on a big Mac. Changing
+`--variant 3b` to `7b` does not bypass this guard because
+`inspect_local` also checks the pinned configuration's upstream
+thinker text architecture (3B: 2048 hidden/36 layers; 7B:
+3584 hidden/28 layers). These signatures are from the official
+model `config.json` files; **metadata is not evidence that the
+weights were obtained from the stated original repository**.
+A 7B resource-screen PASS therefore does not grant publication,
+provenance clearance, or independently adjudicated license rights.
+Check the actual repository, checkpoint revision, third-party
+dependencies and legal obligations before any commercial use.
 
 ## CI evidence and limitations
 
