@@ -112,6 +112,16 @@
     host.append(make("p","small-explainer",
       "فحص الجودة M7: "+(states[qa.state]||"تحتاج مراجعة فنية")+" · "+
       fmt(qa.criteria_passed||0)+" من 11 معياراً موثقاً"));
+    const continuity=episode.audio_continuity||{state:"NOT_CONFIGURED"};
+    const continuityText={
+      NOT_CONFIGURED:"فحص الاستمرارية الصوتية غير مفعّل بعد",
+      NOT_RECORDED:"لم يُسجّل فحص صوت لمشهد LTX الحالي",
+      TECH_COMPATIBLE_OWNER_LIPSYNC_REVIEW_PENDING:
+        "تشابه صوتي تقني مسجّل · حركة الشفاه تنتظر فحصك"
+    };
+    host.append(make("p","small-explainer",
+      "استمرارية الصوت M10: "+
+      (continuityText[continuity.state]||"تحتاج تحققاً تقنياً جديداً")));
     const note=make("p","small-explainer",
        "ملاحظة: مراحل الصوت والتحريك وتحسين الوجه لا تُعلن كمكتملة بدون سجلات تشغيل موثّقة منفصلة.");
     host.append(note);
