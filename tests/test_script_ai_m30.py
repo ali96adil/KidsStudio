@@ -14,6 +14,7 @@ import unittest
 
 from kidsstudio.series_manager import SeriesManager
 from kidsstudio.studio_queue import StudioQueue
+from kidsstudio.studio_scenes import SceneLedger,SceneError
 from kidsstudio.script_ai_quality import ScriptAIQuality, ScriptReviewError, CRITERIA
 
 
@@ -120,6 +121,35 @@ class ScriptAIQualityTests(unittest.TestCase):
             self.assertEqual(ai["verdict"],"AI_SCRIPT_PRIVATE_READY")
         with self.assertRaises(ScriptReviewError):
             self.evaluate()
+
+    def test_current_ai_script_unlocks_only_pinned_two_scene_pilot(self):
+        self.evaluate()
+        scenes=SceneLedger(self.queue)
+        scenes.initialize()
+        plan=self.root/"two_scene_plan.json"
+        plan.write_text(json.dumps({
+            "schema_version":1,"series_id":"colors-ar","episode_number":1,
+            "episode_script_sha256":self.script_sha,
+            "scenes":[
+                {"scene":1,"script_sha256":"a"*64,
+                 "objective":"Recognize the red ball"},
+                {"scene":2,"script_sha256":"b"*64,
+                 "objective":"Recognize a blue ball"}]
+        }))
+        registered=scenes.register_plan(plan)
+        self.assertEqual(registered["scene_count"],2)
+        with self.queue._connection() as db:
+            self.assertIsNone(db.execute("""SELECT 1 FROM studio_series_audit
+                WHERE action='SCRIPT_APPROVED_BY_OWNER'""").fetchone())
+        pilot=scenes.queue_first_voice_pilot(
+            "colors-ar",1,"first_synthetic_voice",
+            registered["plan_sha256"],
+            "M30 two-provider AI script reviewed before private-only pilot")
+        self.assertEqual(len(pilot),32)
+        with self.assertRaises(SceneError):
+            scenes.queue_first_voice_pilot("colors-ar",1,"other_recipe",
+                 registered["plan_sha256"],
+                 "Replayed pilot without immutable media reconciliation")
 
     def test_second_reviewer_must_not_be_same_provider(self):
         self.models=FakeModels(same=True)
