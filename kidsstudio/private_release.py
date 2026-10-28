@@ -68,7 +68,7 @@ def check_readiness(queue: StudioQueue, archive_dir: str | Path,
         stages=db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_episode_stages'""").fetchone()
         if stages:
-            current=db.execute("""SELECT stage,state,script_sha256
+            current=db.execute("""SELECT stage,state,script_sha256,job_id,artifact_sha256,source_voice_sha256
                 FROM studio_episode_stages
                 WHERE series_id=? AND ordinal=?""",(series_id,ordinal)).fetchall()
             if current and (
@@ -78,6 +78,32 @@ def check_readiness(queue: StudioQueue, archive_dir: str | Path,
                     x["script_sha256"]!=ep["source_sha256"] for x in current)
             ):
                 raise PrivateReleaseError("Audio/animation stage QA incomplete.")
+            if current:
+                approved={item["stage"]:item for item in current}
+                voice,ltx=approved["voice_synthesize"],approved["ltx_animate"]
+                if (ltx["source_voice_sha256"]!=voice["artifact_sha256"] or
+                    not isinstance(voice["artifact_sha256"],str) or
+                    not SHA.fullmatch(voice["artifact_sha256"]) or
+                    not isinstance(ltx["artifact_sha256"],str) or
+                    not SHA.fullmatch(ltx["artifact_sha256"])):
+                    raise PrivateReleaseError("Voice and LTX content provenance diverged.")
+                for kind,item,status,typ in (
+                    ("voice_synthesize",voice,"VOICE_RENDERED_PENDING_QA","wav"),
+                    ("ltx_animate",ltx,"A2V_RENDERED_PENDING_QA","mp4")
+                ):
+                    source=db.execute("""SELECT kind,state,result_json FROM jobs
+                        WHERE job_id=?""",(item["job_id"],)).fetchone()
+                    try:
+                        data=json.loads(source["result_json"] or "{}") if source else {}
+                    except (TypeError,ValueError):
+                        data={}
+                    if (not source or source["kind"]!=kind or
+                        source["state"]!="COMPLETED" or
+                        data.get("status")!=status or
+                        data.get("artifact_type")!=typ or
+                        data.get("artifact_sha256")!=item["artifact_sha256"] or
+                        data.get("publication_approved") is not False):
+                        raise PrivateReleaseError("Unverified Pi media receipt in staged episode.")
             if current and db.execute("""SELECT 1 FROM sqlite_master
                     WHERE type='table' AND name='studio_audio_checks'""").fetchone():
                 lineage=db.execute("""SELECT stage,job_id,artifact_sha256 FROM
