@@ -20,6 +20,7 @@ from typing import Any
 
 from .episode_assembly import digest, _ensure_private
 from .episode_quality import save_report
+from .real_media_evidence import media_subprocess_env
 
 SHA = re.compile(r"^[0-9a-f]{64}$")
 JOB = re.compile(r"^[0-9a-f]{32}$")
@@ -66,7 +67,8 @@ def inspect_voice(
             ffprobe, "-v", "error", "-show_entries",
             "format=format_name,duration:stream=codec_type,codec_name,"
             "sample_rate,channels", "-of", "json", str(path),
-        ], capture_output=True, check=True, timeout=45)
+        ], capture_output=True, check=True, timeout=45,
+            env=media_subprocess_env())
         data = json.loads(probe.stdout)
     except (OSError, subprocess.CalledProcessError,
             subprocess.TimeoutExpired, ValueError) as exc:
@@ -107,7 +109,8 @@ def inspect_voice(
                 "-xerror", "-i", str(path),
                 "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000",
                 "-f", "s16le", "-acodec", "pcm_s16le", "-",
-            ], capture_output=True, timeout=90, check=False)
+            ], capture_output=True, timeout=90, check=False,
+                env=media_subprocess_env())
             raw = result.stdout
             expected_samples = duration * 16000
             if (result.returncode == 0 and len(raw) % 2 == 0 and
