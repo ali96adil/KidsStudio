@@ -18,9 +18,10 @@ studio-worker = "kidsstudio.local_worker:main"
 studio-coordinator = "kidsstudio.coordinator_api:main"
 studio-remote-worker = "kidsstudio.remote_worker:main"
 studio-media-worker = "kidsstudio.media_worker:main"
+studio-dashboard = "kidsstudio.studio_dashboard:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
 
 [tool.setuptools.package-data]
-kidsstudio = ["*.gd"]
+kidsstudio = ["*.gd", "dashboard_assets/*.html", "dashboard_assets/*.js", "dashboard_assets/*.css"]
