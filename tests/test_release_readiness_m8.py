@@ -230,6 +230,59 @@ class PrivatePreviewTests(M8TestBase):
         self.assertFalse(packet["public_release_authorized"])
         self.assertEqual(packet["video_sha256"],sha(self.master))
 
+    def test_m12_private_gate_rejects_unverified_stage_or_missing_m10(self):
+        from kidsstudio.studio_stage_ledger import StageLedger
+        from kidsstudio.studio_audio_ledger import AudioEvidenceLedger
+        self.finalize()
+        target=self.root/"archives"/"colors-ar"/"ep001"/"ep01-archive-v01"
+        archive(self.plan_archive())
+        StageLedger(self.queue).initialize()
+        ids={}
+        for kind,media_sha,source_voice in (
+            ("voice_synthesize","b"*64,None),
+            ("ltx_animate","c"*64,"b"*64),
+        ):
+            job=self.queue.enqueue(
+                kind=kind,request_key="synthetic-m12-"+kind,
+                payload={"recipe_id":"mock"},max_attempts=1)
+            ids[kind]=job["job_id"]
+            with self.queue._connection(write=True) as db:
+                db.execute("""INSERT INTO studio_episode_stages
+                    (series_id,ordinal,stage,state,job_id,script_sha256,
+                     source_voice_sha256,artifact_sha256,attempt,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    ("colors-ar",1,kind,"QA_APPROVED",ids[kind],
+                     sha(self.script),source_voice,media_sha,1,1.0))
+        # An owner QA flag does not substitute for a completed Pi media receipt.
+        with self.assertRaises(PrivateReleaseError):
+            check_readiness(self.queue,target,series_id="colors-ar",ordinal=1)
+        for kind,art_sha,typ,status in (
+            ("voice_synthesize","b"*64,"wav","VOICE_RENDERED_PENDING_QA"),
+            ("ltx_animate","c"*64,"mp4","A2V_RENDERED_PENDING_QA"),
+        ):
+            lease=self.queue.claim(worker_id="mac",capabilities=[kind])
+            self.queue.complete(job_id=ids[kind],worker_id="mac",
+                generation=lease["generation"],result={
+                "status":status,"artifact_sha256":art_sha,
+                "artifact_type":typ,"publication_approved":False})
+        # M10 hasn't been installed: legacy staged episodes can be inspected.
+        self.assertEqual(check_readiness(self.queue,target,
+            series_id="colors-ar",ordinal=1)["status"],
+            "READY_FOR_MANUAL_PRIVATE_PREVIEW_NOT_UPLOADED")
+        AudioEvidenceLedger(self.queue).initialize()
+        with self.assertRaises(PrivateReleaseError):
+            check_readiness(self.queue,target,series_id="colors-ar",ordinal=1)
+        with self.queue._connection(write=True) as db:
+            db.execute("""INSERT INTO studio_audio_checks
+                (series_id,ordinal,ltx_job_id,voice_sha256,a2v_sha256,
+                 report_sha256,correlation,status,created_at)
+                 VALUES (?,?,?,?,?,?,?,?,?)""",
+                 ("colors-ar",1,ids["ltx_animate"],"b"*64,"c"*64,
+                  "d"*64,0.95,
+                  "TECH_COMPATIBLE_OWNER_LIPSYNC_REVIEW_PENDING",1.0))
+        self.assertFalse(check_readiness(self.queue,target,
+            series_id="colors-ar",ordinal=1)["public_release_authorized"])
+
     def test_wrong_technical_or_owner_evidence_archive_rejected(self):
         self.finalize()
         target=self.root/"archives"/"colors-ar"/"ep001"/"ep01-archive-v01"
