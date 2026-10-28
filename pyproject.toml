@@ -50,6 +50,7 @@ studio-bind-vision-m10 = "kidsstudio.local_vision_review:main_sign"
 studio-review-script-ai = "kidsstudio.script_ai_quality:main"
 studio-orchestrator = "kidsstudio.studio_orchestrator:main"
 studio-cycle = "kidsstudio.studio_cycle:main"
+studio-real-audio-review = "kidsstudio.local_audio_review:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
