@@ -148,6 +148,21 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(self.ledger.snapshot()[0]["state"],
                          "TECH_PASSED_WAITING_HUMAN")
 
+    def test_owner_requested_changes_saved_and_not_approvable(self):
+        self.write_technical()
+        self.ledger.register_technical("colors-ar",1,self.tech)
+        self.write_human(overrides={"lip_sync_and_motion":{
+            "decision":"NEEDS_FIX",
+            "evidence":"Owner saw delayed mouth opening at scene two and wants new animation"}})
+        self.ledger.submit_owner_review("colors-ar",1,self.review)
+        state=build_snapshot(self.queue)["episodes"][0]["quality"]
+        self.assertEqual(state["state"],"CHANGES_REQUESTED")
+        self.assertEqual(state["criteria_passed"],len(CRITERIA)-1)
+        self.assertIn("lip_sync_and_motion",self.series.snapshot()["notes"][0]["note"])
+        with self.assertRaises(SeriesError):
+            self.series.approve_episode("colors-ar",1,
+                       "Owner cannot accept a failed lip sync check")
+
     def test_stale_render_report_fails_when_new_render_is_current(self):
         self.write_technical()
         with self.queue._connection(write=True) as db:
