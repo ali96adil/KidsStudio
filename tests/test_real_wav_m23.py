@@ -161,6 +161,39 @@ class RealVoiceTests(unittest.TestCase):
         self.assertEqual(ledger.queue_stage(
             "colors-ar",1,1,"ltx_animate","synthetic_ltx_01") is not None, True)
 
+    def test_normal_second_scene_WAV_technical_qa_without_human_listening(self):
+        wav=self.make_wav()
+        queue,ledger,first_job=self.prepare_ledger(wav)
+        first_report=self.inspect(wav)
+        first_report["job_id"]=first_job
+        ledger.register_voice_technical("colors-ar",1,1,
+                                        self.report_file(first_report,"first.json"))
+        ledger.approve("colors-ar",1,1,"voice_synthesize",sha(wav),
+            "Legacy first-pilot listening in the synthetic test only",
+            owner_listened=True)
+        job=ledger.queue_stage("colors-ar",1,2,
+                               "voice_synthesize","second_scene_voice_01")
+        claimed=queue.claim(worker_id="mac-scene-two",
+                            capabilities=["voice_synthesize"])
+        self.assertEqual(claimed["job_id"],job)
+        queue.complete(job_id=job,worker_id="mac-scene-two",
+            generation=claimed["generation"],result={
+                "status":"VOICE_RENDERED_PENDING_QA",
+                "artifact_sha256":sha(wav),"artifact_bytes":wav.stat().st_size,
+                "artifact_type":"wav","publication_approved":False})
+        ledger.reconcile()
+        voice_report=inspect_voice(wav,sha(wav),job,"d"*64,
+                                   ffprobe=self.ffprobe,ffmpeg=self.ffmpeg)
+        self.assertEqual(voice_report["status"],
+                         "VOICE_TECH_PASS_OWNER_LISTENING_PENDING")
+        registered=ledger.register_voice_technical("colors-ar",1,2,
+            self.report_file(voice_report,"second.json"))
+        self.assertEqual(registered["scene"],2)
+        self.assertFalse(registered["owner_listening_performed"])
+        with self.assertRaises(SceneError):
+            ledger.approve("colors-ar",1,2,"voice_synthesize",sha(wav),
+                           "No technical-independent model review yet")
+
     def test_mismatched_wav_technical_report_or_fabricated_status_denied(self):
         wav=self.make_wav()
         _,ledger,job_id=self.prepare_ledger(wav)
