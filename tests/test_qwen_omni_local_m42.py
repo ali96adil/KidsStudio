@@ -187,6 +187,16 @@ class LocalOmni42(unittest.TestCase):
             self.review("motion_sync",run_inference=mutated)
         self.assertFalse((self.root/"unqualified_motion_sync.json").exists())
 
+    def test_unqualified_model_cannot_write_output_inside_git(self):
+        repo=self.root/"fake_repository"
+        repo.mkdir()
+        (repo/".git").mkdir()
+        target=repo/"should_not_exist.json"
+        with self.assertRaises(ValueError):
+            self.review("pronunciation",output=target)
+        self.assertFalse(target.exists())
+        self.assertEqual(self.inference_calls,0)
+
     def test_unmocked_linux_ci_cannot_invoke_transformers_or_write(self):
         with patch("kidsstudio.qwen_omni_local.infer_local_qwen",
                    side_effect=AssertionError("Must not run model on CI")):
