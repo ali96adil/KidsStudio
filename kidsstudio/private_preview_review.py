@@ -141,6 +141,13 @@ class PreviewReview:
                 (series_id,episode_number)).fetchone()
             if existing and existing["state"]!="REVISION_REQUESTED":
                 raise PreviewReviewError("Existing private preview must be reviewed first.")
+            if existing and existing["state"]=="REVISION_REQUESTED":
+                previous=db.execute("""SELECT render_job_id,master_sha256
+                    FROM studio_private_previews WHERE video_id=?""",
+                    (existing["video_id"],)).fetchone()
+                if (previous["render_job_id"],previous["master_sha256"])==(
+                        render_job_id,master_sha256):
+                    raise PreviewReviewError("Requested revision needs a newly approved master render.")
             if existing and existing["video_id"]==video_id:
                 raise PreviewReviewError("Every revision needs a different upload/video ID.")
             version=db.execute("""SELECT COALESCE(MAX(version),0)+1 FROM
@@ -184,7 +191,9 @@ class PreviewReview:
             raise PreviewReviewError("Category or timecode invalid.")
         with self.queue._connection(write=True) as db:
             row=self._active(db,video_id)
-            self._current_render(db,row["series_id"],row["ordinal"])
+            job,sha=self._current_render(db,row["series_id"],row["ordinal"])
+            if (row["render_job_id"],row["master_sha256"])!=(job,sha):
+                raise PreviewReviewError("Video master changed; cannot comment on stale preview.")
             db.execute("""INSERT INTO studio_private_preview_feedback
                 (video_id,category,second,note,kind,decision,agent_action,created_at)
                 VALUES (?,?,?,?,?,?,?,?)""",
@@ -204,6 +213,9 @@ class PreviewReview:
             job,sha=self._current_render(db,row["series_id"],row["ordinal"])
             if (row["render_job_id"],row["master_sha256"])!=(job,sha):
                 raise PreviewReviewError("Master changed after private upload; review new version.")
+            comment_count=db.execute("""SELECT COUNT(*) FROM
+                studio_private_preview_feedback WHERE video_id=?
+                AND kind='COMMENT'""",(video_id,)).fetchone()[0]
             if decision=="APPROVE_WITH_NOTES":
                 final_state="APPROVED_WITH_NOTES"
                 action="CONSIDER_NEXT_EPISODE"
@@ -212,7 +224,7 @@ class PreviewReview:
                 action="TRIAGE_REVISION"
             else:
                 final_state="APPROVED"
-                action="NONE"
+                action=("CONSIDER_NEXT_EPISODE" if comment_count else "NONE")
             now=time.time()
             db.execute("""INSERT INTO studio_private_preview_feedback
                 (video_id,category,second,note,kind,decision,agent_action,created_at)
@@ -221,6 +233,10 @@ class PreviewReview:
             db.execute("""UPDATE studio_private_previews SET state=?,
                 reviewed_at=? WHERE video_id=? AND state='PRIVATE_AWAITING_OWNER_REVIEW'""",
                 (final_state,now,video_id))
+            if action!="NONE":
+                db.execute("""UPDATE studio_private_preview_feedback
+                    SET agent_action=? WHERE video_id=? AND kind='COMMENT'""",
+                    (action,video_id))
             # Revision notes and approved-with-notes become durable triage
             # context for an agent; never auto-queue a new render or upload.
             if action!="NONE":
