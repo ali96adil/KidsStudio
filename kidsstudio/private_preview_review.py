@@ -116,9 +116,20 @@ class PreviewReview:
             qa=db.execute("""SELECT state,media_sha256,checks_passed FROM
                 studio_quality_reviews WHERE series_id=? AND ordinal=?
                 AND render_job_id=?""",(sid,ordinal,row["render_job_id"])).fetchone()
-            if (not qa or qa["state"]!="READY_FOR_OWNER_EPISODE_APPROVAL" or
+            if (not qa or qa["state"] not in (
+                    "READY_FOR_OWNER_EPISODE_APPROVAL",
+                    "AI_INTERNAL_READY_PRIVATE_ONLY") or
                     qa["media_sha256"]!=sha or qa["checks_passed"]!=11):
-                raise PreviewReviewError("Current M7 technical approval missing.")
+                raise PreviewReviewError("Current M7/M27 technical review approval missing.")
+            if qa["state"]=="AI_INTERNAL_READY_PRIVATE_ONLY":
+                ai=db.execute("""SELECT status,media_sha256,
+                    review_bundle_sha256 FROM studio_ai_final_reviews
+                    WHERE series_id=? AND ordinal=? AND render_job_id=?""",
+                    (sid,ordinal,row["render_job_id"])).fetchone()
+                if (not ai or ai["status"]!="AI_INTERNAL_READY_PRIVATE_ONLY" or
+                    ai["media_sha256"]!=sha or
+                    ai["review_bundle_sha256"]!=qa["review_report_sha256"]):
+                    raise PreviewReviewError("Exact two-agent review record required.")
         return row["render_job_id"],sha
 
     def record_private_upload(self, series_id: str, episode_number: int,
