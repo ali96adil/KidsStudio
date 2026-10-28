@@ -74,6 +74,16 @@ class SceneLedger:
                 REFERENCES studio_scenes(series_id,ordinal,scene)
             )""")
 
+            db.execute("""CREATE TABLE IF NOT EXISTS studio_scene_voice_checks(
+                series_id TEXT NOT NULL, ordinal INTEGER NOT NULL,
+                scene INTEGER NOT NULL, voice_job_id TEXT NOT NULL,
+                voice_sha256 TEXT NOT NULL, report_sha256 TEXT NOT NULL,
+                status TEXT NOT NULL, created_at REAL NOT NULL,
+                PRIMARY KEY(series_id,ordinal,scene,voice_job_id),
+                FOREIGN KEY(series_id,ordinal,scene)
+                REFERENCES studio_scenes(series_id,ordinal,scene)
+            )""")
+
     def register_plan(self, filename: str|Path) -> dict:
         path=Path(filename).expanduser()
         if not path.is_absolute() or path.is_symlink():
@@ -291,6 +301,90 @@ class SceneLedger:
                 count+=1
         return count
 
+    def register_voice_technical(self,sid:str,ordinal:int,scene:int,
+                                 report_file:str|Path)->dict:
+        """M23: link exact offline WAV technical report to current Pi pilot.
+
+        This receipt itself does not attest true sound or substitute for the
+        owner listening. It cannot approve voice or start LTX.
+        """
+        from .voice_qa import CHECKS as WAV_CHECKS
+        path=Path(report_file).expanduser()
+        if not path.is_absolute() or path.is_symlink():
+            raise SceneError("Voice QA report must be an absolute private file.")
+        path=path.resolve()
+        _ensure_private(path.parent)
+        if (not path.is_file() or path.suffix!=".json" or
+            not 0<path.stat().st_size<=40_000):
+            raise SceneError("Missing or oversized private voice report.")
+        try: r=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,ValueError) as exc:
+            raise SceneError("Invalid voice QA JSON.") from exc
+        fields={"schema_version","status","job_id","script_sha256",
+                "voice_sha256","expected_voice_sha256","voice_bytes",
+                "duration_seconds","sample_rate_hz","channels",
+                "rms_dbfs","clipped_fraction","quiet_fraction","checks",
+                "owner_listening_performed","text_matches_audio_verified",
+                "speaker_identity_verified","commercial_rights_verified",
+                "publishing_approved"}
+        if (not isinstance(r,dict) or set(r)!=fields or
+            type(r["schema_version"]) is not int or r["schema_version"]!=1 or
+            r["status"]!="VOICE_TECH_PASS_OWNER_LISTENING_PENDING" or
+            not isinstance(r["checks"],dict) or
+            set(r["checks"])!=set(WAV_CHECKS) or
+            any(r["checks"][name] is not True for name in WAV_CHECKS) or
+            r["owner_listening_performed"] is not False or
+            r["text_matches_audio_verified"] is not False or
+            r["speaker_identity_verified"] is not False or
+            r["commercial_rights_verified"] is not False or
+            r["publishing_approved"] is not False or
+            type(r["voice_bytes"]) is not int or r["voice_bytes"]<100 or
+            type(r["duration_seconds"]) not in (int,float) or
+            not 0.2<=r["duration_seconds"]<=180 or
+            type(r["rms_dbfs"]) not in (int,float) or
+            not -48<=r["rms_dbfs"]<=-3 or
+            type(r["clipped_fraction"]) not in (int,float) or
+            not 0<=r["clipped_fraction"]<=0.01 or
+            type(r["quiet_fraction"]) not in (int,float) or
+            not 0<=r["quiet_fraction"]<=0.90 or
+            type(r["sample_rate_hz"]) is not int or
+            not 16000<=r["sample_rate_hz"]<=96000 or
+            type(r["channels"]) is not int or r["channels"] not in (1,2)):
+            raise SceneError("WAV technical checks must all pass and remain unapproved.")
+        with self.queue._connection(write=True) as db:
+            row=db.execute("""SELECT st.job_id,st.state,st.artifact_sha256,
+                st.scene_script_sha256,j.kind,j.state AS job_state,
+                j.payload,j.result_json FROM studio_scene_stages st
+                JOIN jobs j ON st.job_id=j.job_id
+                WHERE st.series_id=? AND st.ordinal=? AND st.scene=?
+                AND st.stage='voice_synthesize'""",(sid,ordinal,scene)).fetchone()
+            if not row or row["state"]!="PENDING_QA" or row["job_state"]!="COMPLETED" or row["kind"]!="voice_synthesize":
+                raise SceneError("Current completed pilot voice receipt required.")
+            try:
+                payload=json.loads(row["payload"])
+                receipt=json.loads(row["result_json"] or "{}")
+            except (ValueError,TypeError) as exc:
+                raise SceneError("Malformed current voice receipt.") from exc
+            if (payload.get("pilot_scene")!=scene or
+                type(payload.get("pilot_scene")) is not int or scene!=1 or
+                payload.get("script_sha256")!=row["scene_script_sha256"] or
+                r["script_sha256"]!=row["scene_script_sha256"] or
+                r["job_id"]!=row["job_id"] or
+                r["voice_sha256"]!=row["artifact_sha256"] or
+                r["expected_voice_sha256"]!=row["artifact_sha256"] or
+                receipt.get("artifact_sha256")!=r["voice_sha256"] or
+                receipt.get("artifact_bytes")!=r["voice_bytes"] or
+                receipt.get("status")!="VOICE_RENDERED_PENDING_QA" or
+                receipt.get("artifact_type")!="wav" or
+                receipt.get("publication_approved") is not False):
+                raise SceneError("Voice technical report and owner-pinned Pi job disagree.")
+            db.execute("""INSERT INTO studio_scene_voice_checks VALUES (?,?,?,?,?,?,?,?)""",
+                (sid,ordinal,scene,row["job_id"],r["voice_sha256"],
+                 digest(path),"TECH_PASS_OWNER_LISTENING_PENDING",time.time()))
+        return {"status":"VOICE_TECH_REGISTERED_AWAITING_OWNER_LISTENING",
+                "scene":scene,"voice_sha256":r["voice_sha256"],
+                "owner_listening_performed":False,"publication_approved":False}
+
     def register_audio(self,sid:str,ordinal:int,scene:int,report_file:str|Path)->None:
         path=Path(report_file).expanduser()
         if not path.is_absolute() or path.is_symlink():
@@ -340,7 +434,8 @@ class SceneLedger:
                  "TECH_COMPATIBLE_HUMAN_QA_REQUIRED"))
 
     def approve(self,sid:str,ordinal:int,scene:int,kind:str,
-                artifact_sha256:str,note:str)->None:
+                artifact_sha256:str,note:str, *,
+                owner_listened:bool=False)->None:
         if (kind not in STAGES or not isinstance(artifact_sha256,str) or
             not SHA.fullmatch(artifact_sha256) or not isinstance(note,str) or
             not 12<=len(note.strip())<=500):
@@ -352,6 +447,22 @@ class SceneLedger:
             if (not row or row["state"]!="PENDING_QA"
                 or row["artifact_sha256"]!=artifact_sha256):
                 raise SceneError("Current scene media receipt requires owner QA.")
+            if kind=="voice_synthesize":
+                job=db.execute("SELECT kind,payload FROM jobs WHERE job_id=?",
+                               (row["job_id"],)).fetchone()
+                if job and job["kind"]=="voice_synthesize":
+                    try: payload=json.loads(job["payload"])
+                    except (ValueError,TypeError):payload={}
+                    if "pilot_scene" in payload:
+                        evidence=db.execute("""SELECT 1
+                            FROM studio_scene_voice_checks WHERE
+                            series_id=? AND ordinal=? AND scene=? AND
+                            voice_job_id=? AND voice_sha256=? AND
+                            status='TECH_PASS_OWNER_LISTENING_PENDING'""",
+                            (sid,ordinal,scene,row["job_id"],
+                             artifact_sha256)).fetchone()
+                        if not evidence or owner_listened is not True:
+                            raise SceneError("M23 exact voice QA and explicit owner listening required.")
             if kind=="ltx_animate":
                 evidence=db.execute("""SELECT 1 FROM studio_scene_audio_checks WHERE
                     series_id=? AND ordinal=? AND scene=? AND ltx_job_id=?
