@@ -26,7 +26,7 @@ class FakeModels:
     def complete(self,**kwargs):
         self.calls.append(kwargs)
         excluded=kwargs.get("exclude_providers",set())
-        provider=("model_alpha" if self.same or "model_beta" not in excluded
+        provider=("model_beta" if self.same or "model_beta" not in excluded
                   else "model_gamma")
         content={"criteria":{key:{
             "decision":self.verdict,
