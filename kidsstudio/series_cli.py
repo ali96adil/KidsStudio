@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -165,7 +166,9 @@ def main(argv: list[str] | None = None) -> int:
         ai_final=AgentFinalQA(queue)
         audio_evidence=AudioEvidenceLedger(queue)
         scenes=SceneLedger(queue)
-        ai_scenes=SceneAIGate(queue)
+        ai_scenes=SceneAIGate(
+            queue,attestation_key=os.environ.get(
+                "KIDS_STUDIO_SCENE_QA_RUNNER_KEY","").encode("utf-8"))
         if args.cmd=="init":
             control.initialize()
             result={"status":"SCHEMA_READY"}
