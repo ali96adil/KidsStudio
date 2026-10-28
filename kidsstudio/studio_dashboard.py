@@ -99,6 +99,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
     ids={ep["render_job_id"] for ep in data["episodes"] if ep["render_job_id"]}
     render_kinds={}
     stage_states={}
+    quality_states={}
     stage_tracking_installed=False
     with queue._connection() as db:
         stage_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
@@ -107,6 +108,19 @@ def build_snapshot(queue: StudioQueue) -> dict:
             for stage in db.execute("""SELECT series_id,ordinal,stage,state
                 FROM studio_episode_stages"""):
                 stage_states.setdefault((stage["series_id"],stage["ordinal"]),{})[stage["stage"]]=stage["state"]
+    with queue._connection() as db:
+        quality_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_quality_reviews'""").fetchone())
+        if quality_installed:
+            for row in db.execute("""SELECT q.series_id,q.ordinal,q.render_job_id,
+                q.state,q.checks_passed
+                FROM studio_quality_reviews q
+                JOIN studio_episodes e ON
+                e.series_id=q.series_id AND e.ordinal=q.ordinal
+                AND e.render_job_id=q.render_job_id"""):
+                quality_states[(row["series_id"],row["ordinal"])]={
+                    "state":row["state"],"criteria_passed":row["checks_passed"]
+                }
     if ids:
         with queue._connection() as db:
             for identifier in ids:
@@ -134,6 +148,9 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "series_id":ep["series_id"], "ordinal":ep["ordinal"],
             "title":ep["title"],"objective":ep["objective"],"state":state,
             "status_label":label,"tone":tone,"revision":ep["revision"],
+            "quality":quality_states.get((ep["series_id"],ep["ordinal"]),
+                  {"state":"NOT_STARTED" if quality_installed else "NOT_CONFIGURED",
+                   "criteria_passed":0}),
             "stages":stage_timeline(state,render_kind=render_kinds.get(ep["render_job_id"]),
                                      stage_progress=stage_states.get((ep["series_id"],ep["ordinal"]))),
         })
@@ -148,6 +165,8 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "limits":{"media_execution":False,"publishing":False,
                       "voice_and_ltx_tracking":("RECEIPT_GATED" if stage_tracking_installed
                                                  else "NOT_YET_CONNECTED"),
+                      "episode_qa_tracking":("EVIDENCE_GATED" if quality_installed
+                                             else "NOT_CONFIGURED"),
                       "data_source":"Studio Brain SQLite; read-only"},
             }
 
