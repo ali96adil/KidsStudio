@@ -155,6 +155,20 @@ class AVCrisisCanaries39(unittest.TestCase):
         with self.assertRaises(CalibrationError):
             self.evaluate(execute=True)
 
+    def test_soundless_mp4_cannot_be_used_as_audio_video_calibration(self):
+        silent=self.av.root/"m39_no_audio.mp4"
+        subprocess.run([self.av.ffmpeg,"-v","error","-nostdin","-y",
+            "-f","lavfi","-i",
+            "color=c=blue:s=384x216:r=10:d=3",
+            "-an","-c:v","libx264","-pix_fmt","yuv420p",str(silent)],
+            check=True,timeout=60,capture_output=True)
+        self.doc["cases"][1]["mp4"]=str(silent)
+        self.doc["cases"][1]["mp4_sha256"]=digest(silent)
+        self.save()
+        with self.assertRaises(CalibrationError):
+            self.evaluate(execute=True)
+        self.assertFalse((self.av.root/"benchmark_outputs").exists())
+
     def test_required_negative_labels_cannot_be_erased(self):
         self.doc["cases"][1]["expected"]["motion_sync"]["lip_sync"]="PASS"
         self.save()
