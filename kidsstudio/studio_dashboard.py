@@ -205,7 +205,10 @@ def build_snapshot(queue: StudioQueue) -> dict:
                 e.series_id=q.series_id AND e.ordinal=q.ordinal
                 AND e.render_job_id=q.render_job_id"""):
                 quality_states[(row["series_id"],row["ordinal"])]={
-                    "state":row["state"],"criteria_passed":row["checks_passed"]
+                    "state":row["state"],"criteria_passed":row["checks_passed"],
+                    "internal_review_mode":("TWO_INDEPENDENT_AI_PRIVATE_ONLY"
+                        if row["state"]=="AI_INTERNAL_READY_PRIVATE_ONLY"
+                        else "OWNER_OR_LEGACY"),
                 }
     if ids:
         with queue._connection() as db:
