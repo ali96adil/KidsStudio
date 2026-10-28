@@ -20,6 +20,7 @@ from .workflow_audit import audit_character_workflow
 from .godot_render import render_godot_project
 from .episode_assembly import EpisodeAssembler, EpisodeAssemblyError
 from .voice_animation_stage import StagePlan, StageError
+from .resource_gate import cooperative_compute_lock
 from .remote_worker import RemoteClient, RemoteWorkerError
 
 MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble",
@@ -208,7 +209,8 @@ class MediaExecutor:
             raise MediaError("Media output already exists; never overwrite.")
         if kind == "godot_render":
             report = Path(recipe["inputs"]["project_report"])
-            result = render_godot_project(report.parent, dest)
+            with cooperative_compute_lock(Path(recipe["output_root"]).resolve().parent):
+                result = render_godot_project(report.parent, dest)
             artifact = Path(result["mp4"])
             if artifact != dest / "character_preview.mp4":
                 raise MediaError("Unexpected output file.")
@@ -233,13 +235,14 @@ class MediaExecutor:
             status = report["status"]
         elif kind == "character_generate":
             ins = recipe["inputs"]
-            result = run_character_cycle(
-                ins["blueprint"], ins["workflow"], ins["profile"],
-                ins["reference"], dest,
-                vision_model=recipe["review_model"],
-                max_attempts=recipe.get("max_attempts", 2),
-                max_repair_parts=recipe.get("max_repair_parts", 3),
-            )
+            with cooperative_compute_lock(Path(recipe["output_root"]).resolve().parent):
+                result = run_character_cycle(
+                    ins["blueprint"], ins["workflow"], ins["profile"],
+                    ins["reference"], dest,
+                    vision_model=recipe["review_model"],
+                    max_attempts=recipe.get("max_attempts", 2),
+                    max_repair_parts=recipe.get("max_repair_parts", 3),
+                )
             artifact = dest / "production_cycle.json"
             status = result["status"]
         else:
