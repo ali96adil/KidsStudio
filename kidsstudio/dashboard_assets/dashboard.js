@@ -134,6 +134,17 @@
         (aiScene.needs_fix ? " · يحتاج تصحيح "+fmt(aiScene.needs_fix) : "")+
         " · تقارير موقّعة، ليست دليلاً على تشغيل نموذج فعلي بذاتها"));
     }
+    const orchestration=episode.orchestrator||{state:"NOT_PINNED"};
+    const orchestrationArabic={
+      NOT_PINNED:"ماكو خطة تشغيل موحدة مثبتة للحلقة",
+      PINNED_SOURCE_CURRENT_FILE_NOT_RECHECKED:
+        "خطة M32 مسجلة ومصدر السيناريو مطابق؛ يلزم فحص ملف الخطة والأدلة بالأمر المحلي",
+      BLOCKED_SCRIPT_CHANGED:"خطة M32 متوقفة: بصمة السيناريو تغيرت"
+    };
+    host.append(make("p","small-explainer",
+      "مدير إنتاج M32: "+
+      (orchestrationArabic[orchestration.state]||"تحتاج تدقيقاً")+
+      " · اختبار الأجهزة المتكامل غير مؤهل بعد"));
     const continuity=episode.audio_continuity||{state:"NOT_CONFIGURED"};
     const continuityText={
       NOT_CONFIGURED:"فحص الاستمرارية الصوتية غير مفعّل بعد",
