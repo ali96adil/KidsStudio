@@ -18,9 +18,10 @@ from typing import Any, Callable
 from .cycle import run_character_cycle
 from .workflow_audit import audit_character_workflow
 from .godot_render import render_godot_project
+from .episode_assembly import EpisodeAssembler
 from .remote_worker import RemoteClient, RemoteWorkerError
 
-MEDIA_KINDS = frozenset({"character_generate", "godot_render"})
+MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble"})
 HEX = re.compile(r"^[a-f0-9]{64}$")
 SAFE = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 JOB = re.compile(r"^[a-f0-9]{32}$")
@@ -78,7 +79,8 @@ class MediaRecipes:
             pins = recipe.get("sha256")
             names = (
                 ("blueprint", "workflow", "profile", "reference")
-                if kind == "character_generate" else ("project_report",)
+                if kind == "character_generate" else
+                (("project_report",) if kind == "godot_render" else ("episode_recipe",))
             )
             if (not isinstance(inputs, dict) or not isinstance(pins, dict) or
                 set(inputs) != set(names) or set(pins) != set(names)):
@@ -208,6 +210,15 @@ class MediaExecutor:
             if artifact != dest / "character_preview.mp4":
                 raise MediaError("Unexpected output file.")
             status = "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"
+        elif kind == "episode_assemble":
+            assembler = EpisodeAssembler(recipe["inputs"]["episode_recipe"])
+            if assembler.output_root != Path(recipe["output_root"]).resolve():
+                raise MediaError("Episode output root must match the approved media recipe.")
+            report = assembler.execute(run_id=job_id)
+            artifact = Path(report["final_media_path"]).resolve()
+            if artifact != (dest / "episode_qa_master.mp4").resolve():
+                raise MediaError("Unexpected episode output location.")
+            status = "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"
         elif kind == "character_generate":
             ins = recipe["inputs"]
             result = run_character_cycle(
@@ -227,7 +238,7 @@ class MediaExecutor:
             "result_status": status,
             "artifact_sha256": _sha(artifact),
             "artifact_bytes": artifact.stat().st_size,
-            "artifact_type": "mp4" if kind == "godot_render" else "rig_report",
+            "artifact_type": "mp4" if kind in ("godot_render", "episode_assemble") else "rig_report",
             "publication_approved": False,
         }
 
