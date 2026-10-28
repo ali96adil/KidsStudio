@@ -169,6 +169,25 @@ class YouTubeAnalyticsReadOnlyTests(unittest.TestCase):
         with self.assertRaises(AnalyticsCollectionError):
             self.collect()
 
+    def test_shorts_replay_retention_above_100_is_preserved(self):
+        def replay(url,token):
+            result=self.responder(url,token)
+            result["rows"]=[[620,400.0,61.0,145.2]]
+            return result
+        packet,report=self.collect(execute=True,fetcher=replay)
+        self.assertEqual(report["metrics_collected"],2)
+        self.assertEqual(packet["metrics"][0]["average_view_percentage"],145.2)
+        _write_new_json(self.record,packet)
+        self.assertEqual(self.learn.import_export(self.record)["new_snapshots"],2)
+
+    def test_output_validation_blocks_preexisting_file_before_http(self):
+        from kidsstudio.youtube_analytics_collect import _validate_destination
+        self.record.write_text("protected existing report")
+        with self.assertRaises(AnalyticsCollectionError):
+            _validate_destination(self.record)
+        self.assertEqual(self.calls,[])
+        self.assertEqual(self.record.read_text(),"protected existing report")
+
     def test_missing_token_or_same_video_cannot_query(self):
         with self.assertRaises(AnalyticsCollectionError):
             build_collection(self.q,self.file,channel_id=self.channel,
