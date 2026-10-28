@@ -28,6 +28,8 @@ studio-backup-drill = "kidsstudio.backup_drill:main"
 studio-acceptance-review = "kidsstudio.acceptance_review:main"
 studio-mac-contract = "kidsstudio.mac_contract:main"
 studio-audio-continuity = "kidsstudio.audio_continuity:main"
+studio-import-bunny = "kidsstudio.private_asset_intake:main"
+studio-handoff-review = "kidsstudio.handoff_review:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
