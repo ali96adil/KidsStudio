@@ -295,7 +295,10 @@ class SeriesManager:
                 raise SeriesError("Owner-approved script required before rendering.")
             key=(f"series:{series_id}:episode:{ordinal}:"
                  f"render:{media_kind}:a{ep['render_attempt']}:{ep['source_sha256'][:16]}")
-            payload=_json_object({"recipe_id":recipe_id},"payload")
+            payload=_json_object(({"recipe_id":recipe_id,
+                                  "script_sha256":ep["source_sha256"]}
+                                 if media_kind=="episode_assemble" else
+                                 {"recipe_id":recipe_id}),"payload")
             prior=db.execute("SELECT * FROM jobs WHERE request_key=?",
                              (key,)).fetchone()
             if prior:
