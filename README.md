@@ -4,11 +4,15 @@ AI-powered bilingual educational animation studio for children.
 
 **Status:** Early R&D. The Godot/ComfyUI experiments described below were run on a Mac outside this repository; production automation is not yet deployed.
 
-## Current draft implementation (M3–M46, unmerged)
+## Current draft implementation (M3–M48, unmerged)
 
 The connected GitHub draft branch now includes series-first bounded agents,
 scene-by-scene voice/LTX ownership and human QA, Mac source provenance,
 M14 frozen scene catalogue, and M16 Pi-to-Mac catalogue SHA matching.
+M47 adds an opt-in, read-only official YouTube Analytics data collector,
+with no OAuth account connected and no real metrics fetched. M48 fixes the
+circular production requirement by binding the final Mac montage catalogue
+only AFTER all scene QA is complete, still keeping the Pi/Mac SHA gate.
 M15 adds offline, owner-verified seven-day video performance analysis:
 compare comparable language/format/age cohorts, propose evidence-backed
 creative experiments, and use ONLY owner-adopted ideas in future original
@@ -24,7 +28,9 @@ Neither test produces an educational episode or licenses any asset.
 No Mac/Pi deployment, live model calls, automatic publication or merge to
 main has been performed by this draft work.
 
-See [M15/M16 launch and test pack](docs/M15_M16_TEST_PACK.md),
+See [M47 official read-only Analytics](docs/M47_OFFICIAL_READONLY_ANALYTICS.md),
+[M48 deferred assembly binding](docs/M48_DEFERRED_ASSEMBLY_CATALOGUE.md),
+and [M15/M16 launch and test pack](docs/M15_M16_TEST_PACK.md),
 [M14 scene provenance](docs/M14_FROZEN_MEDIA_CATALOGUE.md),
 and [M13 multi-scene pipeline](docs/M13_SCENE_PIPELINE.md),
 [M17 real assembly](docs/M17_REAL_FFMPEG_INTEGRATION.md),
