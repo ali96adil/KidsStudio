@@ -8,6 +8,10 @@ import sys
 import tempfile
 import unittest
 
+from kidsstudio.scene_catalogue import (
+    freeze_scene_catalogue, verify_scene_seal, SceneCatalogueError
+)
+from kidsstudio.media_worker import MediaRecipes, MediaError
 from kidsstudio.studio_queue import StudioQueue
 from kidsstudio.series_manager import SeriesManager,SeriesError
 from kidsstudio.studio_scenes import SceneLedger,SceneError
@@ -196,6 +200,78 @@ class SceneWorkflowTests(unittest.TestCase):
             write_scene_recipe(path,recipe,evidence)
         self.series.queue_render("colors-ar",1,"episode_all",
                                   media_kind="episode_assemble")
+
+    def freeze_for_mac_worker(self):
+        self.complete_plan()
+        recipe,evidence=self.preview()
+        path=self.root/"recipes"/"episode_01.json"
+        write_scene_recipe(path,recipe,evidence)
+        proof=self.root/"intake"/"scene_evidence.json"
+        catalog=self.root/"intake"/"frozen_catalogue.json"
+        result=freeze_scene_catalogue(
+            self.queue,template=self.template,assembly_recipe=path,
+            series_id="colors-ar",ordinal=1,
+            voice_output_root=self.outputs,ltx_output_root=self.outputs,
+            evidence_path=proof,catalog_path=catalog,
+            recipe_id="ep01_verified_v1",video_prober=fake_probe)
+        return result,path,proof,catalog
+
+    def test_m14_owner_frozen_catalogue_rechecks_all_real_scene_files(self):
+        result,recipe,proof,catalog=self.freeze_for_mac_worker()
+        self.assertEqual(result["status"],
+                         "MULTISCENE_MEDIA_CATALOGUE_FROZEN_NOT_EXECUTED")
+        self.assertEqual(result["scene_count"],2)
+        self.assertFalse(result["rendered"])
+        data=MediaRecipes(catalog)
+        selected=data.resolve("episode_assemble","ep01_verified_v1")
+        self.assertEqual(selected["sha256"]["episode_recipe"],sha(recipe))
+        self.assertEqual(selected["sha256"]["scene_evidence"],sha(proof))
+        self.assertFalse((self.root/"assembled").exists())
+        with self.assertRaises(SceneCatalogueError):
+            freeze_scene_catalogue(
+                self.queue,template=self.template,assembly_recipe=recipe,
+                series_id="colors-ar",ordinal=1,
+                voice_output_root=self.outputs,ltx_output_root=self.outputs,
+                evidence_path=proof,catalog_path=catalog,
+                recipe_id="ep01_verified_v1",video_prober=fake_probe)
+
+    def test_m14_rejects_unsealed_multiscene_worker_catalogue(self):
+        self.complete_plan()
+        recipe,report=self.preview()
+        out=self.root/"recipes"/"unsealed.json"
+        write_scene_recipe(out,recipe,report)
+        catalog=self.root/"unsealed_catalogue.json"
+        catalog.write_text(json.dumps({
+            "schema_version":1,
+            "recipes":{"ep01_unsealed":{
+                "kind":"episode_assemble",
+                "output_root":recipe["output_root"],
+                "inputs":{"episode_recipe":str(out)},
+                "sha256":{"episode_recipe":sha(out)}
+            }}
+        }))
+        with self.assertRaises(MediaError):
+            MediaRecipes(catalog).resolve("episode_assemble","ep01_unsealed")
+        self.assertFalse((self.root/"assembled").exists())
+
+    def test_m14_refuses_mutated_mac_receipt_after_freeze(self):
+        _,recipe,proof,catalog=self.freeze_for_mac_worker()
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT job_id FROM studio_scene_stages
+                WHERE series_id='colors-ar' AND ordinal=1 AND scene=2
+                AND stage='ltx_animate'""").fetchone()
+        file=self.outputs/row["job_id"]/"stage_receipt.json"
+        data=json.loads(file.read_text())
+        data["source_voice_sha256"]="f"*64
+        file.write_text(json.dumps(data))
+        with self.assertRaises(MediaError):
+            MediaRecipes(catalog).resolve("episode_assemble","ep01_verified_v1")
+
+    def test_m14_refuses_replaced_second_clip_after_freeze(self):
+        _,_,_,catalog=self.freeze_for_mac_worker()
+        self.a2v_paths[2].write_bytes(b"SWAPPED_VIDEO")
+        with self.assertRaises((MediaError,ValueError)):
+            MediaRecipes(catalog).resolve("episode_assemble","ep01_verified_v1")
 
     def test_reject_swapped_second_scene_and_tampered_stage_receipt(self):
         self.complete_plan()
