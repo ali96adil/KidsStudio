@@ -21,9 +21,9 @@ SHA=re.compile(r"^[a-f0-9]{64}$")
 SID=re.compile(r"^[a-z][a-z0-9_-]{1,47}$")
 RUN=re.compile(r"^[a-z0-9][a-z0-9_-]{5,63}$")
 ROLES={"episode_master","approved_script","voice_master","a2v_master",
-       "technical_qa","owner_qa","scene_manifest","thumbnail","subtitles",
+       "technical_qa","owner_qa","agent_qa","scene_manifest","thumbnail","subtitles",
        "coloring_page","production_notes"}
-REQUIRED={"episode_master","approved_script","technical_qa","owner_qa"}
+REQUIRED={"episode_master","approved_script","technical_qa"}
 MAX_ITEMS=32
 MAX_ITEM_BYTES=20_000_000_000
 
@@ -90,8 +90,9 @@ def _schema(file: str | Path) -> tuple[dict[str, Any],Path,str]:
         roles.add(role)
         origins.add(source)
         size+=source.stat().st_size
-    if not REQUIRED.issubset(roles):
-        raise ArchiveError("Episode master, script and both QA reports are mandatory.")
+    if (not REQUIRED.issubset(roles) or
+        ("owner_qa" in roles)==("agent_qa" in roles)):
+        raise ArchiveError("Master, script, technical QA and exactly one owner/agent QA required.")
     return body,archive_root,digest(file)
 
 
@@ -218,8 +219,9 @@ def verify_archive(directory: str | Path) -> dict[str, Any]:
             raise ArchiveError("Archived bytes missing, changed or substituted.")
         roles.add(role); names.add(name)
         bytes_total+=expected_size
-    if not REQUIRED.issubset(roles):
-        raise ArchiveError("Required episode and QA evidence missing.")
+    if (not REQUIRED.issubset(roles) or
+        ("owner_qa" in roles)==("agent_qa" in roles)):
+        raise ArchiveError("Master, script, technical QA and exactly one owner/agent QA required.")
     if {x.name for x in target.iterdir()} != names|{"archive_manifest.json"}:
         raise ArchiveError("Unexpected or incomplete archive contents.")
     return {
