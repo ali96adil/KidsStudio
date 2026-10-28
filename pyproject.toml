@@ -24,6 +24,8 @@ studio-episode-qa = "kidsstudio.episode_quality:main"
 studio-engine-qualify = "kidsstudio.engine_qualification:main"
 studio-archive = "kidsstudio.private_archive:main"
 studio-private-readiness = "kidsstudio.private_release:main"
+studio-backup-drill = "kidsstudio.backup_drill:main"
+studio-acceptance-review = "kidsstudio.acceptance_review:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
