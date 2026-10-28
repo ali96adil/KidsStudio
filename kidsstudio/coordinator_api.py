@@ -26,7 +26,8 @@ ID = re.compile(r"^[a-f0-9]{32}$")
 IDENT = re.compile(r"^[a-zA-Z0-9_./:-]{1,160}$")
 ALLOWED_KINDS = frozenset({
     "script_draft", "editorial_review", "character_generate", "godot_render",
-    "episode_assemble", "voice_synthesize", "ltx_animate"
+    "episode_assemble", "voice_synthesize", "ltx_animate",
+    "youtube_private_upload"
 })
 MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble",
                          "voice_synthesize", "ltx_animate"})
@@ -200,6 +201,48 @@ class Coordinator:
                     "pilot_scene":1,"pilot_plan_sha256":plan_sha,
                     "script_sha256":script_sha,"recipe_id":recipe_id,
                     "model_execution_authorized":False,"publication_approved":False}
+
+        if action == "request-private-upload":
+            if "youtube_private_upload" not in capabilities:
+                raise TransportError("Private upload permission required.")
+            from .private_upload_policy import PrivateUploadPolicy, PrivatePolicyError
+            try:
+                result=PrivateUploadPolicy(self.queue).queue(
+                    request["series_id"],request["episode_number"],
+                    render_job_id=request["render_job_id"],
+                    master_sha256=request["master_sha256"],
+                    plan_sha256=request["plan_sha256"],
+                    readiness_sha256=request["readiness_sha256"],
+                    channel_id=request["channel_id"],
+                    made_for_kids=request["made_for_kids"],
+                    contains_synthetic_media=request["contains_synthetic_media"])
+            except (PrivatePolicyError,KeyError) as exc:
+                raise TransportError("Standing private policy denied job.") from exc
+            return result
+        if action == "private-upload-lease-check":
+            if "youtube_private_upload" not in capabilities:
+                raise TransportError("Private upload proof permission required.")
+            if set(request)!={"job_id","generation","payload"}:
+                raise TransportError("Invalid private upload proof fields.")
+            from .private_upload_policy import PrivateUploadPolicy, PrivatePolicyError
+            try:
+                return PrivateUploadPolicy(self.queue).check_lease(
+                    request["job_id"],request["generation"],worker_id,
+                    request["payload"])
+            except (PrivatePolicyError,QueueError,KeyError,TypeError) as exc:
+                raise TransportError("Private lease/policy changed.") from exc
+        if action == "complete-private-upload":
+            if "youtube_private_upload" not in capabilities:
+                raise TransportError("Only private upload worker may complete.")
+            if set(request)!={"job_id","generation","result"}:
+                raise TransportError("Invalid private completion fields.")
+            from .private_upload_policy import PrivateUploadPolicy, PrivatePolicyError
+            try:
+                return PrivateUploadPolicy(self.queue).complete(
+                    request["job_id"],request["generation"],worker_id,
+                    request["result"])
+            except (PrivatePolicyError,QueueError,KeyError,TypeError) as exc:
+                raise TransportError("Private upload completion rejected.") from exc
 
         if action == "claim":
             job = self.queue.claim(worker_id=worker_id,
@@ -380,7 +423,10 @@ def create_handler(coordinator: Coordinator):
             if path not in ("/v1/claim", "/v1/heartbeat", "/v1/review-source",
                             "/v1/complete", "/v1/complete-media", "/v1/fail",
                             "/v1/pilot-readiness",
-                            "/v1/pilot-voice-lease-check"):
+                            "/v1/pilot-voice-lease-check",
+                            "/v1/request-private-upload",
+                            "/v1/private-upload-lease-check",
+                            "/v1/complete-private-upload"):
                 self._reply(404, {"error": "NOT_FOUND"})
                 return
             length = self.headers.get("Content-Length")
