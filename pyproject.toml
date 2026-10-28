@@ -57,6 +57,7 @@ studio-synchronized-av-review = "kidsstudio.synchronized_av_review:main"
 studio-import-synchronized-av = "kidsstudio.synchronized_av_import:main"
 studio-pilot-readiness = "kidsstudio.studio_pilot_readiness:main"
 studio-av-calibrate = "kidsstudio.av_model_calibration:main"
+studio-model-bundle = "kidsstudio.model_runtime_bundle:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
