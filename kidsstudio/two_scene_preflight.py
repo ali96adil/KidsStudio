@@ -44,6 +44,7 @@ def inspect_two_scene_voice_pilot(
     mac_contract: str | Path,
     scene_plan: str | Path,
     *,
+    expected_plan_sha256: str,
     scene_scripts: tuple[str | Path, str | Path],
     voice_recipes: tuple[str | Path, str | Path],
     system: str | None = None,
@@ -65,6 +66,10 @@ def inspect_two_scene_voice_pilot(
         raise PilotPreflightError("Approved parent episode source changed.")
 
     plan_path = _canonical_local_file(scene_plan, root, limit=100_000)
+    if (not isinstance(expected_plan_sha256, str)
+            or not SHA.fullmatch(expected_plan_sha256)
+            or digest(plan_path) != expected_plan_sha256):
+        raise PilotPreflightError("M13 scene plan changed since owner approved its digest.")
     try:
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
     except (ValueError, OSError) as exc:
@@ -156,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--mac-contract", type=Path, required=True)
     p.add_argument("--scene-plan", type=Path, required=True)
+    p.add_argument("--scene-plan-sha256", required=True,
+                   help="Exact owner-recorded M13 register-plan SHA256")
     p.add_argument("--scene-1-script", type=Path, required=True)
     p.add_argument("--scene-1-voice-recipe", type=Path, required=True)
     p.add_argument("--scene-2-script", type=Path, required=True)
@@ -164,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         report = inspect_two_scene_voice_pilot(
             args.mac_contract, args.scene_plan,
+            expected_plan_sha256=args.scene_plan_sha256,
             scene_scripts=(args.scene_1_script, args.scene_2_script),
             voice_recipes=(args.scene_1_voice_recipe, args.scene_2_voice_recipe),
         )
