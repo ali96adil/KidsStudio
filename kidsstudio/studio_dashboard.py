@@ -118,14 +118,16 @@ def build_snapshot(queue: StudioQueue) -> dict:
         if has_previews:
             preview_summary["state"]="OWNER_LOCAL_REVIEW_NOT_YOUTUBE_CONNECTED"
             for item in db.execute("""SELECT video_id,series_id,ordinal,state,
-                version FROM studio_private_previews ORDER BY version DESC"""):
+                version,platform_privacy_verified
+                FROM studio_private_previews ORDER BY version DESC"""):
                 key=(item["series_id"],item["ordinal"])
                 if key not in preview_states:
                     preview_states[key]={
                         "video_id":item["video_id"],"state":item["state"],
                         "version":item["version"],
                         "url":"https://www.youtube.com/watch?v="+item["video_id"],
-                        "youtube_visibility_verified":False,
+                        "youtube_visibility_verified":bool(item["platform_privacy_verified"]),
+                        "youtube_visibility_currently_guaranteed":False,
                     }
                     field={"PRIVATE_AWAITING_OWNER_REVIEW":"pending_review",
                            "REVISION_REQUESTED":"revision_requests",
