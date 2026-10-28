@@ -10,6 +10,7 @@ from .series_manager import SeriesError, SeriesManager
 from .studio_queue import QueueError, StudioQueue
 from .studio_stage_ledger import StageLedger, StageLedgerError
 from .studio_quality_ledger import QualityLedger, QualityGateError
+from .agent_final_qa import AgentFinalQA
 from .studio_audio_ledger import AudioEvidenceLedger, AudioEvidenceError
 from .studio_scenes import SceneLedger, SceneError
 
@@ -85,6 +86,16 @@ def main(argv: list[str] | None = None) -> int:
     qualityhuman.add_argument("episode",type=int)
     qualityhuman.add_argument("--review",required=True,type=Path)
     commands.add_parser("quality-status")
+    commands.add_parser("init-ai-final-qa")
+    agent=commands.add_parser("register-ai-final-qa")
+    agent.add_argument("series_id")
+    agent.add_argument("episode",type=int)
+    agent.add_argument("--bundle",type=Path,required=True)
+    agent.add_argument("--observed-evidence",type=Path,required=True)
+    agent.add_argument("--rights",type=Path,required=True)
+    finalize=commands.add_parser("finalize-ai-private")
+    finalize.add_argument("series_id")
+    finalize.add_argument("episode",type=int)
     commands.add_parser("init-audio-evidence")
     audio=commands.add_parser("register-audio-evidence")
     audio.add_argument("series_id")
@@ -136,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         control=SeriesManager(queue)
         stages=StageLedger(queue)
         quality=QualityLedger(queue)
+        ai_final=AgentFinalQA(queue)
         audio_evidence=AudioEvidenceLedger(queue)
         scenes=SceneLedger(queue)
         if args.cmd=="init":
@@ -179,6 +191,16 @@ def main(argv: list[str] | None = None) -> int:
             result={"status":"AUDIO_TECHNICAL_CHECK_REGISTERED_OWNER_QA_PENDING"}
         elif args.cmd=="audio-evidence-status":
             result={"audio_evidence":audio_evidence.snapshot()}
+        elif args.cmd=="init-ai-final-qa":
+            ai_final.initialize()
+            result={"status":"AI_FINAL_QA_LEDGER_READY_NO_APPROVAL"}
+        elif args.cmd=="register-ai-final-qa":
+            result=ai_final.register(args.series_id,args.episode,
+                review_bundle=args.bundle,
+                observed_media_evidence=args.observed_evidence,
+                rights_catalogue=args.rights)
+        elif args.cmd=="finalize-ai-private":
+            result=control.finalize_ai_private(args.series_id,args.episode)
         elif args.cmd=="init-quality":
             quality.initialize()
             result={"status":"QUALITY_LEDGER_READY"}
