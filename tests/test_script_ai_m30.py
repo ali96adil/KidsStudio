@@ -34,7 +34,7 @@ class FakeModels:
             "evidence":"Synthetic-only model response to test the evidence contract: "+key
         } for key in CRITERIA},
         "summary":"This is a test double, not actual child-learning or originality assessment."}
-        return {"provider_id":provider,"model":"synthetic-model-qa",
+        return {"provider_id":provider,"model":provider+"-synthetic-model",
                 "answer":json.dumps(content)}
 
 
