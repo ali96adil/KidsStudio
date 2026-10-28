@@ -112,6 +112,13 @@ class Coordinator:
 
     def dispatch(self, action: str, request: dict[str, Any],
                  worker_id: str, capabilities: frozenset[str]) -> dict[str, Any]:
+        if action == "pilot-readiness":
+            # Explicit authenticated voice worker capability; read-only and
+            # BEFORE the generic lease requirement. This never claims work.
+            if "voice_synthesize" not in capabilities:
+                raise TransportError("Pilot observation requires voice worker access.")
+            from .live_pilot_gate import observe_live_scene_plan
+            return observe_live_scene_plan(self.queue, request)
         if action == "claim":
             job = self.queue.claim(worker_id=worker_id,
                                    capabilities=sorted(capabilities), lease_seconds=600)
@@ -289,7 +296,8 @@ def create_handler(coordinator: Coordinator):
         def do_POST(self):
             path = self.path
             if path not in ("/v1/claim", "/v1/heartbeat", "/v1/review-source",
-                            "/v1/complete", "/v1/complete-media", "/v1/fail"):
+                            "/v1/complete", "/v1/complete-media", "/v1/fail",
+                            "/v1/pilot-readiness"):
                 self._reply(404, {"error": "NOT_FOUND"})
                 return
             length = self.headers.get("Content-Length")
