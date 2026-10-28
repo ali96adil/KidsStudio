@@ -243,7 +243,7 @@ class SceneAIGate:
                 if not isinstance(frame["file"],str) or not frame["file"].lower().endswith(".png"):
                     raise SceneError("Frame evidence must be a private PNG.")
                 frame_raw,frame_sha=_private(frame["file"],10_000_000,".png")
-                if frame_sha!=frame["sha256"] or not frame_raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+                if frame_sha!=frame["sha256"] or not frame_raw.startswith(bytes.fromhex("89504e470d0a1a0a")):
                     raise SceneError("Actual PNG frame evidence missing or altered.")
         all_pass=all(x["decision"]=="PASS"
                      for item in reviews for x in item["checks"].values())
