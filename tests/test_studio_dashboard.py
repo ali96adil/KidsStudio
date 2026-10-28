@@ -68,6 +68,13 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(response.getheader("Cache-Control"),"no-store")
             self.assertNotIn("Access-Control-Allow-Origin",dict(response.getheaders()))
 
+            connection.request("GET","/api/acceptance")
+            check=connection.getresponse()
+            result=json.loads(check.read())
+            self.assertEqual(check.status,200)
+            self.assertEqual(result["status"],"BLOCKED_LOCAL_SCHEMA_INCOMPLETE")
+            self.assertFalse(result["public_release_authorized"])
+
             connection.request("POST","/api/overview",body=b'{"approve":true}')
             response=connection.getresponse();response.read()
             self.assertEqual(response.status,405)
