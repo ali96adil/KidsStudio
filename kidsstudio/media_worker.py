@@ -18,7 +18,7 @@ from typing import Any, Callable
 from .cycle import run_character_cycle
 from .workflow_audit import audit_character_workflow
 from .godot_render import render_godot_project
-from .episode_assembly import EpisodeAssembler
+from .episode_assembly import EpisodeAssembler, EpisodeAssemblyError
 from .remote_worker import RemoteClient, RemoteWorkerError
 
 MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble"})
@@ -262,7 +262,10 @@ class RemoteMediaWorker:
         payload = job.get("payload")
         if (not isinstance(job_id, str) or not JOB.fullmatch(job_id) or
             type(generation) is not int or generation < 1 or
-            not isinstance(payload, dict) or set(payload) != {"recipe_id"}):
+            not isinstance(payload, dict) or
+            set(payload) != ({"recipe_id","script_sha256"} if
+                             job.get("kind")=="episode_assemble" else
+                             {"recipe_id"})):
             if isinstance(job_id, str) and JOB.fullmatch(job_id) and (
                 type(generation) is int and generation >= 1
             ):
@@ -277,8 +280,12 @@ class RemoteMediaWorker:
         kind, recipe_id = job["kind"], payload["recipe_id"]
         # Invalid local recipe is terminal, not an ambiguous GPU execution.
         try:
-            self.recipes.resolve(kind, recipe_id)
-        except (MediaError, OSError, ValueError):
+            local_recipe = self.recipes.resolve(kind, recipe_id)
+            if kind == "episode_assemble":
+                assembler = EpisodeAssembler(local_recipe["inputs"]["episode_recipe"])
+                if assembler.recipe["script"]["sha256"] != payload["script_sha256"]:
+                    raise MediaError("Script hash disagrees with owner-approved episode.")
+        except (MediaError, EpisodeAssemblyError, OSError, ValueError):
             try:
                 self.pi.call("fail", {
                     "job_id": job_id, "generation": generation,
