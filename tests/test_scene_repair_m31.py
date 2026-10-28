@@ -203,9 +203,16 @@ class Repair31(unittest.TestCase):
         self.render()
         self.fail_ai()
         self.repair.register_plan(self.plan())
-        # Deliberately populate an existing dependent job in test DB.
-        self.ledger.queue_stage("colors-ar",1,1,"ltx_animate",
-                                "dependent_ltx_first")
+        # Existing downstream LTX must fence the voice even if its QA
+        # dependency is inconsistent/stale. We insert a synthetic record
+        # because normal queue_stage correctly refuses unapproved voice.
+        with self.q._connection(write=True) as db:
+            db.execute("""INSERT INTO studio_scene_stages(
+                series_id,ordinal,scene,stage,state,job_id,
+                scene_script_sha256,source_voice_sha256,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                ("colors-ar",1,1,"ltx_animate","QUEUED","f"*32,
+                 digest(self.scripts[0]),"e"*64,self.q.clock()))
         self.assertEqual(self.repair.run_once()["status"],"M31_NO_ELIGIBLE_REPAIRS")
 
     def test_ltx_retry_keeps_current_accepted_voice(self):
