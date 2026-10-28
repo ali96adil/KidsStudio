@@ -101,7 +101,7 @@ class VisionBridgeTests(unittest.TestCase):
             "publishing_approved":False
         }))
 
-    def run(self,**changes):
+    def execute_review(self,**changes):
         opts=dict(series_id="colors-ar",episode=1,scene=1,
             job_id="a"*32,mp4=self.mp4,mp4_sha=digest(self.mp4),
             script=self.script,script_sha=digest(self.script),
@@ -114,7 +114,7 @@ class VisionBridgeTests(unittest.TestCase):
         return review_ltx(**opts)
 
     def test_real_source_frames_go_to_two_independent_local_models(self):
-        result=self.run()
+        result=self.execute_review()
         self.assertTrue(result["runner_models_executed"])
         self.assertFalse(result["m28_stage_approved"])
         self.assertFalse(result["public_release_authorized"])
@@ -152,20 +152,20 @@ class VisionBridgeTests(unittest.TestCase):
             with self.assertRaises(LocalVisionError):
                 OllamaVision(endpoint,"model-one:latest","provider_abc")
         with self.assertRaises(LocalVisionError):
-            self.run(second=self.first)
+            self.execute_review(second=self.first)
         self.assertEqual(self.first_opener.calls,[])
 
     def test_source_mutation_or_wrong_rights_prevent_calls(self):
         with self.assertRaises(LocalVisionError):
-            self.run(mp4_sha="0"*64)
+            self.execute_review(mp4_sha="0"*64)
         self.assertEqual(self.first_opener.calls,[])
         self.rights.write_text("{}")
         with self.assertRaises(LocalVisionError):
-            self.run()
+            self.execute_review()
         self.assertEqual(self.first_opener.calls,[])
 
     def test_cannot_sign_unpinned_m10_report(self):
-        self.run()
+        self.execute_review()
         with self.assertRaises(LocalVisionError):
             sign_after_m10(
                 pending_report=self.root/"vision"/"model_report_pending_m10.json",
