@@ -155,6 +155,19 @@ class StageLedger:
                 (series_id,ordinal,stage)).fetchone()
             if row is None or row["state"]!="PENDING_QA" or row["artifact_sha256"]!=artifact_sha256:
                 raise StageLedgerError("Matching verified job receipt awaiting owner QA required.")
+            if stage=="ltx_animate" and db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='studio_audio_checks'""").fetchone():
+                stage_job=db.execute("""SELECT job_id FROM studio_episode_stages
+                    WHERE series_id=? AND ordinal=? AND stage='ltx_animate'""",
+                    (series_id,ordinal)).fetchone()
+                evidence=db.execute("""SELECT 1 FROM studio_audio_checks
+                    WHERE series_id=? AND ordinal=? AND ltx_job_id=?
+                      AND a2v_sha256=?
+                      AND status='TECH_COMPATIBLE_OWNER_LIPSYNC_REVIEW_PENDING'""",
+                    (series_id,ordinal,stage_job["job_id"],artifact_sha256)).fetchone()
+                if evidence is None:
+                    raise StageLedgerError(
+                        "Register M10 technical audio continuity before owner LTX QA.")
             db.execute("""UPDATE studio_episode_stages SET state='QA_APPROVED',
                owner_note=?,updated_at=? WHERE series_id=? AND ordinal=? AND stage=?""",
                (note.strip(),time.time(),series_id,ordinal,stage))
