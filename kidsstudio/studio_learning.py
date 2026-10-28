@@ -403,7 +403,7 @@ class LearningLedger:
                     "baseline":r["comparison_style"],
                     "evidence":json.loads(r["evidence_json"])
                 } for r in proposals],
-                "source":"OWNER_VERIFIED_LOCAL_YOUTUBE_STUDIO_EXPORT",
+                "source":"OWNER_VERIFIED_EXPORT_OR_AUTHORIZED_READONLY_ANALYTICS_API",
                 "causation_proven":False,"automatic_content_changes":False,
                 "publication_authorized":False}
 
