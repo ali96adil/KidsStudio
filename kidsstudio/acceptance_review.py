@@ -94,6 +94,7 @@ def inspect_studio(queue: StudioQueue, *, backup_file: str | Path | None = None,
             add("episodes","PASS","Review ordered syllabus and language choices.",
                 count=len(episodes))
         broken=[]
+        audio_m10_enabled=_table_exists(db,"studio_audio_checks")
         for series_row in series:
             ordinals=[e["ordinal"] for e in episodes
                       if e["series_id"]==series_row["series_id"]]
@@ -138,6 +139,18 @@ def inspect_studio(queue: StudioQueue, *, backup_file: str | Path | None = None,
                     if (not voice or not ltx["source_voice_sha256"] or
                         ltx["source_voice_sha256"]!=voice["artifact_sha256"]):
                         broken.append("stage_voice_diverged")
+                if audio_m10_enabled and tags.get("ltx_animate") and (
+                    tags["ltx_animate"]["state"]=="QA_APPROVED"):
+                    ltx=tags["ltx_animate"]
+                    voice=tags.get("voice_synthesize")
+                    report=db.execute("""SELECT status,voice_sha256,a2v_sha256
+                        FROM studio_audio_checks WHERE series_id=? AND ordinal=?
+                          AND ltx_job_id=?""",(sid,no,ltx["job_id"])).fetchone()
+                    if (report is None or voice is None or
+                        report["status"]!="TECH_COMPATIBLE_OWNER_LIPSYNC_REVIEW_PENDING" or
+                        report["voice_sha256"]!=voice["artifact_sha256"] or
+                        report["a2v_sha256"]!=ltx["artifact_sha256"]):
+                        broken.append("missing_current_m10_audio_check")
                 for stage in rows:
                     j=db.execute("SELECT * FROM jobs WHERE job_id=?",
                                  (stage["job_id"],)).fetchone() if stage["job_id"] else None
