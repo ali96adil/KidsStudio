@@ -310,11 +310,22 @@ class SceneLedger:
             sid,ordinal,recipe,plan_sha256,
             "M30_AI_TWO_MODEL_PRIVATE_ONLY_OWNER_POST_VIDEO_REVIEW")
 
-    def reconcile(self)->int:
+    def reconcile(self,series_id:str|None=None,
+                  ordinal:int|None=None)->int:
+        """Reconcile all stages, or only one explicitly pinned episode."""
+        if (series_id is None)!=(ordinal is None):
+            raise SceneError("Scoped scene reconcile needs series and episode.")
+        if series_id is not None and (
+            not isinstance(series_id,str) or not ID.fullmatch(series_id) or
+            type(ordinal) is not int or not 1<=ordinal<=120):
+            raise SceneError("Invalid scoped scene reconcile selector.")
         count=0
         with self.queue._connection(write=True) as db:
             rows=db.execute("""SELECT * FROM studio_scene_stages WHERE
-                state='QUEUED'""").fetchall()
+                state='QUEUED'
+                AND (? IS NULL OR series_id=?)
+                AND (? IS NULL OR ordinal=?)""",
+                (series_id,series_id,ordinal,ordinal)).fetchall()
             for row in rows:
                 job=db.execute("SELECT * FROM jobs WHERE job_id=?",
                                (row["job_id"],)).fetchone()
