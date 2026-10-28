@@ -1,0 +1,179 @@
+"use strict";
+(() => {
+  // Render dynamic labels as text, never HTML. Database notes and titles are untrusted.
+  const root = (id) => document.getElementById(id);
+  const make = (tag, className, text) => {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined && text !== null) el.textContent = String(text);
+    return el;
+  };
+  const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
+  const fmt = (val) => new Intl.NumberFormat("ar-IQ").format(val ?? 0);
+  let snapshot = null, selected = null;
+  const stageNames = {
+    complete: "مكتمل ضمن السجل", in_review: "بانتظار مراجعة",
+    working: "قيد العمل", pending: "بانتظار التنفيذ",
+    not_tracked: "غير مربوط بعد"
+  };
+  const statusAr = {
+    QUEUED: "بالانتظار", LEASED: "قيد التنفيذ",
+    COMPLETED: "مهام مكتملة", FAILED: "فشلت", CANCELLED: "ألغيت"
+  };
+  const selectState = root("state-filter"), selectSeries = root("series-filter");
+  const markStatus = (text) => { root("sync-status").textContent = text; };
+  function renderMetrics(data) {
+    const host = root("metrics"); clear(host);
+    const cards = [
+      ["الحلقات المخططة", data.overview.episodes_total, "ضمن المنهج", "▤"],
+      ["سيناريوهات تنتظر الإنتاج", data.overview.scripts_waiting_production,
+        "نصوص معتمدة لم يبدأ تصييرها", "✎"],
+      ["فيديوهات بانتظار الجودة", data.overview.episodes_waiting_qa,
+        "ليست موافقة للنشر", "◷"],
+      ["حلقات معتمدة داخلياً", data.overview.episodes_approved,
+        "بعد مراجعة المالك", "✓"]
+    ];
+    for (const [label, value, tag, icon] of cards) {
+      const card=make("article","metric");
+      card.append(make("span","icon",icon),make("div","label",label),
+                  make("div","number",fmt(value)),make("div","tag",tag));
+      host.append(card);
+    }
+  }
+  function renderSeries(data) {
+    const host=root("series-list");clear(host);
+    const count=root("series-count");
+    count.textContent = fmt(data.series.length)+" سلسلة";
+    const old=selectSeries.value; clear(selectSeries);
+    const def=make("option",null,"كل السلاسل");def.value="";selectSeries.append(def);
+    for (const series of data.series) {
+      const opt=make("option",null,series.title);opt.value=series.id;
+      selectSeries.append(opt);
+      const wrap=make("div","series-item");
+      const top=make("div","series-top");
+      top.append(make("div","series-title",series.title),
+                 make("div","series-fraction",fmt(series.approved)+" / "+fmt(series.total)));
+      const sub=make("div","series-sub",
+          (series.state==="ACTIVE"?"السلسلة النشطة":series.state==="PLANNED"?"مخططة":
+           series.state==="PAUSED"?"متوقفة مؤقتاً":"إنتاجها مكتمل داخلياً")
+           +" · "+series.language.toUpperCase());
+      const prog=make("div","progress");const fill=make("span");
+      const ratio=series.total?Math.max(0,Math.min(100,Math.round(series.approved*100/series.total))):0;
+      fill.style.width=ratio+"%";prog.append(fill);
+      wrap.append(top,sub,prog);host.append(wrap);
+    }
+    selectSeries.value=Array.from(selectSeries.options).some(o=>o.value===old)?old:"";
+    if (!data.series.length) host.append(make("div","empty","ماكو سلاسل مسجلة بعد."));
+  }
+  function renderQueue(data) {
+    const host=root("queue-breakdown");clear(host);
+    root("queue-state").textContent=data.queue.paused?"الطابور متوقف":"الطابور فعّال";
+    for (const key of ["QUEUED","LEASED","COMPLETED","FAILED","CANCELLED"]) {
+      const row=make("div","queue-row");
+      row.append(make("span",null,statusAr[key]),make("strong",null,fmt(data.queue.counts[key]??0)));
+      host.append(row);
+    }
+  }
+  function ensureStates(data) {
+    const old=selectState.value;clear(selectState);
+    const all=make("option",null,"كل الحالات");all.value="";selectState.append(all);
+    const available=new Map(data.episodes.map(e=>[e.state,e.status_label]));
+    for (const [state,label] of available.entries()) {
+      const o=make("option",null,label);o.value=state;selectState.append(o);
+    }
+    selectState.value=Array.from(selectState.options).some(o=>o.value===old)?old:"";
+  }
+  function showEpisode(episode) {
+    const host=root("episode-detail");clear(host);
+    if (!episode) {
+      host.append(make("p","placeholder","اختَر حلقة من الجدول لعرض مراحلها."));
+      return;
+    }
+    const row=make("div","detail-header");
+    row.append(make("h3",null,"الحلقة "+fmt(episode.ordinal)+" — "+episode.title),
+               make("span","stagepill "+episode.tone,episode.status_label));
+    host.append(row,make("p",null,"الهدف التعليمي: "+episode.objective));
+    const list=make("div","timeline");
+    for (const stage of episode.stages) {
+      const part=make("div","step "+stage.status);
+      part.append(make("div","step-name",stage.name),
+                  make("div","step-status",stageNames[stage.status]??"غير معروف"));
+      list.append(part);
+    }
+    host.append(list);
+    const note=make("p","small-explainer",
+       "ملاحظة: مراحل الصوت والتحريك وتحسين الوجه لا تُعلن كمكتملة بدون سجلات تشغيل موثّقة منفصلة.");
+    host.append(note);
+  }
+  function renderEpisodes(data) {
+    const host=root("episodes-body");clear(host);
+    const visible=data.episodes.filter(e=>
+      (!selectSeries.value||e.series_id===selectSeries.value)&&
+      (!selectState.value||e.state===selectState.value));
+    for (const episode of visible) {
+      const tr=make("tr",selected===episode.series_id+"-"+episode.ordinal?"active":"");
+      tr.tabIndex=0;
+      const series=data.series.find(s=>s.id===episode.series_id);
+      [fmt(episode.ordinal),episode.title,series?.title??episode.series_id].forEach(value=>{
+        tr.append(make("td",null,value));
+      });
+      const status=make("td");
+      status.append(make("span","stagepill "+episode.tone,episode.status_label));
+      tr.append(status,make("td",null,"v"+fmt(episode.revision)));
+      const open=()=>{
+        selected=episode.series_id+"-"+episode.ordinal;
+        showEpisode(episode);renderEpisodes(data);
+      };
+      tr.addEventListener("click",open);
+      tr.addEventListener("keydown",(e)=>{
+        if (e.key==="Enter"||e.key===" ") { e.preventDefault();open(); }
+      });
+      host.append(tr);
+    }
+    if (!visible.length) {
+      const td=make("td",null,"لا توجد حلقات تطابق الفلاتر.");
+      td.colSpan=5;const tr=make("tr");tr.append(td);host.append(tr);
+    }
+    const chosen=data.episodes.find(e=>selected===e.series_id+"-"+e.ordinal);
+    showEpisode(chosen);
+  }
+  function renderNotes(data) {
+    const host=root("notes-list");clear(host);
+    for (const note of data.notes) {
+      const card=make("div","note");
+      const meta=make("div","note-meta");
+      const series=data.series.find(s=>s.id===note.series_id);
+      meta.append(make("span",null,(series?.title??note.series_id)+
+        (note.episode?" · الحلقة "+fmt(note.episode):" · عام")));
+      const timestamp=new Date(note.created_at*1000);
+      meta.append(make("span",null,Number.isFinite(timestamp.getTime())?
+        timestamp.toLocaleDateString("ar-IQ"):"—"));
+      card.append(meta,make("div","note-text",note.text));host.append(card);
+    }
+    if (!data.notes.length)host.append(make("div","empty","ماكو ملاحظات مسجلة حالياً."));
+  }
+  async function load() {
+    markStatus("جاري التحديث...");
+    try {
+      const res=await fetch("/api/overview",{cache:"no-store"});
+      if(!res.ok)throw Error("HTTP "+res.status);
+      const data=await res.json();
+      if(data.version!==1||!Array.isArray(data.episodes))throw Error("Schema mismatch");
+      snapshot=data;
+      renderMetrics(data);renderSeries(data);renderQueue(data);
+      ensureStates(data);renderEpisodes(data);renderNotes(data);
+      const when=new Date(data.generated_at);
+      const display=Number.isFinite(when.getTime())?
+        when.toLocaleTimeString("ar-IQ"):"—";
+      root("last-update").textContent="آخر تحديث: "+display;
+      markStatus("البيانات محدثة · "+display);
+    } catch (err) {
+      markStatus("تعذّر قراءة البيانات المحلية");
+    }
+  }
+  root("refresh-now").addEventListener("click",load);
+  selectState.addEventListener("change",()=>snapshot&&renderEpisodes(snapshot));
+  selectSeries.addEventListener("change",()=>snapshot&&renderEpisodes(snapshot));
+  load();
+  setInterval(load,15000);
+})();
