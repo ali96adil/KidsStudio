@@ -74,11 +74,24 @@ def _binary(binary:str)->str:
     return str(path.resolve())
 
 
+def media_subprocess_env()->dict[str,str]:
+    """Never give an untrusted model binary the Pi-side HMAC or OAuth keys.
+
+    No inherit-all environment, no arbitrary user ENV overrides. Standard
+    model runtime/library paths are explicit and non-sensitive by policy.
+    """
+    allowed=("PATH","HOME","TMPDIR","LANG","LC_ALL",
+             "LD_LIBRARY_PATH","DYLD_LIBRARY_PATH",
+             "CUDA_VISIBLE_DEVICES","ROCR_VISIBLE_DEVICES",
+             "OMP_NUM_THREADS")
+    return {key:os.environ[key] for key in allowed if key in os.environ}
+
+
 def _exec(args:list[str],timeout:int,*,capture_limit:int=4096)->str:
     try:
         p=subprocess.run(args,stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,timeout=timeout,check=False,
-            stdin=subprocess.DEVNULL)
+            stdin=subprocess.DEVNULL,env=media_subprocess_env())
     except (OSError,subprocess.TimeoutExpired) as exc:
         raise EvidenceCaptureError("Local media/model execution unavailable or timed out.") from exc
     if p.returncode!=0 or len(p.stdout)>2_000_000 or len(p.stderr)>2_000_000:
