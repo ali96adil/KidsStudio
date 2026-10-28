@@ -104,12 +104,34 @@ def build_snapshot(queue: StudioQueue) -> dict:
     quality_states={}
     audio_states={}
     scene_states={}
+    preview_states={}
+    preview_summary={"state":"NOT_CONFIGURED","pending_review":0,
+                     "revision_requests":0,"approved":0,"approved_with_notes":0}
     learning_summary={"state":"NOT_CONFIGURED","observed_windows":0,
                       "proposed":0,"adopted":0,"recommendations":[]}
     scene_tracking_installed=False
     audio_tracking_installed=False
     stage_tracking_installed=False
     with queue._connection() as db:
+        has_previews=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_private_previews'""").fetchone())
+        if has_previews:
+            preview_summary["state"]="OWNER_LOCAL_REVIEW_NOT_YOUTUBE_CONNECTED"
+            for item in db.execute("""SELECT video_id,series_id,ordinal,state,
+                version FROM studio_private_previews ORDER BY version DESC"""):
+                key=(item["series_id"],item["ordinal"])
+                if key not in preview_states:
+                    preview_states[key]={
+                        "video_id":item["video_id"],"state":item["state"],
+                        "version":item["version"],
+                        "url":"https://www.youtube.com/watch?v="+item["video_id"],
+                        "youtube_visibility_verified":False,
+                    }
+                    field={"PRIVATE_AWAITING_OWNER_REVIEW":"pending_review",
+                           "REVISION_REQUESTED":"revision_requests",
+                           "APPROVED":"approved",
+                           "APPROVED_WITH_NOTES":"approved_with_notes"}.get(item["state"])
+                    if field: preview_summary[field]+=1
         has_learning=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_learning_proposals'""").fetchone())
         if has_learning:
@@ -209,6 +231,8 @@ def build_snapshot(queue: StudioQueue) -> dict:
         episodes.append({
             "series_id":ep["series_id"], "ordinal":ep["ordinal"],
             "title":ep["title"],"objective":ep["objective"],"state":state,
+            "private_preview":preview_states.get((ep["series_id"],ep["ordinal"]),{
+                "state":"NOT_RECORDED","youtube_visibility_verified":False}),
             "status_label":label,"tone":tone,"revision":ep["revision"],
             "scene_progress":scene_states.get((ep["series_id"],ep["ordinal"]),{
                 "total":0,"voice_approved":0,"ltx_approved":0,"blocked":0}),
@@ -229,6 +253,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
     return {"version":1,"generated_at":datetime.now(timezone.utc).isoformat(),
             "overview":counts,"series":series,"episodes":episodes,"notes":notes,
             "learning":learning_summary,
+            "private_previews":preview_summary,
             "queue":{"paused":status["paused"],"counts":status["counts"]},
             "limits":{"media_execution":False,"publishing":False,
                       "voice_and_ltx_tracking":("RECEIPT_GATED" if stage_tracking_installed
@@ -238,6 +263,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
                       "episode_qa_tracking":("EVIDENCE_GATED" if quality_installed
                                              else "NOT_CONFIGURED"),
                       "scene_tracking":("PER_SCENE_QA" if scene_tracking_installed else "NOT_CONFIGURED"),
+                      "private_preview_review":preview_summary["state"],
                       "data_source":"Studio Brain SQLite; read-only"},
             }
 
