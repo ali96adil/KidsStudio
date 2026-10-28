@@ -121,7 +121,8 @@ class RealFinalQualityGateTests(unittest.TestCase):
         master, current_sha, _ = self._assemble()
         result = inspect_video(master, current_sha, ffprobe=self.ffprobe,
                                ffmpeg=self.ffmpeg)
-        self.assertEqual(result["status"], "TECH_PASS_OWNER_REVIEW_PENDING")
+        self.assertEqual(result["status"], "TECH_PASS_OWNER_REVIEW_PENDING",
+                         msg=json.dumps(result, sort_keys=True))
         self.assertEqual(set(result["checks"]), set(CHECKS))
         self.assertTrue(all(result["checks"].values()),
                         "M7 must decode the complete final MP4, not a fake stub.")
