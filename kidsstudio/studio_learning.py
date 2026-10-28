@@ -190,7 +190,7 @@ class LearningLedger:
                     raise LearningError("Invalid views or impressions.")
             optional={
                 "ctr_percent":(0,100),
-                "average_view_percentage":(0,100),
+                "average_view_percentage":(0,400),
                 "average_view_duration_seconds":(0,profile["duration_seconds"]*4),
                 "estimated_watch_minutes":(0,10**10),
             }
