@@ -180,6 +180,11 @@ class StagePlan:
         }
 
     def run(self, job_id: str) -> dict[str, Any]:
+        from .resource_gate import cooperative_compute_lock
+        with cooperative_compute_lock(self.root):
+            return self._run_reserved(job_id)
+
+    def _run_reserved(self, job_id: str) -> dict[str, Any]:
         if not isinstance(job_id, str) or not JOB.fullmatch(job_id):
             raise StageError("One coordinator-assigned 32-char job id required.")
         evidence = self.preflight()
