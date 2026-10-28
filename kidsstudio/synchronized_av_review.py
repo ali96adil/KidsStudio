@@ -19,6 +19,7 @@ import subprocess
 import sys
 
 from .audio_continuity import compare_voice_to_a2v, AudioContinuityError
+from .model_package import verify_checkpoint, checkpoint_digest, ModelPackageError
 from .local_audio_review import _write
 from .real_media_evidence import (
     _binary, capture_frames, digest, private_file, private_dir,
@@ -57,11 +58,8 @@ class AVRunner:
                    for v in (binary_sha,model_sha))):
             raise AVReviewError("Pinned distinct AV executable and checkpoint required.")
         self.binary=_binary(binary)
-        ext=Path(model).suffix.lower()
-        if ext not in (".bin",".gguf",".safetensors"):
-            raise AVReviewError("Pinned AV checkpoint file extension required.")
-        self.model=private_file(model,ext,max_bytes=7*1024**3)
-        if digest(Path(self.binary))!=binary_sha or digest(self.model)!=model_sha:
+        self.model=verify_checkpoint(model,model_sha)
+        if digest(Path(self.binary))!=binary_sha or checkpoint_digest(self.model)!=model_sha:
             raise AVReviewError("AV runner or checkpoint SHA mismatch.")
         self.binary_sha=binary_sha;self.model_sha=model_sha
         self.provider_id=provider_id;self.model_id=model_id
@@ -182,7 +180,7 @@ def review_synchronized(*,series_id:str,episode:int,scene:int,
         if (digest(video)!=mp4_sha or digest(voice)!=wav_sha or
             digest(source)!=script_sha or digest(manifest)!=observations["frame_manifest_sha256"]
             or digest(Path(runner.binary))!=runner.binary_sha or
-            digest(runner.model)!=runner.model_sha):
+            checkpoint_digest(runner.model)!=runner.model_sha):
             raise AVReviewError("Media/model/frame evidence changed during reviewer run.")
         reviews.append({
             "role":role,"provider_id":runner.provider_id,
@@ -274,7 +272,7 @@ def main(argv:list[str]|None=None)->int:
             out_dir=x.out,frames=x.frames)
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0
-    except (AVReviewError,AudioContinuityError,EvidenceCaptureError,
+    except (AVReviewError,ModelPackageError,AudioContinuityError,EvidenceCaptureError,
             OSError,ValueError,TypeError,KeyError) as exc:
         print("M37_AV_REVIEW_BLOCKED: "+type(exc).__name__,file=sys.stderr)
         return 2
