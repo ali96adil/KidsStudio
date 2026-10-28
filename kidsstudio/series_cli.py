@@ -13,6 +13,7 @@ from .studio_quality_ledger import QualityLedger, QualityGateError
 from .agent_final_qa import AgentFinalQA
 from .studio_audio_ledger import AudioEvidenceLedger, AudioEvidenceError
 from .studio_scenes import SceneLedger, SceneError
+from .scene_ai_qa import SceneAIGate
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -122,6 +123,20 @@ def main(argv: list[str] | None = None) -> int:
     voiceqa.add_argument("episode",type=int)
     voiceqa.add_argument("scene",type=int)
     voiceqa.add_argument("--report",type=Path,required=True)
+    commands.add_parser("init-scene-ai-qa")
+    ai_scene=commands.add_parser("register-scene-ai-qa")
+    ai_scene.add_argument("series_id")
+    ai_scene.add_argument("episode",type=int)
+    ai_scene.add_argument("scene",type=int)
+    ai_scene.add_argument("--stage",choices=["voice_synthesize","ltx_animate"],required=True)
+    ai_scene.add_argument("--report",type=Path,required=True)
+    ai_scene.add_argument("--observations",type=Path,required=True)
+    ai_scene.add_argument("--rights",type=Path,required=True)
+    ai_approve=commands.add_parser("auto-approve-scene-stage")
+    ai_approve.add_argument("series_id")
+    ai_approve.add_argument("episode",type=int)
+    ai_approve.add_argument("scene",type=int)
+    ai_approve.add_argument("--stage",choices=["voice_synthesize","ltx_animate"],required=True)
     commands.add_parser("sync-scene-stages")
     scene_audio=commands.add_parser("register-scene-audio")
     scene_audio.add_argument("series_id")
@@ -150,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
         ai_final=AgentFinalQA(queue)
         audio_evidence=AudioEvidenceLedger(queue)
         scenes=SceneLedger(queue)
+        ai_scenes=SceneAIGate(queue)
         if args.cmd=="init":
             control.initialize()
             result={"status":"SCHEMA_READY"}
@@ -171,6 +187,16 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd=="register-scene-voice-qa":
             result=scenes.register_voice_technical(
                 args.series_id,args.episode,args.scene,args.report)
+        elif args.cmd=="init-scene-ai-qa":
+            ai_scenes.initialize()
+            result={"status":"AI_SCENE_QA_READY_NO_MODEL_CONNECTED"}
+        elif args.cmd=="register-scene-ai-qa":
+            result=ai_scenes.register(args.series_id,args.episode,
+                args.scene,args.stage,report_file=args.report,
+                observation_file=args.observations,rights_file=args.rights)
+        elif args.cmd=="auto-approve-scene-stage":
+            result=ai_scenes.auto_approve(args.series_id,args.episode,
+                                          args.scene,args.stage)
         elif args.cmd=="sync-scene-stages":
             result={"updated_stages":scenes.reconcile()}
         elif args.cmd=="register-scene-audio":
