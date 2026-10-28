@@ -223,9 +223,11 @@ class HandoffTests(unittest.TestCase):
             "episode_script_sha256": sha(self.assets["approved_script"]),
             "scenes": records,
         })
+        plan_sha = sha(plan)
         def check():
             return inspect_two_scene_voice_pilot(
                 self.contract_file, plan,
+                expected_plan_sha256=plan_sha,
                 scene_scripts=tuple(scripts),
                 voice_recipes=tuple(recipes),
                 system="Darwin", arch="arm64",
@@ -261,6 +263,7 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaises(HandoffError):
             inspect_two_scene_voice_pilot(
                 self.contract_file, plan,
+                expected_plan_sha256=sha(plan),
                 scene_scripts=tuple(scripts),
                 voice_recipes=(recipes[1], recipes[0]),
                 system="Darwin", arch="arm64",
@@ -299,6 +302,15 @@ class HandoffTests(unittest.TestCase):
             self.contract_file, recipe, system="Darwin", arch="arm64",
             memory_bytes=48*1024**3, free_bytes=110*1024**3
         )
+
+    def test_m19_requires_pinned_owner_plan_sha_even_with_consistent_files(self):
+        from kidsstudio.two_scene_preflight import PilotPreflightError
+        check, plan, scripts, recipes = self.build_two_scene_pilot()
+        data = json.loads(plan.read_text())
+        data["scenes"][0]["objective"] = "A changed objective after owner approval"
+        self._write(plan, data)
+        with self.assertRaises(PilotPreflightError):
+            check()
 
     def test_m19_wrong_stage_wrapper_is_blocked_even_if_script_matches(self):
         from kidsstudio.handoff_review import HandoffError
