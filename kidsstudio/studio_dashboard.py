@@ -219,14 +219,24 @@ def build_snapshot(queue: StudioQueue) -> dict:
         has_m36=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_scene_visual_observations'""").fetchone())
         if has_m36:
-            for item in db.execute("""SELECT v.series_id,v.ordinal,COUNT(*) AS n
+            # An M37 real synchronized AV review supersedes the earlier
+            # M36 frame-only uncertainty for the SAME job. Do not show
+            # "AV model missing" once a current M28 verdict exists.
+            reviewed_filter=(""" AND NOT EXISTS (
+                SELECT 1 FROM studio_scene_ai_reviews a
+                WHERE a.series_id=v.series_id AND a.ordinal=v.ordinal
+                AND a.scene=v.scene AND a.stage='ltx_animate'
+                AND a.job_id=v.ltx_job_id)""" if ai_scene_tracking_installed
+                else "")
+            query="""SELECT v.series_id,v.ordinal,COUNT(*) AS n
                 FROM studio_scene_visual_observations v
                 JOIN studio_scene_stages st ON st.series_id=v.series_id
                 AND st.ordinal=v.ordinal AND st.scene=v.scene
                 AND st.stage='ltx_animate' AND st.job_id=v.ltx_job_id
                 WHERE st.state='PENDING_QA'
-                AND v.state='AV_AUDIO_REVIEW_REQUIRED'
-                GROUP BY v.series_id,v.ordinal"""):
+                AND v.state='AV_AUDIO_REVIEW_REQUIRED'"""+reviewed_filter+"""
+                GROUP BY v.series_id,v.ordinal"""
+            for item in db.execute(query):
                 scene_visual_states[(item["series_id"],item["ordinal"])]={
                     "state":"M36_AV_AUDIO_REVIEW_REQUIRED",
                     "scenes_waiting_audio_video":item["n"],
