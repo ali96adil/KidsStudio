@@ -4,7 +4,7 @@ AI-powered bilingual educational animation studio for children.
 
 **Status:** Early R&D. The Godot/ComfyUI experiments described below were run on a Mac outside this repository; production automation is not yet deployed.
 
-## Current draft implementation (M3–M45, unmerged)
+## Current draft implementation (M3–M46, unmerged)
 
 The connected GitHub draft branch now includes series-first bounded agents,
 scene-by-scene voice/LTX ownership and human QA, Mac source provenance,
@@ -55,7 +55,8 @@ and [M13 multi-scene pipeline](docs/M13_SCENE_PIPELINE.md),
 [M42 opt-in local Omni diagnostic reviewer](docs/M42_QWEN_OMNI_LOCAL_DIAGNOSTIC.md),
 [M43 one-shot bounded Mac model pilot](docs/M43_BOUNDED_LOCAL_MODEL_PILOT.md),
 [M44 owner source/license claim and process-group cleanup](docs/M44_MODEL_ORIGIN_AND_PROCESS_SHUTDOWN.md), and
-[M45 offline evidence readiness inventory](docs/M45_MODEL_EVIDENCE_READINESS.md).
+[M45 offline evidence readiness inventory](docs/M45_MODEL_EVIDENCE_READINESS.md), and
+[M46 bounded Apple MPS/Torch/Transformers scalar compatibility probe](docs/M46_APPLE_MPS_RUNTIME_COMPAT.md).
 
 **Current qualification boundary (M45):** the models, AV reviewers,
 Mac/Pi device coordination, actual original educational scenes, and
