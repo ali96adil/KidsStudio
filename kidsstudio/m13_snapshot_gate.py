@@ -7,6 +7,7 @@ Pi identity/freshness. No worker, GPU, network, migration or publishing.
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import json
 from pathlib import Path
 import re
@@ -87,7 +88,7 @@ def verify_two_scene_snapshot(
     # mode=ro+immutable=1 never writes shm/wal or alters a snapshot.
     # A consistent backup is required by the caller, not made implicitly.
     url = backup.as_uri() + "?mode=ro&immutable=1"
-    with sqlite3.connect(url, uri=True, timeout=5) as db:
+    with closing(sqlite3.connect(url, uri=True, timeout=5)) as db:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA query_only=ON")
         if [r[0] for r in db.execute("PRAGMA integrity_check")] != ["ok"]:
