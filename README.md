@@ -4,7 +4,7 @@ AI-powered bilingual educational animation studio for children.
 
 **Status:** Early R&D. The Godot/ComfyUI experiments described below were run on a Mac outside this repository; production automation is not yet deployed.
 
-## Current draft implementation (M3–M34, unmerged)
+## Current draft implementation (M3–M45, unmerged)
 
 The connected GitHub draft branch now includes series-first bounded agents,
 scene-by-scene voice/LTX ownership and human QA, Mac source provenance,
@@ -44,7 +44,27 @@ and [M13 multi-scene pipeline](docs/M13_SCENE_PIPELINE.md),
 [M31 bounded scene repair with preserved voice and accepted clips](docs/M31_BOUNDED_SCENE_REPAIR.md),
 [M32 conservative one-job orchestrator and integrated device test gate](docs/M32_COORDINATOR_READINESS.md),
 [M33 authenticated AI pilot voice lease + bounded private production cycle](docs/M33_PI_MAC_AUTH_CYCLE.md),
-[M34 private WAV→Whisper→two actual audio-capable CLI adapters→M23/M28 signed report](docs/M34_LOCAL_AUDIO_MODEL_QA.md).
+[M34 private WAV→Whisper→two pinned local audio-model CLI adapters→M23/M28 signed report](docs/M34_LOCAL_AUDIO_MODEL_QA.md),
+[M35 signed voice import](docs/M35_SIGNED_AUDIO_REVIEW_IMPORT.md),
+[M36 frame-only review and audio uncertainty](docs/M36_VISUAL_IMPORT_AUDIO_UNCERTAINTY.md),
+[M37 sound-bearing audiovisual model gate](docs/M37_SYNCHRONIZED_AV_MODEL_GATE.md),
+[M38 synthetic two-scene software acceptance](docs/M38_FULL_TWO_SCENE_SOFTWARE_ACCEPTANCE.md),
+[M39 real hardware pilot entry and four-case adversarial calibration](docs/M39_HARDWARE_PILOT_ENTRY_AND_AV_CALIBRATION.md),
+[M40 private SHA-pinned local model bundle](docs/M40_LOCAL_MODEL_BUNDLE_AND_REAL_MODEL_ENTRY.md),
+[M41 sharded HF/MLX checkpoint identity](docs/M41_SHARDED_MODEL_PACKAGES.md),
+[M42 opt-in local Omni diagnostic reviewer](docs/M42_QWEN_OMNI_LOCAL_DIAGNOSTIC.md),
+[M43 one-shot bounded Mac model pilot](docs/M43_BOUNDED_LOCAL_MODEL_PILOT.md),
+[M44 owner source/license claim and process-group cleanup](docs/M44_MODEL_ORIGIN_AND_PROCESS_SHUTDOWN.md), and
+[M45 offline evidence readiness inventory](docs/M45_MODEL_EVIDENCE_READINESS.md).
+
+**Current qualification boundary (M45):** the models, AV reviewers,
+Mac/Pi device coordination, actual original educational scenes, and
+commercial source licensing are **not yet qualified on real owner devices**.
+Passing Python/Godot CI validates only software pathways with synthetic
+inputs and mock AI. `studio-model-readiness` is a read-only inventory
+of source-byte checks and remaining blockers; it cannot permit PRIVATE
+upload or any PUBLIC release. The final video review and publishing
+decision always remain with the owner.
 
 ## Production principle
 
