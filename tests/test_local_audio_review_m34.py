@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+from unittest.mock import patch
 from pathlib import Path
 import shutil
 import struct
@@ -49,8 +51,9 @@ class AudioWorker34(unittest.TestCase):
         self.whisper_model.write_bytes(b"SYNTHETIC ASR MODEL"*20)
         # Mock model executable, explicitly NOT an audio ASR engine.
         self.whisper=executable(self.root/"mock-whisper",(
-            "import sys\nfrom pathlib import Path\n"
+            "import sys,os\nfrom pathlib import Path\n"
             "a=sys.argv\n"
+            "assert 'KIDS_STUDIO_SCENE_QA_RUNNER_KEY' not in os.environ\n"
             "assert '-m' in a and '-f' in a and '-of' in a\n"
             "out=Path(a[a.index('-of')+1]+'.txt')\n"
             "out.write_text('هذه الكرة حمراء. لون الكرة أحمر.',encoding='utf-8')\n"
@@ -63,6 +66,8 @@ class AudioWorker34(unittest.TestCase):
             self.model_files.append(model)
             source=(
                 "import argparse,json,hashlib,os\nfrom pathlib import Path\n"
+                "assert 'KIDS_STUDIO_SCENE_QA_RUNNER_KEY' not in os.environ\n"
+                "assert 'GOOGLE_CLIENT_SECRET' not in os.environ\n"
                 "p=argparse.ArgumentParser()\n"
                 "for k in ('wav','script','transcript','model','language','role','output'):\n"
                 " p.add_argument('--'+k,required=True)\n"
@@ -191,6 +196,16 @@ class AudioWorker34(unittest.TestCase):
         self.assertEqual(decision["status"],"AI_STAGE_APPROVED_INTERNAL_ONLY")
         self.assertEqual(h.coord.status(h.plan)["next_action"],"NEXT_LTX")
         self.assertEqual(h.queue.status()["counts"]["QUEUED"],0)
+
+    def test_child_audio_models_and_whisper_never_inherit_private_keys(self):
+        with patch.dict(os.environ,{
+            "KIDS_STUDIO_SCENE_QA_RUNNER_KEY":
+                "MOCK_PROCESS_MUST_NOT_RECEIVE_THIS_SIGNING_KEY",
+            "GOOGLE_CLIENT_SECRET":"SYNTHETIC_OAUTH_SECRET_NOT_FOR_CHILD"
+        }):
+            result=self.run_review()
+        self.assertFalse(result["public_release_authorized"])
+        self.assertFalse(result["pi_scene_approved"])
 
     def test_wrong_source_or_rights_rejected_without_new_output(self):
         with self.assertRaises(AudioModelError):
