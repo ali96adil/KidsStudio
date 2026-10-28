@@ -11,6 +11,7 @@ from .studio_queue import QueueError, StudioQueue
 from .studio_stage_ledger import StageLedger, StageLedgerError
 from .studio_quality_ledger import QualityLedger, QualityGateError
 from .studio_audio_ledger import AudioEvidenceLedger, AudioEvidenceError
+from .studio_scenes import SceneLedger, SceneError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -89,6 +90,31 @@ def main(argv: list[str] | None = None) -> int:
     audio.add_argument("episode",type=int)
     audio.add_argument("--report",required=True,type=Path)
     commands.add_parser("audio-evidence-status")
+    commands.add_parser("init-scenes")
+    scene_plan=commands.add_parser("register-scene-plan")
+    scene_plan.add_argument("--plan",type=Path,required=True)
+    scene_job=commands.add_parser("queue-scene-stage")
+    scene_job.add_argument("series_id")
+    scene_job.add_argument("episode",type=int)
+    scene_job.add_argument("scene",type=int)
+    scene_job.add_argument("--stage",required=True,choices=["voice_synthesize","ltx_animate"])
+    scene_job.add_argument("--recipe",required=True)
+    commands.add_parser("sync-scene-stages")
+    scene_audio=commands.add_parser("register-scene-audio")
+    scene_audio.add_argument("series_id")
+    scene_audio.add_argument("episode",type=int)
+    scene_audio.add_argument("scene",type=int)
+    scene_audio.add_argument("--report",type=Path,required=True)
+    scene_approve=commands.add_parser("approve-scene-stage")
+    scene_approve.add_argument("series_id")
+    scene_approve.add_argument("episode",type=int)
+    scene_approve.add_argument("scene",type=int)
+    scene_approve.add_argument("--stage",choices=["voice_synthesize","ltx_animate"],required=True)
+    scene_approve.add_argument("--sha256",required=True)
+    scene_approve.add_argument("--note",required=True)
+    scene_status=commands.add_parser("scene-status")
+    scene_status.add_argument("series_id")
+    scene_status.add_argument("episode",type=int)
     args=parser.parse_args(argv)
 
     try:
@@ -97,9 +123,30 @@ def main(argv: list[str] | None = None) -> int:
         stages=StageLedger(queue)
         quality=QualityLedger(queue)
         audio_evidence=AudioEvidenceLedger(queue)
+        scenes=SceneLedger(queue)
         if args.cmd=="init":
             control.initialize()
             result={"status":"SCHEMA_READY"}
+        elif args.cmd=="init-scenes":
+            scenes.initialize()
+            result={"status":"SCENE_LEDGER_READY"}
+        elif args.cmd=="register-scene-plan":
+            result=scenes.register_plan(args.plan)
+        elif args.cmd=="queue-scene-stage":
+            job=scenes.queue_stage(args.series_id,args.episode,args.scene,
+                                   args.stage,args.recipe)
+            result={"job_id":job,"status":"SCENE_MEDIA_QUEUED"}
+        elif args.cmd=="sync-scene-stages":
+            result={"updated_stages":scenes.reconcile()}
+        elif args.cmd=="register-scene-audio":
+            scenes.register_audio(args.series_id,args.episode,args.scene,args.report)
+            result={"status":"SCENE_AUDIO_EVIDENCE_REGISTERED"}
+        elif args.cmd=="approve-scene-stage":
+            scenes.approve(args.series_id,args.episode,args.scene,args.stage,
+                           args.sha256,args.note)
+            result={"status":"SCENE_STAGE_QA_APPROVED"}
+        elif args.cmd=="scene-status":
+            result=scenes.snapshot(args.series_id,args.episode)
         elif args.cmd=="init-audio-evidence":
             audio_evidence.initialize()
             result={"status":"AUDIO_EVIDENCE_LEDGER_READY"}
@@ -169,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
             result={"status":"SERIES_PRODUCTION_COMPLETED"}
         else:
             result=control.snapshot()
-    except (SeriesError,StageLedgerError,QualityGateError,AudioEvidenceError,QueueError,OSError,ValueError,KeyError,TypeError) as exc:
+    except (SeriesError,SceneError,StageLedgerError,QualityGateError,AudioEvidenceError,QueueError,OSError,ValueError,KeyError,TypeError) as exc:
         print("SERIES_ERROR: "+str(exc),file=sys.stderr)
         return 2
     print(json.dumps(result,ensure_ascii=False,indent=2))
