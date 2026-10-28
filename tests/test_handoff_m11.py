@@ -640,8 +640,9 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(worker.run_once()["status"],"PILOT_LEASE_REJECTED")
         self.assertEqual(fake.calls,[])
         self.assertEqual(queue.get(job_id)["state"],"FAILED")
-        with journal._connect() as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM journal").fetchone()[0],0)
+        import sqlite3
+        with sqlite3.connect(journal.path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM attempts").fetchone()[0],0)
 
     def test_m22_pi_proof_tamper_prevents_synthetic_model_invocation(self):
         queue,plan,job_id,service,pi,fake,worker,journal=self.prepare_m22_voice_lease()
