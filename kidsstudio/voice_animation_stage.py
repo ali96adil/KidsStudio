@@ -130,6 +130,7 @@ class StagePlan:
         self.timeout = timeout
         self.max_output_bytes = maximum
         self.execute_hook = execute if execute is not None else self._execute_subprocess
+        self._uses_real_runner = execute is None
         self.voice_probe = voice_probe
         self.video_probe = video_probe
         self.data = data
@@ -182,6 +183,13 @@ class StagePlan:
         if not isinstance(job_id, str) or not JOB.fullmatch(job_id):
             raise StageError("One coordinator-assigned 32-char job id required.")
         evidence = self.preflight()
+        if self._uses_real_runner:
+            # M8 hard gate: refuse actual local model execution until every
+            # Apple Silicon checkpoint SHA and physical RAM are verified.
+            from .engine_qualification import qualify_engine
+            qualified = qualify_engine(self.engine_manifest,expected_kind=self.kind,
+                                       private_root=self.root)
+            evidence["model_weights_verified"] = bool(qualified["checkpoints"])
         self.output_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         lockfile = self.output_root / ".single_gpu_worker.lock"
         # Lock is local-only; it cannot protect unrelated Mac processes.
