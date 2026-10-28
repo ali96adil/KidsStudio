@@ -309,6 +309,19 @@ class SeriesManager:
                         r["script_sha256"]!=ep["source_sha256"] for r in existing)
                 ):
                     raise SeriesError("Independent owner-approved voice and LTX required before assembly.")
+            if db.execute("""SELECT 1 FROM sqlite_master WHERE
+                type='table' AND name='studio_scene_plans'""").fetchone():
+                scene_plan=db.execute("""SELECT 1 FROM studio_scene_plans
+                    WHERE series_id=? AND ordinal=?""",
+                    (series_id,ordinal)).fetchone()
+                if scene_plan:
+                    if media_kind!="episode_assemble":
+                        raise SeriesError("Scene plan requires episode assembly.")
+                    from .studio_scenes import assert_scenes_ready, SceneError
+                    try:
+                        assert_scenes_ready(db,series_id,ordinal,ep["source_sha256"])
+                    except SceneError as exc:
+                        raise SeriesError("Scene production still needs review.") from exc
             key=(f"series:{series_id}:episode:{ordinal}:"
                  f"render:{media_kind}:a{ep['render_attempt']}:{ep['source_sha256'][:16]}")
             payload=_json_object(({"recipe_id":recipe_id,
