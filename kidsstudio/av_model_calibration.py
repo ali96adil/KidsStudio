@@ -19,6 +19,7 @@ from .episode_assembly import digest
 from .real_media_evidence import (private_file, private_dir, capture_frames,
                                   EvidenceCaptureError, _binary, _exec)
 from .synchronized_av_review import AVRunner, AVReviewError
+from .model_package import checkpoint_digest, ModelPackageError
 
 CASES=("clean","audio_offset","wrong_narration","unsafe_visual")
 LABELS={"motion_sync":frozenset(("lip_sync","voice_continuity")),
@@ -161,7 +162,7 @@ def benchmark_av(*,manifest:str|Path,first:AVRunner,second:AVRunner,
                 digest(canary["wav"])!=canary["wav_sha"] or
                 digest(canary["script"])!=canary["script_sha"] or
                 digest(Path(runner.binary))!=runner.binary_sha or
-                digest(runner.model)!=runner.model_sha):
+                checkpoint_digest(runner.model)!=runner.model_sha):
                 raise CalibrationError("Canary or model mutated during calibration.")
             got[role]=answer["checks"]
         errors=[]
@@ -224,7 +225,7 @@ def main(argv:list[str]|None=None)->int:
             ffprobe=args.ffprobe,out_dir=args.out,execute=args.execute)
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0 if not args.execute or result["all_canaries_match"] else 1
-    except (CalibrationError,AVReviewError,EvidenceCaptureError,OSError,ValueError,TypeError,
+    except (CalibrationError,AVReviewError,ModelPackageError,EvidenceCaptureError,OSError,ValueError,TypeError,
             KeyError) as exc:
         print("M39_AV_CALIBRATION_BLOCKED: "+type(exc).__name__,file=sys.stderr)
         return 2
