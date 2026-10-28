@@ -151,6 +151,9 @@ class SceneLedger:
             not RECIPE.fullmatch(recipe) or type(scene) is not int or scene<1):
             raise SceneError("Approved scene, media capability and recipe ID required.")
         with self.queue._connection(write=True) as db:
+            paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
+            if not paused or paused["paused"]:
+                raise SceneError("Studio queue paused; no new scene media tasks.")
             ep=db.execute("""SELECT e.state,e.source_sha256,
                     s.state AS series_state FROM studio_episodes e
                     JOIN studio_series s USING(series_id)
