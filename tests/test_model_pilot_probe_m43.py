@@ -69,7 +69,7 @@ class MacProbe43(unittest.TestCase):
             "adapter_sha256":digest(self.adapter),
             "model":self.x.model,
             "model_sha256":self.x.sha,
-            "variant":"3b","role":"pronunciation",
+            "variant":"7b","role":"pronunciation",
             "wav":self.x.av.wav,
             "wav_sha256":digest(self.x.av.wav),
             "script":self.x.av.script,
@@ -83,7 +83,7 @@ class MacProbe43(unittest.TestCase):
     def screen(self,*,model,expected_model_sha,variant):
         return inspect_local(model=model,expected_model_sha=expected_model_sha,
             variant=variant,system="Darwin",arch="arm64",
-            ram_bytes=40*1024**3,free_bytes=30*1024**3,
+            ram_bytes=80*1024**3,free_bytes=60*1024**3,
             packages={"torch":True,"transformers":True,"torchvision":True})
 
     def call(self,**kw):
@@ -192,7 +192,7 @@ class MacProbe43(unittest.TestCase):
               "--adapter-sha256",digest(self.adapter),
               "--model",str(self.x.model),
               "--model-sha256",self.x.sha,
-              "--variant","3b","--role","pronunciation",
+              "--variant","7b","--role","pronunciation",
               "--wav",str(self.x.av.wav),
               "--wav-sha256",digest(self.x.av.wav),
               "--script",str(self.x.av.script),
