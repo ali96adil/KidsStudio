@@ -213,8 +213,8 @@ class Coordinator:
 
         if action != "complete":
             raise TransportError("Unknown action.")
-        if leased["kind"] not in ALLOWED_KINDS:
-            raise TransportError("Only editorial work permitted remotely.")
+        if leased["kind"] not in ("script_draft", "editorial_review"):
+            raise TransportError("Only editorial work may use this completion endpoint.")
         provider = request.get("provider_id")
         model = request.get("model")
         answer = request.get("answer")
