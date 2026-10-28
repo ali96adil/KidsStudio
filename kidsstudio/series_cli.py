@@ -8,6 +8,7 @@ import sys
 
 from .series_manager import SeriesError, SeriesManager
 from .studio_queue import QueueError, StudioQueue
+from .studio_stage_ledger import StageLedger, StageLedgerError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -52,13 +53,47 @@ def main(argv: list[str] | None = None) -> int:
     episode.add_argument("--note",required=True)
     done=commands.add_parser("complete")
     done.add_argument("series_id")
+    commands.add_parser("init-stages")
+    stagejob=commands.add_parser("queue-stage")
+    stagejob.add_argument("series_id")
+    stagejob.add_argument("episode",type=int)
+    stagejob.add_argument("--stage",required=True,choices=["voice_synthesize","ltx_animate"])
+    stagejob.add_argument("--recipe",required=True)
+    commands.add_parser("sync-stages")
+    approve_stage=commands.add_parser("approve-stage")
+    approve_stage.add_argument("series_id")
+    approve_stage.add_argument("episode",type=int)
+    approve_stage.add_argument("--stage",required=True,choices=["voice_synthesize","ltx_animate"])
+    approve_stage.add_argument("--sha256",required=True)
+    approve_stage.add_argument("--note",required=True)
+    retry_stage=commands.add_parser("retry-stage")
+    retry_stage.add_argument("series_id")
+    retry_stage.add_argument("episode",type=int)
+    retry_stage.add_argument("--stage",required=True,choices=["voice_synthesize","ltx_animate"])
+    retry_stage.add_argument("--reason",required=True)
     args=parser.parse_args(argv)
 
     try:
-        control=SeriesManager(StudioQueue(args.db))
+        queue=StudioQueue(args.db)
+        control=SeriesManager(queue)
+        stages=StageLedger(queue)
         if args.cmd=="init":
             control.initialize()
             result={"status":"SCHEMA_READY"}
+        elif args.cmd=="init-stages":
+            stages.initialize()
+            result={"status":"STAGE_LEDGER_READY"}
+        elif args.cmd=="queue-stage":
+            job=stages.queue_stage(args.series_id,args.episode,args.stage,args.recipe)
+            result={"job_id":job,"status":"QUEUED_FOR_APPROVED_MAC_WORKER"}
+        elif args.cmd=="sync-stages":
+            result={"updated_stages":stages.reconcile()}
+        elif args.cmd=="approve-stage":
+            stages.approve(args.series_id,args.episode,args.stage,args.sha256,args.note)
+            result={"status":"STAGE_QA_APPROVED_INTERNAL_ONLY"}
+        elif args.cmd=="retry-stage":
+            stages.retry_blocked(args.series_id,args.episode,args.stage,args.reason)
+            result={"status":"RESET_FOR_MANUAL_RETRY"}
         elif args.cmd=="add-series":
             plan=json.loads(args.plan.read_text(encoding="utf-8"))
             if not isinstance(plan,dict) or set(plan)!={"series_id","title","language","lessons"}:
@@ -95,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             result={"status":"SERIES_PRODUCTION_COMPLETED"}
         else:
             result=control.snapshot()
-    except (SeriesError,QueueError,OSError,ValueError,KeyError,TypeError) as exc:
+    except (SeriesError,StageLedgerError,QueueError,OSError,ValueError,KeyError,TypeError) as exc:
         print("SERIES_ERROR: "+str(exc),file=sys.stderr)
         return 2
     print(json.dumps(result,ensure_ascii=False,indent=2))
