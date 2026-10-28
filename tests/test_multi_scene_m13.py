@@ -236,6 +236,94 @@ class SceneWorkflowTests(unittest.TestCase):
                 evidence_path=proof,catalog_path=catalog,
                 recipe_id="ep01_verified_v1",video_prober=fake_probe)
 
+    def test_m16_pi_catalogue_hash_must_match_mac_before_execution(self):
+        from kidsstudio.media_worker import RemoteMediaWorker, MediaJournal
+        import json as _json
+
+        class LocalPi:
+            def __init__(self,queue):
+                self.queue=queue
+                self.calls=[]
+            def call(self,action,payload):
+                self.calls.append(action)
+                if action=="claim":
+                    job=self.queue.claim(worker_id="mac",capabilities=["episode_assemble"])
+                    return {"job":dict(job, payload=_json.loads(job["payload"]))
+                            if job else None}
+                if action=="fail":
+                    self.queue.fail(job_id=payload["job_id"],worker_id="mac",
+                        generation=payload["generation"],
+                        error_code=payload["error_code"],retryable=False)
+                    return {"status":"FAILED"}
+                if action=="complete-media":
+                    self.queue.complete(job_id=payload["job_id"],worker_id="mac",
+                        generation=payload["generation"],result={
+                            "status":payload["result_status"],
+                            "artifact_sha256":payload["artifact_sha256"],
+                            "artifact_type":payload["artifact_type"],
+                            "publication_approved":False})
+                    return {"status":"COMPLETED"}
+                return {"ok":True}
+
+        class FakeRender:
+            def __init__(self):
+                self.calls=0
+            def execute(self,kind,recipe_id,job_id):
+                self.calls+=1
+                return {"result_status":"VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW",
+                        "artifact_sha256":"f"*64,"artifact_bytes":123,
+                        "artifact_type":"mp4","publication_approved":False}
+
+        _,recipe,proof,catalog=self.freeze_for_mac_worker()
+        with self.assertRaises(SeriesError):
+            self.series.queue_render("colors-ar",1,"ep01_verified_v1",
+                                     media_kind="episode_assemble")
+        self.series.queue_render("colors-ar",1,"ep01_verified_v1",
+                                 media_kind="episode_assemble",
+                                 catalogue_sha256="e"*64)
+        fake=FakeRender()
+        remote=RemoteMediaWorker(LocalPi(self.queue),MediaRecipes(catalog),
+                                 MediaJournal(self.root/"journal.sqlite"),
+                                 executor=fake)
+        self.assertEqual(remote.run_once()["status"],"CONFIG_REJECTED")
+        self.assertEqual(fake.calls,0)
+
+    def test_m16_matching_pi_catalogue_hash_allows_simulated_execution_only(self):
+        from kidsstudio.media_worker import RemoteMediaWorker,MediaJournal
+        import json as _json
+        class MockPi:
+            def __init__(self,queue):self.queue=queue
+            def call(self,action,payload):
+                if action=="claim":
+                    job=self.queue.claim(worker_id="mac",capabilities=["episode_assemble"])
+                    return {"job":dict(job,payload=_json.loads(job["payload"])) if job else None}
+                if action=="complete-media":
+                    self.queue.complete(job_id=payload["job_id"],worker_id="mac",
+                        generation=payload["generation"],result={
+                        "status":payload["result_status"],
+                        "artifact_sha256":payload["artifact_sha256"],
+                        "artifact_type":payload["artifact_type"],
+                        "publication_approved":False})
+                    return {"status":"COMPLETED"}
+                return {"ok":True}
+        class FakeExecutor:
+            def __init__(self):self.count=0
+            def execute(self,kind,recipe_id,job_id):
+                self.count+=1
+                return {"result_status":"VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW",
+                        "artifact_sha256":"a"*64,"artifact_bytes":100,
+                        "artifact_type":"mp4","publication_approved":False}
+        _,_,_,catalog=self.freeze_for_mac_worker()
+        jobid=self.series.queue_render("colors-ar",1,"ep01_verified_v1",
+                          media_kind="episode_assemble",catalogue_sha256=sha(catalog))
+        fake=FakeExecutor()
+        reply=RemoteMediaWorker(MockPi(self.queue),MediaRecipes(catalog),
+               MediaJournal(self.root/"journal.sqlite"),executor=fake).run_once()
+        self.assertEqual(reply["status"],"COMPLETED")
+        self.assertEqual(fake.count,1)
+        self.assertEqual(self.queue.get(jobid)["state"],"COMPLETED")
+        self.assertFalse((self.root/"assembled").exists())
+
     def test_m14_rejects_unsealed_multiscene_worker_catalogue(self):
         self.complete_plan()
         recipe,report=self.preview()
