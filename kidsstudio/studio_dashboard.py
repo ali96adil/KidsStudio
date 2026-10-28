@@ -105,6 +105,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
     audio_states={}
     scene_states={}
     scene_ai_states={}
+    orchestration_states={}
     preview_states={}
     preview_summary={"state":"NOT_CONFIGURED","pending_review":0,
                      "revision_requests":0,"approved":0,"approved_with_notes":0}
@@ -157,6 +158,21 @@ def build_snapshot(queue: StudioQueue) -> dict:
                     "baseline":record["comparison_style"],
                     "state":record["status"]
                 })
+        orchestration_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_orchestrator_plans'""").fetchone())
+        if orchestration_installed:
+            for pinned in db.execute("""SELECT o.series_id,o.ordinal,
+                o.script_sha256,e.source_sha256 AS current_source_sha256
+                FROM studio_orchestrator_plans o
+                LEFT JOIN studio_episodes e ON e.series_id=o.series_id
+                    AND e.ordinal=o.ordinal"""):
+                orchestration_states[(pinned["series_id"],pinned["ordinal"])]={
+                    "state":("PINNED_SOURCE_CURRENT_FILE_NOT_RECHECKED" if
+                        pinned["script_sha256"]==pinned["current_source_sha256"]
+                        else "BLOCKED_SCRIPT_CHANGED"),
+                    "hardware_qualification_ready":False,
+                    "private_upload_authorized":False
+                }
         scene_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_scenes'""").fetchone())
         if scene_tracking_installed:
@@ -283,6 +299,10 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "ai_scene_reviews":scene_ai_states.get((ep["series_id"],ep["ordinal"]),{
                 "state":"NOT_STARTED",
                 "voice_ready":0,"ltx_ready":0,"needs_fix":0}),
+            "orchestrator":orchestration_states.get((ep["series_id"],ep["ordinal"]),{
+                "state":"NOT_PINNED",
+                "hardware_qualification_ready":False,
+                "private_upload_authorized":False}),
             "audio_continuity":audio_states.get((ep["series_id"],ep["ordinal"]),
                   {"state":"NOT_RECORDED" if audio_tracking_installed else "NOT_CONFIGURED",
                    "correlation":None}),
@@ -311,6 +331,8 @@ def build_snapshot(queue: StudioQueue) -> dict:
                                              else "NOT_CONFIGURED"),
                       "scene_tracking":("PER_SCENE_QA" if scene_tracking_installed else "NOT_CONFIGURED"),
                       "private_preview_review":preview_summary["state"],
+                      "m32_hardware_qualification_ready":False,
+                      "m32_software_full_cycle_qualified":False,
                       "data_source":"Studio Brain SQLite; read-only"},
             }
 
