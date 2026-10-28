@@ -112,6 +112,7 @@ def check_mac_contract(
         raise MacIntakeError("Asset or tool inventory has unexpected item count.")
     asset_map={}
     tool_map={}
+    tool_paths={}
     for entry in assets:
         if not isinstance(entry,dict) or not isinstance(entry.get("role"),str):
             raise MacIntakeError("Asset role must be a string.")
@@ -128,10 +129,22 @@ def check_mac_contract(
             raise MacIntakeError("Invalid or duplicate tool role.")
         path,sha=_exact_pin(entry,roots,tool=True)
         tool_map[role]={"bytes":path.stat().st_size,"sha256":sha}
+        tool_paths[role]=path
     if not REQUIRED_ASSETS.issubset(asset_map):
         raise MacIntakeError("Missing approved script, Bunny reference or actual wrapper scripts.")
     if not REQUIRED_TOOLS.issubset(tool_map):
         raise MacIntakeError("Missing voice/LTX Python and ffmpeg/ffprobe runtime pins.")
+    # Exact hash alone proves identity, not a correct executable ROLE.
+    # The historical synthetic test even accepted a Python interpreter as
+    # both ffmpeg and ffprobe, producing false Mac toolchain readiness.
+    ffmpeg=tool_paths["ffmpeg"]
+    ffprobe=tool_paths["ffprobe"]
+    if (ffmpeg==ffprobe or ffmpeg in
+        (tool_paths["voice_python"],tool_paths["ltx_python"]) or
+        ffprobe in (tool_paths["voice_python"],tool_paths["ltx_python"])
+        or ffmpeg.name.lower()!="ffmpeg" or ffprobe.name.lower()!="ffprobe"):
+        raise MacIntakeError(
+            "FFmpeg, FFprobe and Python roles must resolve to correct distinct binaries.")
     versions=obj["engine_manifests"]
     if not isinstance(versions,list) or len(versions)!=2:
         raise MacIntakeError("Both owner-reviewed Chatterbox and LTX manifests required.")
