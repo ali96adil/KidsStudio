@@ -57,6 +57,7 @@ class MediaRecipes:
 
     def __init__(self, file: str | Path):
         source = Path(file).expanduser().resolve()
+        self.catalogue_path = source
         self.catalogue_sha256 = _sha(source)
         if source.stat().st_size > 60_000:
             raise MediaError("Recipe catalogue too large.")
@@ -120,6 +121,8 @@ class MediaRecipes:
             self.recipes[recipe_id] = dict(recipe)
 
     def resolve(self, kind: str, recipe_id: str) -> dict[str, Any]:
+        if _sha(self.catalogue_path) != self.catalogue_sha256:
+            raise MediaError("Private media catalogue changed after owner pinning.")
         if not isinstance(recipe_id, str) or recipe_id not in self.recipes:
             raise MediaError("Unknown or unapproved local media recipe.")
         recipe = self.recipes[recipe_id]
