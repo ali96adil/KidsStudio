@@ -35,6 +35,7 @@ studio-scene-assembly = "kidsstudio.scene_assembly:main"
 studio-scene-catalogue = "kidsstudio.scene_catalogue:main"
 studio-learning = "kidsstudio.studio_learning:main"
 studio-mac-quick-probe = "kidsstudio.mac_quick_probe:main"
+studio-two-scene-preflight = "kidsstudio.two_scene_preflight:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
