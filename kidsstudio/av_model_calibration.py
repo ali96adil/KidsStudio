@@ -16,7 +16,8 @@ import re
 import sys
 
 from .episode_assembly import digest
-from .real_media_evidence import private_file, private_dir, capture_frames, EvidenceCaptureError
+from .real_media_evidence import (private_file, private_dir, capture_frames,
+                                  EvidenceCaptureError, _binary, _exec)
 from .synchronized_av_review import AVRunner, AVReviewError
 
 CASES=("clean","audio_offset","wrong_narration","unsafe_visual")
@@ -124,6 +125,22 @@ def benchmark_av(*,manifest:str|Path,first:AVRunner,second:AVRunner,
             "model_quality_qualified":False,
             "mac_pi_hardware_qualified":False,
             "public_release_authorized":False}
+    probe=_binary(ffprobe)
+    # In particular, forbid scoring a model on soundless MP4s that cannot
+    # possibly prove it observed the embedded soundtrack.
+    for canary in cases:
+        data=_exec([probe,"-v","error","-show_entries",
+            "stream=codec_type:format=duration","-of","json",
+            str(canary["mp4"])],timeout=60)
+        try:
+            detected=json.loads(data)
+            kinds=[x["codec_type"] for x in detected["streams"]]
+            duration=float(detected["format"]["duration"])
+        except (KeyError,TypeError,ValueError) as exc:
+            raise CalibrationError("Canary MP4 has no trustworthy AV metadata.") from exc
+        if (kinds.count("video")!=1 or kinds.count("audio")!=1 or
+            not 2<=duration<=180):
+            raise CalibrationError("Canary must contain real video and one audio track.")
     out=private_dir(out_dir)
     findings=[]
     mismatch_count=0
