@@ -34,6 +34,7 @@ studio-assembly-lineage = "kidsstudio.assembly_lineage:main"
 studio-scene-assembly = "kidsstudio.scene_assembly:main"
 studio-scene-catalogue = "kidsstudio.scene_catalogue:main"
 studio-learning = "kidsstudio.studio_learning:main"
+studio-mac-quick-probe = "kidsstudio.mac_quick_probe:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
