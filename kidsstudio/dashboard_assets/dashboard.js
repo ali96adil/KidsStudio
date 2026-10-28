@@ -130,6 +130,21 @@
     host.append(make("p","small-explainer",
       "استمرارية الصوت M10: "+
       (continuityText[continuity.state]||"تحتاج تحققاً تقنياً جديداً")));
+    const priv=episode.private_preview||{state:"NOT_RECORDED"};
+    const privStates={
+      NOT_RECORDED:"لم تُسجّل نسخة مرفوعة Private بعد",
+      PRIVATE_AWAITING_OWNER_REVIEW:"الفيديو الخاص بانتظار قرارك بعد الرفع",
+      APPROVED:"المالك قبل النسخة؛ النشر العام يحتاج إجراء مستقل",
+      APPROVED_WITH_NOTES:"المالك قبل النسخة مع ملاحظات مستقبلية",
+      REVISION_REQUESTED:"المالك طلب تعديلات؛ الفيديو يبقى Private"
+    };
+    host.append(make("p","small-explainer",
+      "مراجعة نسخة YouTube Private: "+(privStates[priv.state]||"غير معروفة")));
+    if (priv.url) {
+      const link=make("a",null,"فتح النسخة الخاصة للمراجعة");
+      link.href=priv.url;link.target="_blank";link.rel="noopener noreferrer";
+      host.append(link);
+    }
     const note=make("p","small-explainer",
        "ملاحظة: مراحل الصوت والتحريك وتحسين الوجه لا تُعلن كمكتملة بدون سجلات تشغيل موثّقة منفصلة.");
     host.append(note);
@@ -181,6 +196,15 @@
     }
     if (!data.notes.length)host.append(make("div","empty","ماكو ملاحظات مسجلة حالياً."));
   }
+  function renderPrivateReview(data) {
+    const info=data.private_previews||{};
+    root("private-review-overview").textContent=
+      "نسخ تنتظر قرارك: "+fmt(info.pending_review||0)+
+      " · طلبات تعديل: "+fmt(info.revision_requests||0)+
+      " · مقبولة: "+fmt(info.approved||0)+
+      " · مقبولة مع ملاحظات: "+fmt(info.approved_with_notes||0)+
+      " · يوتيوب غير متصل مباشرةً؛ هذه حالات مسجلة محلياً فقط.";
+  }
   function renderLearning(data) {
     const status=root("learning-status");
     const host=root("learning-findings");clear(host);
@@ -228,6 +252,7 @@
       snapshot=data;
       renderMetrics(data);renderSeries(data);renderQueue(data);
       ensureStates(data);renderEpisodes(data);renderNotes(data);renderLearning(data);
+      renderPrivateReview(data);
       const when=new Date(data.generated_at);
       const display=Number.isFinite(when.getTime())?
         when.toLocaleTimeString("ar-IQ"):"—";
