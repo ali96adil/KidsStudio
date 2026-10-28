@@ -188,6 +188,76 @@ class SceneLedger:
                  item["script_sha256"],payload.get("voice_sha256"),time.time()))
             return job_id
 
+    def queue_first_voice_pilot(self, sid:str, ordinal:int, recipe:str,
+                                plan_sha256:str, owner_note:str)->str:
+        """M22: deliberate ONE-SCENE pilot queue; never an execution permit.
+
+        The owner must separately run M21. In a single IMMEDIATE SQLite
+        transaction recheck current approval, series, plan, source, audit
+        and zero existing stages before enqueueing exactly scene 1.
+        """
+        if (not isinstance(sid,str) or not ID.fullmatch(sid) or
+            type(ordinal) is not int or not 1<=ordinal<=120 or
+            not isinstance(recipe,str) or not RECIPE.fullmatch(recipe) or
+            not isinstance(plan_sha256,str) or not SHA.fullmatch(plan_sha256) or
+            not isinstance(owner_note,str) or
+            not 12<=len(owner_note.strip())<=500):
+            raise SceneError("Pilot requires owner note, recipe and exact frozen plan SHA.")
+        with self.queue._connection(write=True) as db:
+            if db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()[0]:
+                raise SceneError("Coordinator paused; do not enqueue pilot.")
+            row=db.execute("""SELECT e.state,e.source_sha256,e.owner_review_note,
+                s.state AS series_state,p.plan_sha256,p.episode_script_sha256
+                FROM studio_episodes e JOIN studio_series s USING(series_id)
+                JOIN studio_scene_plans p ON p.series_id=e.series_id AND
+                p.ordinal=e.ordinal
+                WHERE e.series_id=? AND e.ordinal=?""",(sid,ordinal)).fetchone()
+            scene=db.execute("""SELECT scene,script_sha256 FROM studio_scenes
+                WHERE series_id=? AND ordinal=? ORDER BY scene""",
+                (sid,ordinal)).fetchall()
+            if (not row or row["state"]!="SCRIPT_APPROVED" or
+                row["series_state"]!="ACTIVE" or
+                row["plan_sha256"]!=plan_sha256 or
+                row["episode_script_sha256"]!=row["source_sha256"] or
+                not isinstance(row["owner_review_note"],str) or
+                len(row["owner_review_note"].strip())<5 or
+                len(scene)!=2 or scene[0]["scene"]!=1 or
+                scene[1]["scene"]!=2 or
+                not db.execute("""SELECT 1 FROM studio_series_audit
+                  WHERE series_id=? AND ordinal=?
+                  AND action='SCRIPT_APPROVED_BY_OWNER'""",
+                  (sid,ordinal)).fetchone()):
+                raise SceneError("Owner-approved two-scene M13 plan required.")
+            if db.execute("""SELECT 1 FROM studio_scene_stages WHERE
+                series_id=? AND ordinal=? LIMIT 1""",
+                (sid,ordinal)).fetchone():
+                raise SceneError("Pilot voice stage already initiated; reconcile manually.")
+            payload=_json_object({
+                "recipe_id":recipe,
+                "script_sha256":scene[0]["script_sha256"],
+                "pilot_scene":1,
+                "pilot_plan_sha256":plan_sha256,
+            },"payload")
+            job_id=uuid4().hex
+            now=self.queue.clock()
+            key=f"scene:{sid}:episode:{ordinal}:s1:voice_synthesize:{scene[0]['script_sha256'][:16]}"
+            db.execute("""INSERT INTO jobs
+                (job_id,request_key,kind,payload,state,max_attempts,
+                available_at,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (job_id,key,"voice_synthesize",payload,"QUEUED",1,now,now,now))
+            self.queue._event(db,job_id,"ENQUEUED",{"kind":"voice_synthesize"})
+            db.execute("""INSERT INTO studio_scene_stages(
+                series_id,ordinal,scene,stage,state,job_id,
+                scene_script_sha256,source_voice_sha256,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (sid,ordinal,1,"voice_synthesize","QUEUED",job_id,
+                 scene[0]["script_sha256"],None,time.time()))
+            db.execute("""INSERT INTO studio_series_notes
+                (series_id,ordinal,note,created_at) VALUES (?,?,?,?)""",
+                (sid,ordinal,"FIRST_VOICE_PILOT: "+owner_note.strip(),time.time()))
+            return job_id
+
     def reconcile(self)->int:
         count=0
         with self.queue._connection(write=True) as db:
