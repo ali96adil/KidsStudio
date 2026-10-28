@@ -181,6 +181,43 @@
     }
     if (!data.notes.length)host.append(make("div","empty","ماكو ملاحظات مسجلة حالياً."));
   }
+  function renderLearning(data) {
+    const status=root("learning-status");
+    const host=root("learning-findings");clear(host);
+    const info=data.learning||{};
+    if(info.state!=="OWNER_REVIEWED_ANALYTICS_ONLY") {
+      status.textContent="لا يوجد تحليل متصل بعد. نستورد بيانات فعلية موثقة من YouTube Studio قبل أي قرار.";
+      return;
+    }
+    status.textContent="نوافذ القياس المسجلة: "+fmt(info.observed_windows||0)+
+      " · اقتراحات للمراجعة: "+fmt(info.proposed||0)+
+      " · تجارب مستقبلية اعتمدتها: "+fmt(info.adopted||0);
+    const decisions={
+      PROPOSED:"مقترح يحتاج موافقة",
+      ADOPT_FOR_FUTURE_EXPERIMENT:"معتمد كتجربة لسيناريو مستقبلي",
+      REJECT:"مرفوض"
+    };
+    const descriptions={
+      hook_style:"بداية الحلقة",
+      story_style:"أسلوب القصة",
+      pace_style:"إيقاع المشهد",
+      participation_style:"أسلوب مشاركة الطفل"
+    };
+    for(const item of info.recommendations||[]) {
+      const entry=make("div","acceptance-entry");
+      entry.append(make("strong",null,
+        (descriptions[item.feature]||item.feature)+
+        " · "+item.candidate+" مقارنةً بـ "+item.baseline));
+      entry.append(make("p",null,
+        (decisions[item.state]||item.state)+
+        " · السلسلة "+item.series_id+
+        " · ارتباط إحصائي لا يثبت سبب التفوق"));
+      host.append(entry);
+    }
+    if(!(info.recommendations||[]).length)
+      host.append(make("div","empty",
+        "لا توجد نتائج قابلة للمقارنة بعد. نحتاج عدة حلقات منشورة وبيانات احتفاظ ووصول."));
+  }
   async function load() {
     markStatus("جاري التحديث...");
     try {
@@ -190,7 +227,7 @@
       if(data.version!==1||!Array.isArray(data.episodes))throw Error("Schema mismatch");
       snapshot=data;
       renderMetrics(data);renderSeries(data);renderQueue(data);
-      ensureStates(data);renderEpisodes(data);renderNotes(data);
+      ensureStates(data);renderEpisodes(data);renderNotes(data);renderLearning(data);
       const when=new Date(data.generated_at);
       const display=Number.isFinite(when.getTime())?
         when.toLocaleTimeString("ar-IQ"):"—";
