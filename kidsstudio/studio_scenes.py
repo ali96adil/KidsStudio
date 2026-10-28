@@ -378,6 +378,10 @@ class SceneLedger:
                 receipt.get("artifact_type")!="wav" or
                 receipt.get("publication_approved") is not False):
                 raise SceneError("Voice technical report and owner-pinned Pi job disagree.")
+            if db.execute("""SELECT 1 FROM studio_scene_voice_checks
+                WHERE series_id=? AND ordinal=? AND scene=? AND
+                voice_job_id=?""",(sid,ordinal,scene,row["job_id"])).fetchone():
+                raise SceneError("Voice QA already registered; never overwrite.")
             db.execute("""INSERT INTO studio_scene_voice_checks VALUES (?,?,?,?,?,?,?,?)""",
                 (sid,ordinal,scene,row["job_id"],r["voice_sha256"],
                  digest(path),"TECH_PASS_OWNER_LISTENING_PENDING",time.time()))
