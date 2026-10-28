@@ -123,10 +123,13 @@ def import_voice_review(*, queue: StudioQueue, series_id: str,
         tech = db.execute("""SELECT report_sha256 FROM studio_scene_voice_checks
             WHERE series_id=? AND ordinal=? AND scene=? AND voice_job_id=?""",
             (series_id, episode, scene, row["job_id"])).fetchone()
-        ai = db.execute("""SELECT report_sha256, state
+        has_ai = bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_scene_ai_reviews'""").fetchone())
+        ai = (db.execute("""SELECT report_sha256, state
             FROM studio_scene_ai_reviews
             WHERE series_id=? AND ordinal=? AND scene=? AND stage='voice_synthesize'
               AND job_id=?""", (series_id, episode, scene, row["job_id"])).fetchone()
+              if has_ai else None)
         if (tech and tech["report_sha256"] != technical_sha) or (
                 ai and ai["report_sha256"] != report_sha):
             raise AudioImportError("Different review already bound to this Pi job.")
@@ -155,6 +158,7 @@ def import_voice_review(*, queue: StudioQueue, series_id: str,
     else:
         ledger = SceneLedger(queue)
         gate = SceneAIGate(queue, attestation_key=runner_key)
+        gate.initialize()
         # M23 is an immutable prerequisite. A crash after M23 can be retried
         # only using this exact same technical SHA. The M28 importer still
         # independently rechecks every byte, criterion and Pi job atomically.
