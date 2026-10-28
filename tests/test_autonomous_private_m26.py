@@ -179,6 +179,14 @@ class AutonomousPrivateUploadTests(unittest.TestCase):
 
     def test_owner_grant_autonomous_private_job_to_owner_review(self):
         self.grant()
+        entry=self.catalogue.entries[0]
+        self.policy.queue("colors-ar",1,
+            render_job_id=self.render["job_id"],
+            master_sha256=sha(self.media),
+            plan_sha256=entry["plan_sha256"],
+            readiness_sha256=entry["readiness_sha256"],
+            channel_id=CHANNEL,made_for_kids=True,
+            contains_synthetic_media=True)
         google=FakeYouTube()
         result=self.agent(google).run_once()
         self.assertEqual(result["status"],
