@@ -207,7 +207,7 @@ class Coordinator:
                 raise TransportError("Private upload permission required.")
             from .private_upload_policy import PrivateUploadPolicy, PrivatePolicyError
             try:
-                result=PrivateUploadPolicy(self.queue).queue(
+                result=PrivateUploadPolicy(self.queue).enqueue_private(
                     request["series_id"],request["episode_number"],
                     render_job_id=request["render_job_id"],
                     master_sha256=request["master_sha256"],
