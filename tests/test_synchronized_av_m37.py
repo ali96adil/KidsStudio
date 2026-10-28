@@ -146,7 +146,7 @@ class SynchronizedAV37(unittest.TestCase):
 
     def test_fake_technical_report_even_with_matching_hash_is_rejected(self):
         doc=json.loads(self.m10.read_text())
-        doc["envelope_correlation"]=0.9999
+        doc["envelope_correlation"]=0.0
         self.m10.write_text(json.dumps(doc))
         with self.assertRaises(AVReviewError):
             self.review()
