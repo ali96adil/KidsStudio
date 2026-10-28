@@ -192,6 +192,126 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaises(Exception):
             self.check(ltx=True)
 
+    # M19: unlike M11's whole-episode handoff, each independently authored
+    # scene requires a different pinned source script and voice recipe.
+    def build_two_scene_pilot(self):
+        from kidsstudio.two_scene_preflight import inspect_two_scene_voice_pilot
+        scripts = []
+        recipes = []
+        records = []
+        for number, color in ((1, "red"), (2, "blue")):
+            script = self.root / f"scene_{number:02d}_approved.txt"
+            script.write_text(f"Original scene {number}: recognize {color}.\\n",
+                              encoding="utf-8")
+            recipe = self._recipe("voice_synthesize", self.assets["approved_script"])
+            recipe["script"] = {"path": str(script), "sha256": sha(script)}
+            recipe["inputs"]["script"] = {"path": str(script), "sha256": sha(script)}
+            path = self.root / f"voice_scene_{number:02d}.json"
+            self._write(path, recipe)
+            scripts.append(script)
+            recipes.append(path)
+            records.append({
+                "scene": number,
+                "script_sha256": sha(script),
+                "objective": f"Recognize the {color} color in a familiar object",
+            })
+        plan = self.root / "m13_two_scene_plan.json"
+        self._write(plan, {
+            "schema_version": 1,
+            "series_id": "colors-ar",
+            "episode_number": 1,
+            "episode_script_sha256": sha(self.assets["approved_script"]),
+            "scenes": records,
+        })
+        def check():
+            return inspect_two_scene_voice_pilot(
+                self.contract_file, plan,
+                scene_scripts=tuple(scripts),
+                voice_recipes=tuple(recipes),
+                system="Darwin", arch="arm64",
+                memory_bytes=48*1024**3,
+                free_bytes=110*1024**3,
+            )
+        return check, plan, scripts, recipes
+
+    def test_m19_two_scene_handoff_accepts_distinct_pinned_scripts_without_execution(self):
+        check, plan, scripts, recipes = self.build_two_scene_pilot()
+        before = {str(p): sha(p) for p in self.base.rglob("*") if p.is_file()}
+        report = check()
+        after = {str(p): sha(p) for p in self.base.rglob("*") if p.is_file()}
+        self.assertEqual(report["status"], "TWO_SCENE_VOICE_CONFIG_PINNED_NOT_RUN")
+        self.assertEqual(report["scene_count"], 2)
+        self.assertNotEqual(report["scenes"][0]["scene_script_sha256"],
+                            report["scenes"][1]["scene_script_sha256"])
+        self.assertEqual(report["parent_script_sha256"],
+                         sha(self.assets["approved_script"]))
+        self.assertIs(report["canonical_pi_scene_approval_verified"], False)
+        self.assertIs(report["actual_wrapper_api_tested"], False)
+        self.assertIs(report["voice_or_animation_generated"], False)
+        self.assertIs(report["public_release_authorized"], False)
+        self.assertEqual(before, after)
+        self.assertFalse((self.root / "output").exists())
+        self.assertNotIn(str(self.base), json.dumps(report))
+
+    def test_m19_swapped_voice_recipes_blocked(self):
+        from kidsstudio.two_scene_preflight import (
+            inspect_two_scene_voice_pilot, HandoffError,
+        )
+        check, plan, scripts, recipes = self.build_two_scene_pilot()
+        with self.assertRaises(HandoffError):
+            inspect_two_scene_voice_pilot(
+                self.contract_file, plan,
+                scene_scripts=tuple(scripts),
+                voice_recipes=(recipes[1], recipes[0]),
+                system="Darwin", arch="arm64",
+                memory_bytes=48*1024**3, free_bytes=110*1024**3,
+            )
+        self.assertFalse((self.root / "output").exists())
+
+    def test_m19_tampered_scene_or_parent_and_duplicate_scene_are_denied(self):
+        from kidsstudio.two_scene_preflight import PilotPreflightError
+        from kidsstudio.episode_assembly import EpisodeAssemblyError
+        check, plan, scripts, recipes = self.build_two_scene_pilot()
+        scripts[1].write_text("An unauthorized changed scene")
+        with self.assertRaises(EpisodeAssemblyError):
+            check()
+        scripts[1].write_text("Original scene 2: recognize blue.\\n")
+        data = json.loads(plan.read_text())
+        data["episode_script_sha256"] = "b" * 64
+        self._write(plan, data)
+        with self.assertRaises(PilotPreflightError):
+            check()
+        data["episode_script_sha256"] = sha(self.assets["approved_script"])
+        data["scenes"][1]["script_sha256"] = data["scenes"][0]["script_sha256"]
+        self._write(plan, data)
+        with self.assertRaises(PilotPreflightError):
+            check()
+
+    def test_m19_legacy_m11_still_does_not_accept_scene_script_as_parent(self):
+        from kidsstudio.handoff_review import HandoffError
+        check, plan, scripts, recipes = self.build_two_scene_pilot()
+        with self.assertRaises(HandoffError):
+            self._check_invalid_m19_recipe_with_legacy_handoff(recipes[0])
+        self.assertEqual(check()["status"], "TWO_SCENE_VOICE_CONFIG_PINNED_NOT_RUN")
+
+    def _check_invalid_m19_recipe_with_legacy_handoff(self, recipe):
+        return inspect_handoff(
+            self.contract_file, recipe, system="Darwin", arch="arm64",
+            memory_bytes=48*1024**3, free_bytes=110*1024**3
+        )
+
+    def test_m19_wrong_stage_wrapper_is_blocked_even_if_script_matches(self):
+        from kidsstudio.handoff_review import HandoffError
+        check, plan, scripts, recipes = self.build_two_scene_pilot()
+        content = json.loads(recipes[1].read_text())
+        content["runner"]["entrypoint"] = str(self.assets["ltx_wrapper"])
+        content["runner"]["entrypoint_sha256"] = sha(self.assets["ltx_wrapper"])
+        self._write(recipes[1], content)
+        with self.assertRaises(HandoffError):
+            check()
+
+
+
 
 if __name__=="__main__":
     unittest.main()
