@@ -41,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     render.add_argument("series_id")
     render.add_argument("episode",type=int)
     render.add_argument("--recipe",required=True)
+    render.add_argument("--media-kind",choices=["godot_render","episode_assemble"],default="godot_render")
     retry=commands.add_parser("retry-blocked")
     retry.add_argument("series_id")
     retry.add_argument("episode",type=int)
@@ -82,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
             result={"status":"SCRIPT_APPROVED"}
         elif args.cmd=="queue-render":
             result={"render_job_id":control.queue_render(
-                args.series_id,args.episode,args.recipe)}
+                args.series_id,args.episode,args.recipe,media_kind=args.media_kind)}
         elif args.cmd=="retry-blocked":
             result={"resumed_state":control.retry_blocked(
                 args.series_id,args.episode,args.reason)}
