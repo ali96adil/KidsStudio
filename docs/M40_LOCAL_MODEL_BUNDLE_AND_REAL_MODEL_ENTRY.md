@@ -11,7 +11,7 @@
 - `av_motion_sync`: AV-capable CLI that must observe the original sound-bearing MP4 and WAV together; never mark lip-sync PASS from silent frames.
 - `av_visual_child_safety`: separate AV-capable CLI for visual consistency, age appropriateness and unsafe content.
 
-Each entry contains absolute `binary`, `binary_sha256`, `model`, `model_sha256`, `provider_id`, and `model_id`. Media tools have exact binary SHA fields. All five checkpoints live in an explicit **non-Git private root**. Four review roles must have distinct providers, executables and model checkpoint digests. The ASR provider is exclusively `asr_whispercpp`; it cannot masquerade as the independent reviewer. Files are rehashed at each inspection; missing, symlinked, changed, duplicated or out-of-root checkpoints block execution.
+Each entry contains absolute `binary`, `binary_sha256`, `model`, `model_sha256`, `provider_id`, and `model_id`. Media tools have exact binary SHA fields. All five checkpoints **and the manifest itself** live in an explicit **non-Git, owner-private, non-shared root** (the root must not be group/world-writable). Four review roles must have distinct providers, executables and model checkpoint digests. The ASR provider is exclusively `asr_whispercpp`; it cannot masquerade as the independent reviewer. Files are rehashed at each inspection; missing, symlinked, changed, duplicated or out-of-root checkpoints block execution.
 
 The **manifest itself** must be pinned separately with `--manifest-sha256`; changing any model, tool, provider, or option invalidates the earlier owner-approved bundle digest. All roles are local and opt-in. The manifest **must** declare `network_required=false`, `model_quality_qualified=false`, `execution_authorized=false`, and `public_release_authorized=false`.
 
@@ -73,11 +73,11 @@ All `64_hex_digits` placeholders must be replaced with the **actual SHA256**; th
 
 ```sh
 # Owner first calculates the actual private manifest digest:
-shasum -a 256 /PRIVATE/KidsStudio/model_bundle.json
+shasum -a 256 /PRIVATE/KidsStudio/models/model_bundle.json
 
 # Pure local inspection: no model invocation or Pi write
 studio-model-bundle \
- --manifest /PRIVATE/KidsStudio/model_bundle.json \
+ --manifest /PRIVATE/KidsStudio/models/model_bundle.json \
  --manifest-sha256 <actual-64-char-digest> inspect
 
 # Scene-specific voice/MP4 commands also default to inspection only.
