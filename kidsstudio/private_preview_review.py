@@ -113,7 +113,7 @@ class PreviewReview:
             raise PreviewReviewError("Exact private master receipt required.")
         if db.execute("""SELECT 1 FROM sqlite_master WHERE type='table'
                      AND name='studio_quality_reviews'""").fetchone():
-            qa=db.execute("""SELECT state,media_sha256,checks_passed FROM
+            qa=db.execute("""SELECT state,media_sha256,checks_passed,review_report_sha256 FROM
                 studio_quality_reviews WHERE series_id=? AND ordinal=?
                 AND render_job_id=?""",(sid,ordinal,row["render_job_id"])).fetchone()
             if (not qa or qa["state"] not in (
