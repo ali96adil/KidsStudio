@@ -159,7 +159,7 @@ class SceneAIGate:
             raise SceneError("Missing distinct scene review role.")
         if (not isinstance(rights,dict) or set(rights)!={"schema_version",
               "artifact_sha256","source_kind","source_proof_sha256",
-              "usage_scope","documented","rights_adjudicated",
+              "source_proof_file","usage_scope","documented","rights_adjudicated",
               "publication_approved"} or rights["schema_version"]!=1 or
             rights["artifact_sha256"]!=report["artifact_sha256"] or
             rights["source_kind"] not in ("original_created","licensed",
@@ -171,6 +171,9 @@ class SceneAIGate:
             not isinstance(rights["source_proof_sha256"],str) or
             not SHA.fullmatch(rights["source_proof_sha256"])):
             raise SceneError("Source-specific rights catalogue missing (not legal clearance).")
+        proof_bytes,source_proof_sha=_private(rights["source_proof_file"],100000,".txt")
+        if source_proof_sha!=rights["source_proof_sha256"] or len(proof_bytes.strip())<30:
+            raise SceneError("Actual source proof file differs from rights catalogue.")
         if (not isinstance(obs,dict) or obs.get("schema_version")!=1 or
             obs.get("stage")!=stage or
             obs.get("artifact_sha256")!=report["artifact_sha256"] or
@@ -204,8 +207,8 @@ class SceneAIGate:
         else:
             if set(obs)!={"schema_version","stage","artifact_sha256",
                            "script_sha256","source_voice_sha256",
-                           "frame_manifest_sha256","frame_count",
-                           "visual_review_model_id","model_execution_verified",
+                           "frame_manifest_sha256","frame_manifest_file",
+                           "frame_count","visual_review_model_id","model_execution_verified",
                            "publishing_approved"} or
                 not isinstance(obs["source_voice_sha256"],str) or
                 not SHA.fullmatch(obs["source_voice_sha256"]) or
@@ -215,6 +218,33 @@ class SceneAIGate:
                 not isinstance(obs["visual_review_model_id"],str) or
                 len(obs["visual_review_model_id"])<3):
                 raise SceneError("LTX frame observations and source voice required.")
+            frames_raw,frames_sha=_private(obs["frame_manifest_file"],100000,".json")
+            if frames_sha!=obs["frame_manifest_sha256"]:
+                raise SceneError("Visual frame manifest changed.")
+            frames_manifest=_read_json(frames_raw)
+            if (set(frames_manifest)!={"schema_version","a2v_sha256","frames"} or
+                frames_manifest["schema_version"]!=1 or
+                frames_manifest["a2v_sha256"]!=obs["artifact_sha256"] or
+                not isinstance(frames_manifest["frames"],list) or
+                len(frames_manifest["frames"])!=obs["frame_count"] or
+                not 3<=len(frames_manifest["frames"])<=16):
+                raise SceneError("Missing bounded LTX visual observations.")
+            observed_times=set()
+            for frame in frames_manifest["frames"]:
+                if (not isinstance(frame,dict) or
+                    set(frame)!={"timestamp_seconds","file","sha256"} or
+                    type(frame["timestamp_seconds"]) not in (int,float) or
+                    not 0<=frame["timestamp_seconds"]<=900 or
+                    frame["timestamp_seconds"] in observed_times or
+                    not isinstance(frame["sha256"],str) or
+                    not SHA.fullmatch(frame["sha256"])):
+                    raise SceneError("Invalid or repeated frame observation.")
+                observed_times.add(frame["timestamp_seconds"])
+                if not isinstance(frame["file"],str) or not frame["file"].lower().endswith(".png"):
+                    raise SceneError("Frame evidence must be a private PNG.")
+                frame_raw,frame_sha=_private(frame["file"],10_000_000,".png")
+                if frame_sha!=frame["sha256"] or not frame_raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+                    raise SceneError("Actual PNG frame evidence missing or altered.")
         all_pass=all(x["decision"]=="PASS"
                      for item in reviews for x in item["checks"].values())
         # ASR source text comparison is deterministic and independent of any
@@ -282,7 +312,7 @@ class SceneAIGate:
             state="AI_SCENE_READY_PRIVATE_ONLY" if all_pass else "AI_SCENE_NEEDS_FIX"
             now=self.queue.clock()
             db.execute("""INSERT INTO studio_scene_ai_reviews VALUES
-                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (sid,ordinal,scene,stage,row["job_id"],
                  row["artifact_sha256"],row["scene_script_sha256"],
                  report_sha,rights_sha,obs_sha,report["technical_sha256"],
