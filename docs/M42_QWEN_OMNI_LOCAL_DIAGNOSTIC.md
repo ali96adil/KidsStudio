@@ -79,7 +79,7 @@ are:
 
 | Candidate | Physical unified RAM (floor) | Free storage (floor) |
 |---|---:|---:|
-| Qwen2.5-Omni 3B | 32 GiB | 20 GiB |
+| Qwen2.5-Omni 3B | 32 GiB | 20 GiB — **commercial pilot BLOCKED: research-only model license** |
 | Qwen2.5-Omni 7B | 64 GiB | 40 GiB |
 
 These are **our conservative local trial thresholds**, NOT Qwen's
@@ -89,8 +89,20 @@ theoretical **18.38 GB GPU memory minimum** for 3B BF16 with a
 at least **1.2x more in practice**; the comparable 7B figure is
 31.11 GB theoretical. Mac MPS behavior must be observed separately.
 Model sizes, unlisted runtimes and storage can require more.
-The selection `--variant 3b/7b` is an operator-supplied planning
-label, **not verified model capacity**. Never treat the screen as
+The selection `--variant 3b/7b` is not accepted merely as a user
+label: M43 checks the pinned Qwen thinker text configuration against
+the upstream 3B/7B architectural identifiers (3B: 2048 hidden,
+36 layers; 7B: 3584 hidden, 28 layers). This is only a **config
+signature**, not an authenticated upstream source or model license.
+Qwen2.5-Omni **3B** is distributed under the Qwen Research License
+which restricts commercial use; Kids Studio's commercial pilot
+blocks it by default even if the Mac has enough RAM. Qwen2.5-Omni
+**7B** is listed under Apache-2.0; exact installed checkpoint
+provenance, third-party dependencies and applicable license obligations
+still require an independent owner review before commercial deployment.
+Official model licenses:
+https://huggingface.co/Qwen/Qwen2.5-Omni-3B/blob/main/LICENSE
+and https://huggingface.co/Qwen/Qwen2.5-Omni-7B/blob/main/LICENSE. Never treat the screen as
 proof the checkpoint is the stated model size.
 
 ## Future command examples — DO NOT run until separately authorized
@@ -102,9 +114,9 @@ package SHA.
 ```sh
 # No inference, downloads or model import:
 studio-qwen-omni-adapter \
-  --model /PRIVATE/models/qwen2_5_omni_3b \
+  --model /PRIVATE/models/qwen2_5_omni_7b \
   --model-sha256 <actual-64-hex-digest> \
-  --variant 3b --inspect
+  --variant 7b --inspect
 
 # The CLI review mode is also dry-run by default.
 # Only a separately authorized real pilot can supply --execute,
