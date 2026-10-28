@@ -27,18 +27,18 @@ class ModelProcessGroup44(unittest.TestCase):
         self.done=self.root/"grandchild_survived.txt"
         self.runner=self.root/"model_launcher"
         child=(
-            "from pathlib import Path\\n"
-            f"Path({str(self.started)!r}).write_text('started')\\n"
-            "import time;time.sleep(1.5)\\n"
-            f"Path({str(self.done)!r}).write_text('orphan')\\n"
+            "from pathlib import Path\n"
+            f"Path({str(self.started)!r}).write_text('started')\n"
+            "import time;time.sleep(1.5)\n"
+            f"Path({str(self.done)!r}).write_text('orphan')\n"
         )
         parent=(
-            f"#!{sys.executable}\\n"
-            "import subprocess,sys,time\\n"
+            f"#!{sys.executable}\n"
+            "import subprocess,sys,time\n"
             f"subprocess.Popen([sys.executable,'-c',{child!r}],"
             "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,"
-            "stderr=subprocess.DEVNULL)\\n"
-            "time.sleep(5)\\n"
+            "stderr=subprocess.DEVNULL)\n"
+            "time.sleep(5)\n"
         )
         self.runner.write_text(parent)
         self.runner.chmod(0o700)
