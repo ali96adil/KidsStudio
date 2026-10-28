@@ -220,7 +220,7 @@ class SeriesManager:
         if (series_id is None)!=(ordinal is None):
             raise SeriesError("Scoped reconcile needs both series and episode.")
         if series_id is not None and (
-            not isinstance(series_id,str) or not ID.fullmatch(series_id) or
+            not isinstance(series_id,str) or not IDENT.fullmatch(series_id) or
             type(ordinal) is not int or not 1<=ordinal<=120):
             raise SeriesError("Invalid episode selector for reconciliation.")
         changed=0
