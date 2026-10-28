@@ -76,10 +76,9 @@ def observe_live_scene_plan(queue: StudioQueue, request: dict[str, Any]) -> dict
                 or plan is None or plan["plan_sha256"] != request["scene_plan_sha256"]
                 or plan["episode_script_sha256"] != ep["source_sha256"]):
             raise LivePilotError("Current Pi episode revision/plan is not approved.")
-        if not db.execute("""SELECT 1 FROM studio_series_audit WHERE
-            series_id=? AND ordinal=? AND action='SCRIPT_APPROVED_BY_OWNER'""",
-            (sid, ordinal)).fetchone():
-            raise LivePilotError("Owner approval audit missing.")
+        from .script_gate import current_script_mode
+        if current_script_mode(db,sid,ordinal) is None:
+            raise LivePilotError("Current owner or M30 independent AI script proof missing.")
         actual = db.execute("""SELECT scene,script_sha256,objective
             FROM studio_scenes WHERE series_id=? AND ordinal=?
             ORDER BY scene""", (sid, ordinal)).fetchall()
