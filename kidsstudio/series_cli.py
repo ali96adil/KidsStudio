@@ -10,6 +10,7 @@ from .series_manager import SeriesError, SeriesManager
 from .studio_queue import QueueError, StudioQueue
 from .studio_stage_ledger import StageLedger, StageLedgerError
 from .studio_quality_ledger import QualityLedger, QualityGateError
+from .studio_audio_ledger import AudioEvidenceLedger, AudioEvidenceError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -82,6 +83,12 @@ def main(argv: list[str] | None = None) -> int:
     qualityhuman.add_argument("episode",type=int)
     qualityhuman.add_argument("--review",required=True,type=Path)
     commands.add_parser("quality-status")
+    commands.add_parser("init-audio-evidence")
+    audio=commands.add_parser("register-audio-evidence")
+    audio.add_argument("series_id")
+    audio.add_argument("episode",type=int)
+    audio.add_argument("--report",required=True,type=Path)
+    commands.add_parser("audio-evidence-status")
     args=parser.parse_args(argv)
 
     try:
@@ -89,9 +96,18 @@ def main(argv: list[str] | None = None) -> int:
         control=SeriesManager(queue)
         stages=StageLedger(queue)
         quality=QualityLedger(queue)
+        audio_evidence=AudioEvidenceLedger(queue)
         if args.cmd=="init":
             control.initialize()
             result={"status":"SCHEMA_READY"}
+        elif args.cmd=="init-audio-evidence":
+            audio_evidence.initialize()
+            result={"status":"AUDIO_EVIDENCE_LEDGER_READY"}
+        elif args.cmd=="register-audio-evidence":
+            audio_evidence.register(args.series_id,args.episode,args.report)
+            result={"status":"AUDIO_TECHNICAL_CHECK_REGISTERED_OWNER_QA_PENDING"}
+        elif args.cmd=="audio-evidence-status":
+            result={"audio_evidence":audio_evidence.snapshot()}
         elif args.cmd=="init-quality":
             quality.initialize()
             result={"status":"QUALITY_LEDGER_READY"}
@@ -153,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
             result={"status":"SERIES_PRODUCTION_COMPLETED"}
         else:
             result=control.snapshot()
-    except (SeriesError,StageLedgerError,QualityGateError,QueueError,OSError,ValueError,KeyError,TypeError) as exc:
+    except (SeriesError,StageLedgerError,QualityGateError,AudioEvidenceError,QueueError,OSError,ValueError,KeyError,TypeError) as exc:
         print("SERIES_ERROR: "+str(exc),file=sys.stderr)
         return 2
     print(json.dumps(result,ensure_ascii=False,indent=2))
