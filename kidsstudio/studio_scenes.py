@@ -225,6 +225,21 @@ class SceneLedger:
             scene=db.execute("""SELECT scene,script_sha256 FROM studio_scenes
                 WHERE series_id=? AND ordinal=? ORDER BY scene""",
                 (sid,ordinal)).fetchall()
+            owner_script=db.execute("""SELECT 1 FROM studio_series_audit
+                WHERE series_id=? AND ordinal=? AND
+                action='SCRIPT_APPROVED_BY_OWNER'""",
+                (sid,ordinal)).fetchone()
+            ai_script=None
+            if db.execute("""SELECT 1 FROM sqlite_master WHERE
+                type='table' AND name='studio_script_ai_reviews'""").fetchone():
+                ai_script=db.execute("""SELECT 1 FROM studio_script_ai_reviews r
+                    JOIN studio_episodes e ON e.series_id=r.series_id
+                      AND e.ordinal=r.ordinal AND e.revision=r.revision
+                    WHERE r.series_id=? AND r.ordinal=? AND
+                      r.verdict='AI_SCRIPT_PRIVATE_READY' AND
+                      r.original_sha256=e.source_sha256 AND
+                      r.first_provider!=r.second_provider""",
+                    (sid,ordinal)).fetchone()
             if (not row or row["state"]!="SCRIPT_APPROVED" or
                 row["series_state"]!="ACTIVE" or
                 row["plan_sha256"]!=plan_sha256 or
@@ -233,10 +248,7 @@ class SceneLedger:
                 len(row["owner_review_note"].strip())<5 or
                 len(scene)!=2 or scene[0]["scene"]!=1 or
                 scene[1]["scene"]!=2 or
-                not db.execute("""SELECT 1 FROM studio_series_audit
-                  WHERE series_id=? AND ordinal=?
-                  AND action='SCRIPT_APPROVED_BY_OWNER'""",
-                  (sid,ordinal)).fetchone()):
+                not (owner_script or ai_script)):
                 raise SceneError("Owner-approved two-scene M13 plan required.")
             if db.execute("""SELECT 1 FROM studio_scene_stages WHERE
                 series_id=? AND ordinal=? LIMIT 1""",
@@ -365,8 +377,10 @@ class SceneLedger:
                 receipt=json.loads(row["result_json"] or "{}")
             except (ValueError,TypeError) as exc:
                 raise SceneError("Malformed current voice receipt.") from exc
-            if (payload.get("pilot_scene")!=scene or
-                type(payload.get("pilot_scene")) is not int or scene!=1 or
+            pilot=payload.get("pilot_scene")
+            if ((pilot is not None and (type(pilot) is not int or
+                 pilot!=scene or scene!=1)) or
+                (pilot is None and "pilot_plan_sha256" in payload) or
                 payload.get("script_sha256")!=row["scene_script_sha256"] or
                 r["script_sha256"]!=row["scene_script_sha256"] or
                 r["job_id"]!=row["job_id"] or
