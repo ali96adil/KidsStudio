@@ -21,11 +21,11 @@ class LearningTests(unittest.TestCase):
         self.queue.initialize()
         self.series=SeriesManager(self.queue);self.series.initialize()
         lessons=[{"title":f"Color lesson {i}","objective":f"Recognize color {i}"}
-                 for i in range(1,9)]
+                 for i in range(1,10)]
         self.series.create_series("colors-ar","Colors","ar",lessons,activate=True)
         with self.queue._connection(write=True) as db:
             db.execute("""UPDATE studio_episodes SET state='EPISODE_APPROVED',
-                source_sha256=? WHERE series_id='colors-ar'""",("a"*64,))
+                source_sha256=? WHERE series_id='colors-ar' AND ordinal<=8""",("a"*64,))
         self.ledger=LearningLedger(self.queue)
         self.ledger.initialize()
         self.file=self.root/"youtube_owner_export.json"
@@ -71,10 +71,11 @@ class LearningTests(unittest.TestCase):
     def test_import_compare_propose_then_explicit_owner_adopts(self):
         imported=self.ledger.import_export(self.file)
         self.assertEqual(imported["new_snapshots"],8)
+        self.assertGreaterEqual(imported["new_learning_proposals"],1)
         self.assertFalse(imported["production_modified"])
         report=self.ledger.analyze("colors-ar")
         self.assertEqual(report["status"],"OBSERVATIONAL_LEARNING_ONLY")
-        self.assertGreaterEqual(report["new_proposals"],1)
+        self.assertEqual(report["new_proposals"],0)
         proposal=next(x for x in self.ledger.snapshot("colors-ar")["proposals"]
                       if x["feature"]=="hook_style")
         self.assertEqual(proposal["candidate"],"question_first")
@@ -101,6 +102,32 @@ class LearningTests(unittest.TestCase):
         with self.assertRaises(LearningError):
             self.ledger.decide(proposal["id"],decision="REJECT",
                                owner_note="Cannot silently reverse approved experiments")
+
+    def test_adopted_learning_only_enters_next_original_script_brief(self):
+        from kidsstudio.local_worker import _prompts
+        self.ledger.import_export(self.file)
+        idea=next(item for item in self.ledger.snapshot("colors-ar")["proposals"]
+                  if item["feature"]=="hook_style")
+        self.ledger.decide(
+            idea["id"],decision="ADOPT_FOR_FUTURE_EXPERIMENT",
+            owner_note="An original question-first opening is a controlled experiment; "
+                       "do not copy previous stories, weaken learning or remove manual QA.")
+        queued=self.series.plan_drafts(limit=1)
+        self.assertEqual(len(queued),1)
+        with self.queue._connection() as db:
+            record=db.execute("SELECT payload FROM jobs WHERE job_id=?",
+                              (queued[0]["job_id"],)).fetchone()
+        payload=json.loads(record["payload"])
+        self.assertEqual(payload["learning_experiment"]["feature"],"hook_style")
+        self.assertEqual(payload["learning_experiment"]["style"],"question_first")
+        _,prompt,_=_prompts("script_draft",payload)
+        self.assertIn("original",prompt)
+        self.assertIn("not proof of causality",prompt)
+        self.assertFalse("script_text" in payload)
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT state FROM studio_episodes
+                WHERE series_id='colors-ar' AND ordinal=1""").fetchone()
+        self.assertEqual(row["state"],"EPISODE_APPROVED")
 
     def test_insufficient_data_never_fabricates_a_winner(self):
         self.packet["profiles"]=self.packet["profiles"][:2]
