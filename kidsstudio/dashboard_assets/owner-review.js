@@ -117,7 +117,9 @@
       watch.rel = "noopener noreferrer";
       card.append(watch, node("p","meta",
         "معرّف الفيديو: "+item.video_id+
-        " · الخصوصية المسجلة: PRIVATE (غير متحقق منها عبر API)"));
+        (item.platform_privacy_verified ?
+        " · تحقق API سابق: Private (لا يضمن حالته الآن)" :
+        " · الخصوصية سجلها المالك؛ غير متحقق منها عبر API")));
       const comments = node("div","comment-list");
       for (const comment of item.comments || []) {
         const line = node("div","comment");
