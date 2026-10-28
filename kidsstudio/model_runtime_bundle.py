@@ -18,6 +18,9 @@ import sys
 from .episode_assembly import digest, _ensure_private
 from .real_media_evidence import private_file, _binary, EvidenceCaptureError
 from .local_audio_review import AudioRunner, AudioModelError, review_voice
+from .voice_qa import VoiceQAError
+from .scene_ai_qa import SceneError
+from .audio_continuity import AudioContinuityError
 from .synchronized_av_review import AVRunner, AVReviewError, review_synchronized
 
 SHA=re.compile(r"^[a-f0-9]{64}$")
@@ -275,6 +278,7 @@ def main(argv:list[str]|None=None)->int:
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0
     except (ModelBundleError,AudioModelError,AVReviewError,EvidenceCaptureError,
+            VoiceQAError,SceneError,AudioContinuityError,
             OSError,ValueError,TypeError,KeyError) as exc:
         print("M40_MODEL_BUNDLE_BLOCKED: "+type(exc).__name__,file=sys.stderr)
         return 2
