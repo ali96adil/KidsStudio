@@ -55,7 +55,7 @@ class RemoteClient:
         )
 
     def call(self, operation: str, body: dict[str, Any]) -> dict[str, Any]:
-        if operation not in ("claim", "heartbeat", "review-source", "complete", "complete-media", "fail", "pilot-readiness"):
+        if operation not in ("claim", "heartbeat", "review-source", "complete", "complete-media", "fail", "pilot-readiness", "pilot-voice-lease-check"):
             raise RemoteWorkerError("Unknown Pi operation.")
         data = json.dumps(body, ensure_ascii=False, allow_nan=False).encode("utf-8")
         if len(data) > MAX_MESSAGE:
