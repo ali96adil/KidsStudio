@@ -18,6 +18,7 @@ from typing import Callable, Any
 
 from .episode_assembly import digest, _ensure_private
 from .episode_quality import save_report
+from .real_media_evidence import media_subprocess_env
 
 RATE=8000
 WINDOW=160  # 20ms
@@ -36,7 +37,8 @@ def decode_pcm(path: Path, ffmpeg: str) -> array:
             ffmpeg,"-nostdin","-hide_banner","-v","error","-xerror",
             "-i",str(path),"-map","0:a:0","-vn","-ac","1",
             "-ar",str(RATE),"-t","180","-f","s16le","pipe:1"],
-            check=True,timeout=180,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            check=True,timeout=180,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+            env=media_subprocess_env())
     except (OSError,subprocess.SubprocessError) as exc:
         raise AudioContinuityError("Local FFmpeg audio stream cannot be decoded.") from exc
     raw=result.stdout
