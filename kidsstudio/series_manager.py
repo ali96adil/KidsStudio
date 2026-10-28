@@ -293,6 +293,22 @@ class SeriesManager:
                 WHERE series_id=? AND ordinal=?""",(series_id,ordinal)).fetchone()
             if ep is None or ep["state"]!="SCRIPT_APPROVED":
                 raise SeriesError("Owner-approved script required before rendering.")
+            # When M6 staged production was started for this episode, a
+            # standalone assembly requires independently owner-approved voice
+            # AND animation receipts. Legacy pre-rendered clips remain possible
+            # only if no stage production was ever opened for this episode.
+            if media_kind=="episode_assemble" and db.execute("""SELECT 1 FROM sqlite_master
+                    WHERE type='table' AND name='studio_episode_stages'""").fetchone():
+                existing=db.execute("""SELECT stage,state,script_sha256
+                    FROM studio_episode_stages WHERE series_id=? AND ordinal=?""",
+                    (series_id,ordinal)).fetchall()
+                if existing and (
+                    len(existing)!=2 or
+                    {r["stage"] for r in existing}!={"voice_synthesize","ltx_animate"} or
+                    any(r["state"]!="QA_APPROVED" or
+                        r["script_sha256"]!=ep["source_sha256"] for r in existing)
+                ):
+                    raise SeriesError("Independent owner-approved voice and LTX required before assembly.")
             key=(f"series:{series_id}:episode:{ordinal}:"
                  f"render:{media_kind}:a{ep['render_attempt']}:{ep['source_sha256'][:16]}")
             payload=_json_object(({"recipe_id":recipe_id,
