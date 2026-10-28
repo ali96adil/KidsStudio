@@ -184,6 +184,27 @@ class LearningTests(unittest.TestCase):
         self.ledger.import_export(self.file)
         self.assertEqual(self.ledger.analyze("colors-ar")["new_proposals"],0)
 
+    def test_shorts_can_learn_without_thumbnail_impressions_or_ctr(self):
+        # Made-for-Kids and Shorts dashboards can show unavailable reach.
+        # We must NOT interpret missing CTR as 0 or block all Shorts insights.
+        for item in self.packet["profiles"]:
+            item["format_type"]="short"
+            item["duration_seconds"]=40
+        for i,item in enumerate(self.packet["metrics"]):
+            item["impressions"]=0
+            item["ctr_percent"]=None
+            item["average_view_duration_seconds"]=30.0 if i<4 else 19.0
+        self.save()
+        report=self.ledger.import_export(self.file)
+        self.assertGreaterEqual(report["new_learning_proposals"],1)
+        ideas=self.ledger.snapshot("colors-ar")["proposals"]
+        hook=next(p for p in ideas if p["feature"]=="hook_style")
+        self.assertEqual(hook["evidence"]["segment"]["format"],"short")
+        self.assertIsNone(hook["evidence"]["winner"]["median_ctr_pct"])
+        self.assertEqual(hook["evidence"]["candidate"] if "candidate" in hook["evidence"] else hook["candidate"],
+                         "question_first")
+        self.assertFalse(hook["evidence"]["automatic_script_change"])
+
     def test_unapproved_episode_and_unqualified_owner_note_blocked(self):
         with self.queue._connection(write=True) as db:
             db.execute("""UPDATE studio_episodes SET state='PLANNED'
