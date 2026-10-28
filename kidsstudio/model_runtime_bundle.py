@@ -42,7 +42,7 @@ def _inside(path:Path,root:Path)->bool:
 
 
 def _exact_file(file:str,expected:str,root:Path,*,executable:bool,
-                model:bool=False)->Path:
+                model:bool=False,allow_directory:bool=True)->Path:
     if (not isinstance(file,str) or not file.startswith("/") or
         not isinstance(expected,str) or not SHA.fullmatch(expected)):
         raise ModelBundleError("Explicit absolute file SHA256 is required.")
@@ -51,7 +51,7 @@ def _exact_file(file:str,expected:str,root:Path,*,executable:bool,
         raise ModelBundleError("Symlinked model or executable denied.")
     if model:
         return verify_checkpoint(source,expected,private_root=root,
-                                 allow_directory=True)
+                                 allow_directory=allow_directory)
     if not source.is_file():
         raise ModelBundleError("Executable must be a regular file.")
     real=Path(_binary(str(source)))
@@ -135,7 +135,8 @@ class LocalModelBundle:
             binary=_exact_file(row["binary"],row["binary_sha256"],root,
                                executable=True)
             model=_exact_file(row["model"],row["model_sha256"],root,
-                              executable=False,model=True)
+                              executable=False,model=True,
+                              allow_directory=role!="asr_whispercpp")
             if (binary in binaries or model in models or
                 binary in seen_files or model in seen_files):
                 raise ModelBundleError("Cannot reuse binary or checkpoint across roles.")
