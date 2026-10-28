@@ -19,6 +19,7 @@ studio-coordinator = "kidsstudio.coordinator_api:main"
 studio-remote-worker = "kidsstudio.remote_worker:main"
 studio-media-worker = "kidsstudio.media_worker:main"
 studio-dashboard = "kidsstudio.studio_dashboard:main"
+studio-source-preflight = "kidsstudio.episode_sources:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
