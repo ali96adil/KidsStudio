@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 from pathlib import Path
 import re
 import sys
@@ -19,6 +20,8 @@ from .series_manager import SeriesManager, SeriesError
 from .studio_scenes import SceneLedger, SceneError, ID, SHA, RECIPE
 from .scene_repair import SceneRepair, RepairError
 from .studio_queue import StudioQueue, QueueError
+
+PENDING_ASSEMBLY="AFTER_SCENE_QA"
 
 class OrchestrationError(ValueError):
     pass
@@ -65,7 +68,8 @@ def read_plan(file: str|Path)->tuple[dict,str]:
         not isinstance(assembly["recipe_id"],str) or
         not RECIPE.fullmatch(assembly["recipe_id"]) or
         not isinstance(assembly["catalogue_sha256"],str) or
-        not SHA.fullmatch(assembly["catalogue_sha256"])):
+        not (SHA.fullmatch(assembly["catalogue_sha256"]) or
+             assembly["catalogue_sha256"]==PENDING_ASSEMBLY)):
         raise OrchestrationError("Exact private final-montage recipe/catalogue required.")
     return plan,digest(path)
 
@@ -82,6 +86,13 @@ class StudioOrchestrator:
 
     def initialize(self)->None:
         with self.queue._connection(write=True) as db:
+            db.execute("""CREATE TABLE IF NOT EXISTS studio_orchestrator_assembly_bindings(
+                series_id TEXT NOT NULL, ordinal INTEGER NOT NULL,
+                plan_sha256 TEXT NOT NULL, catalogue_sha256 TEXT NOT NULL,
+                evidence_sha256 TEXT NOT NULL, scene_set_sha256 TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                PRIMARY KEY(series_id,ordinal)
+            )""")
             db.execute("""CREATE TABLE IF NOT EXISTS studio_orchestrator_plans(
                 series_id TEXT NOT NULL,ordinal INTEGER NOT NULL,
                 plan_sha256 TEXT NOT NULL,script_sha256 TEXT NOT NULL,
@@ -262,7 +273,28 @@ class StudioOrchestrator:
                                 "ltx_animate",ltx) else
                             ("BLOCK","SCENE_LTX_"+ltx["state"]))
                 if pending is None and scene_status:
-                    pending=("QUEUE","ASSEMBLE_FINAL_EPISODE")
+                    if plan["assembly"]["catalogue_sha256"]==PENDING_ASSEMBLY:
+                        binding=(db.execute("""SELECT * FROM
+                            studio_orchestrator_assembly_bindings WHERE
+                            series_id=? AND ordinal=?""",(sid,num)).fetchone()
+                            if _has(db,"studio_orchestrator_assembly_bindings") else None)
+                        if binding is None:
+                            pending=("BLOCK","M48_ASSEMBLY_CATALOGUE_NOT_BOUND")
+                        else:
+                            try:
+                                from .studio_scenes import assert_scenes_ready
+                                ready=assert_scenes_ready(
+                                    db,sid,num,plan["script_sha256"])
+                                current_sha=_scene_set_sha(ready)
+                                if (binding["plan_sha256"]!=sha or
+                                    binding["scene_set_sha256"]!=current_sha):
+                                    pending=("BLOCK","M48_ASSEMBLY_BINDING_STALE")
+                                else:
+                                    pending=("QUEUE","ASSEMBLE_FINAL_EPISODE")
+                            except SceneError:
+                                pending=("BLOCK","M48_ASSEMBLY_SCENES_NOT_VERIFIED")
+                    else:
+                        pending=("QUEUE","ASSEMBLE_FINAL_EPISODE")
             elif ep:
                 pending=("BLOCK","EPISODE_"+ep["state"])
             if pending:
@@ -340,9 +372,22 @@ class StudioOrchestrator:
                     item["voice_recipe"] if action=="NEXT_VOICE"
                     else item["ltx_recipe"])
         elif action=="ASSEMBLE_FINAL_EPISODE":
+            catalogue_sha=plan["assembly"]["catalogue_sha256"]
+            if catalogue_sha==PENDING_ASSEMBLY:
+                with self.queue._connection() as db:
+                    binding=db.execute("""SELECT * FROM
+                        studio_orchestrator_assembly_bindings WHERE
+                        series_id=? AND ordinal=?""",(sid,num)).fetchone()
+                    if not binding or binding["plan_sha256"]!=current_sha:
+                        raise OrchestrationError("Frozen assembly binding not current.")
+                    from .studio_scenes import assert_scenes_ready
+                    approved=assert_scenes_ready(db,sid,num,plan["script_sha256"])
+                    if binding["scene_set_sha256"]!=_scene_set_sha(approved):
+                        raise OrchestrationError("Approved scene output changed since binding.")
+                    catalogue_sha=binding["catalogue_sha256"]
             job=self.series.queue_render(sid,num,
                 plan["assembly"]["recipe_id"],media_kind="episode_assemble",
-                catalogue_sha256=plan["assembly"]["catalogue_sha256"])
+                catalogue_sha256=catalogue_sha)
         else:
             return {"status":"M32_NO_APPROVED_AUTOMATED_ACTION",
                     "next_action":action,
