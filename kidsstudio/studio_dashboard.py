@@ -105,6 +105,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
     audio_states={}
     scene_states={}
     scene_ai_states={}
+    scene_visual_states={}
     orchestration_states={}
     preview_states={}
     preview_summary={"state":"NOT_CONFIGURED","pending_review":0,
@@ -213,6 +214,24 @@ def build_snapshot(queue: StudioQueue) -> dict:
                         ai["ltx_ready"]+=1
                 elif item["state"]=="AI_SCENE_NEEDS_FIX":
                     ai["needs_fix"]+=1
+        # M36 read-only overview: only the current signed LTX observation
+        # survives, never claim that sampled silent frames prove lip sync.
+        has_m36=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_scene_visual_observations'""").fetchone())
+        if has_m36:
+            for item in db.execute("""SELECT v.series_id,v.ordinal,COUNT(*) AS n
+                FROM studio_scene_visual_observations v
+                JOIN studio_scene_stages st ON st.series_id=v.series_id
+                AND st.ordinal=v.ordinal AND st.scene=v.scene
+                AND st.stage='ltx_animate' AND st.job_id=v.ltx_job_id
+                WHERE st.state='PENDING_QA'
+                AND v.state='AV_AUDIO_REVIEW_REQUIRED'
+                GROUP BY v.series_id,v.ordinal"""):
+                scene_visual_states[(item["series_id"],item["ordinal"])]={
+                    "state":"M36_AV_AUDIO_REVIEW_REQUIRED",
+                    "scenes_waiting_audio_video":item["n"],
+                    "lip_sync_verified":False,
+                    "public_release_authorized":False}
         repairs_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_scene_repair_attempts'""").fetchone())
         if repairs_installed:
@@ -299,6 +318,9 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "ai_scene_reviews":scene_ai_states.get((ep["series_id"],ep["ordinal"]),{
                 "state":"NOT_STARTED",
                 "voice_ready":0,"ltx_ready":0,"needs_fix":0}),
+            "visual_av_review":scene_visual_states.get((ep["series_id"],ep["ordinal"]),{
+                "state":"NOT_STARTED","scenes_waiting_audio_video":0,
+                "lip_sync_verified":False,"public_release_authorized":False}),
             "orchestrator":orchestration_states.get((ep["series_id"],ep["ordinal"]),{
                 "state":"NOT_PINNED",
                 "hardware_qualification_ready":False,
