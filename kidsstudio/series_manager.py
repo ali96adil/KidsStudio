@@ -214,13 +214,23 @@ class SeriesManager:
                 made.append({"series_id":sid,"ordinal":ordinal,"job_id":job_id})
             return made
 
-    def reconcile(self) -> int:
-        """Move from unverified queue receipts to owner review; never auto-approve."""
+    def reconcile(self,series_id: str|None=None,
+                  ordinal: int|None=None) -> int:
+        """Reconcile receipts for all episodes or one explicit production."""
+        if (series_id is None)!=(ordinal is None):
+            raise SeriesError("Scoped reconcile needs both series and episode.")
+        if series_id is not None and (
+            not isinstance(series_id,str) or not ID.fullmatch(series_id) or
+            type(ordinal) is not int or not 1<=ordinal<=120):
+            raise SeriesError("Invalid episode selector for reconciliation.")
         changed=0
         with self.queue._connection(write=True) as db:
             rows=db.execute("""SELECT * FROM studio_episodes
                 WHERE state IN ('DRAFT_QUEUED','REVIEW_QUEUED',
-                                'RENDER_QUEUED')""").fetchall()
+                                'RENDER_QUEUED')
+                AND (? IS NULL OR series_id=?)
+                AND (? IS NULL OR ordinal=?)""",
+                (series_id,series_id,ordinal,ordinal)).fetchall()
             for ep in rows:
                 media=ep["state"]=="RENDER_QUEUED"
                 job_id=ep["render_job_id"] if media else ep["draft_job_id"]
