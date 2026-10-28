@@ -344,8 +344,22 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
                         result.get("privacy_status")!="private" or
                         result.get("verified_using_authenticated_youtube_api") is not True):
                         raise YouTubePrivateError("Privacy proof missing/invalid.")
-                    if result.get("processing_status")=="failed":
-                        raise YouTubePrivateError("YouTube processing failed.")
+                    if result.get("processing_status")!="succeeded":
+                        # No owner review until processing actually succeeds.
+                        # The recorded upload ID can be re-verified without
+                        # another videos.insert call or duplicate upload.
+                        return {
+                            "schema_version":1,
+                            "status":"YOUTUBE_PRIVATE_PROCESSING_PENDING",
+                            "video_id":video_id,"render_job_id":plan["render_job_id"],
+                            "video_sha256":safe["master_sha256"],
+                            "channel_id":plan["target_channel_id"],
+                            "youtube_privacy":"private",
+                            "processing_status":result.get("processing_status"),
+                            "platform_privacy_verified":True,
+                            "ready_for_owner_review":False,
+                            "public_release_authorized":False,
+                        }
                     journal.record_verified(plan["render_job_id"],video_id)
                     return {
                         "schema_version":1,
@@ -359,6 +373,7 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
                         "youtube_privacy":"private",
                         "processing_status":result.get("processing_status"),
                         "platform_privacy_verified":True,
+                        "ready_for_owner_review":True,
                         "public_release_authorized":False,
                     }
                 if status!=308 or type(next_position) is not int or next_position!=offset+len(block):
@@ -371,6 +386,49 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
         raise
 
 
+def verify_existing(plan:dict,media:Path,readiness:Path,
+                    readiness_sha:str,journal:UploadJournal,token:str,*,
+                    transport:Any|None=None)->dict:
+    """Read-only YouTube verification of prior completed upload, NO insert."""
+    safe=validate_plan(plan,media,readiness,readiness_sha)
+    if not isinstance(token,str) or len(token)<30 or any(ch.isspace() for ch in token):
+        raise YouTubePrivateError("Fresh OAuth bearer required.")
+    existing=journal.status(plan["render_job_id"])
+    if (not existing or existing["state"] not in (
+            "UPLOADED_UNVERIFIED","PRIVATE_VERIFIED") or
+            existing["master_sha256"]!=safe["master_sha256"] or
+            not isinstance(existing["video_id"],str) or
+            not VIDEO.fullmatch(existing["video_id"])):
+        raise YouTubePrivateError("No completed upload ID available for safe verification.")
+    transport=transport if transport is not None else GoogleYouTubeTransport()
+    result=transport.verify(token,existing["video_id"],plan["target_channel_id"])
+    if (result.get("video_id")!=existing["video_id"] or
+        result.get("channel_id")!=plan["target_channel_id"] or
+        result.get("privacy_status")!="private" or
+        result.get("verified_using_authenticated_youtube_api") is not True):
+        raise YouTubePrivateError("Authenticated private video proof differs.")
+    if result.get("processing_status")!="succeeded":
+        return {"status":"YOUTUBE_PRIVATE_PROCESSING_PENDING",
+                "video_id":existing["video_id"],
+                "processing_status":result.get("processing_status"),
+                "ready_for_owner_review":False,"public_release_authorized":False}
+    if existing["state"]=="UPLOADED_UNVERIFIED":
+        journal.record_verified(plan["render_job_id"],existing["video_id"])
+    return {"schema_version":1,
+            "status":"YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING",
+            "series_id":safe["series_id"],
+            "episode_number":safe["episode_number"],
+            "render_job_id":plan["render_job_id"],
+            "video_sha256":safe["master_sha256"],
+            "video_id":existing["video_id"],
+            "channel_id":plan["target_channel_id"],
+            "youtube_privacy":"private",
+            "processing_status":"succeeded",
+            "platform_privacy_verified":True,
+            "ready_for_owner_review":True,
+            "public_release_authorized":False}
+
+
 def main(argv:list[str]|None=None)->int:
     p=argparse.ArgumentParser(prog="studio-youtube-private-upload",
         description="Strict private-only resumable upload; explicit --execute.")
@@ -381,6 +439,8 @@ def main(argv:list[str]|None=None)->int:
     p.add_argument("--journal",type=Path)
     p.add_argument("--token-env",default="KIDS_STUDIO_YOUTUBE_OAUTH_ACCESS_TOKEN")
     p.add_argument("--execute",action="store_true")
+    p.add_argument("--verify-existing",action="store_true",
+                   help="Check a prior upload ID without starting another upload")
     args=p.parse_args(argv)
     try:
         if not args.plan.is_absolute() or args.plan.is_symlink():
@@ -390,14 +450,21 @@ def main(argv:list[str]|None=None)->int:
             raise YouTubePrivateError("Owner upload plan missing/oversized.")
         plan=_json(args.plan.read_bytes())
         report=validate_plan(plan,args.media,args.readiness,args.readiness_sha256)
+        if args.verify_existing and not args.execute:
+            raise YouTubePrivateError("Verify-existing needs explicit --execute.")
         if not args.execute:
             print(json.dumps(report,ensure_ascii=False,indent=2))
             return 0
         if args.journal is None or not ENV.fullmatch(args.token_env):
             raise YouTubePrivateError("Explicit private journal and allowed token env required.")
-        result=private_upload(plan,args.media,args.readiness,args.readiness_sha256,
-                              UploadJournal(args.journal),
-                              os.environ.get(args.token_env,""))
+        if args.verify_existing:
+            result=verify_existing(plan,args.media,args.readiness,
+                args.readiness_sha256,UploadJournal(args.journal),
+                os.environ.get(args.token_env,""))
+        else:
+            result=private_upload(plan,args.media,args.readiness,args.readiness_sha256,
+                UploadJournal(args.journal),
+                os.environ.get(args.token_env,""))
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0
     except (YouTubePrivateError,OSError,ValueError,KeyError,TypeError,
