@@ -21,7 +21,7 @@ from uuid import uuid4
 KINDS = frozenset({
     "character_generate", "rig_review", "godot_render",
     "script_draft", "editorial_review", "archive_verify", "episode_assemble",
-    "voice_synthesize", "ltx_animate",
+    "voice_synthesize", "ltx_animate", "youtube_private_upload",
 })
 STATES = frozenset({
     "QUEUED", "LEASED", "COMPLETED", "FAILED", "CANCELLED"
