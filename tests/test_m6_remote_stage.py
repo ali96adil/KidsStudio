@@ -29,14 +29,15 @@ class Pi:
 
 
 class FakeModels:
-    def __init__(self):
+    def __init__(self, voice_sha):
         self.calls=[]
+        self.voice_sha=voice_sha
     def execute(self,kind,recipe,job_id):
         self.calls.append((kind,recipe,job_id))
         return {
             "result_status":"VOICE_RENDERED_PENDING_QA" if kind=="voice_synthesize"
                             else "A2V_RENDERED_PENDING_QA",
-            "artifact_sha256":"b"*64 if kind=="voice_synthesize" else "c"*64,
+            "artifact_sha256":self.voice_sha if kind=="voice_synthesize" else "c"*64,
             "artifact_bytes":1024,
             "artifact_type":"wav" if kind=="voice_synthesize" else "mp4",
             "publication_approved":False,
@@ -103,7 +104,7 @@ class M6RemoteTests(unittest.TestCase):
         self.coordinator=Coordinator(self.queue,self.root/"vault",{
              "mac-stage-m6":("a"*45,{"voice_synthesize","ltx_animate"})
         })
-        self.executor=FakeModels()
+        self.executor=FakeModels(sha(self.voice))
         self.worker=RemoteMediaWorker(
             Pi(self.coordinator),self.recipes,
             MediaJournal(self.root/"journal.sqlite"),executor=self.executor)
@@ -114,16 +115,8 @@ class M6RemoteTests(unittest.TestCase):
         self.assertEqual(self.worker.run_once()["status"],"COMPLETED")
         self.assertEqual(self.queue.get(voice_id)["state"],"COMPLETED")
         self.ledger.reconcile()
-        self.ledger.approve("colors-ar",1,"voice_synthesize","b"*64,
+        self.ledger.approve("colors-ar",1,"voice_synthesize",sha(self.voice),
                            "Owner reviewed and approved recorded audio")
-        # The voice source from an LTX recipe must be exactly the
-        # approved WAV content hash, not just arbitrary Mac audio.
-        with self.queue._connection(write=True) as db:
-            db.execute("""UPDATE studio_episode_stages SET artifact_sha256=?
-                WHERE series_id='colors-ar' AND ordinal=1
-                  AND stage='voice_synthesize'""",(sha(self.voice),))
-        # This setup simulates an exact approved local WAV, whereas the
-        # fake executor returned a synthetic digest.
         ltx_id=self.ledger.queue_stage("colors-ar",1,"ltx_animate",
                                        "ltx_animate_recipe")
         self.assertEqual(self.worker.run_once()["status"],"COMPLETED")
