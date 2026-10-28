@@ -42,6 +42,8 @@ studio-voice-qa = "kidsstudio.voice_qa:main"
 studio-preview-review = "kidsstudio.preview_review_cli:main"
 studio-owner-review = "kidsstudio.owner_review_ui:main"
 studio-youtube-private-upload = "kidsstudio.youtube_private_upload:main"
+studio-private-policy = "kidsstudio.private_policy_cli:main"
+studio-private-upload-agent = "kidsstudio.private_upload_agent:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
