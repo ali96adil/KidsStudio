@@ -100,7 +100,10 @@ approvals or authorize rendering/upload.
 
 **Crucial:** CI uses 4 synthetically distinct media hashes and
 synthetic labels, NOT genuine wrong narration / unsafe visuals / visually
-verified lip-sync. It proves the calibration *mechanism* rejects an
+verified lip-sync. A second intentionally dishonest mock **memorizes the case
+SHA-to-label table** and scores perfectly; the software still refuses to
+mark the model or the hardware qualified. This prevents confusing a test
+score with independent semantic understanding. It proves the calibration *mechanism* rejects an
 always-PASS mock; it does **not** establish trained-model skill.
 Proper canary ground truth must later be created and independently
 confirmed by the user or a qualified reviewer. Because the code cannot
