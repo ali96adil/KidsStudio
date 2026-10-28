@@ -4,7 +4,7 @@ AI-powered bilingual educational animation studio for children.
 
 **Status:** Early R&D. The Godot/ComfyUI experiments described below were run on a Mac outside this repository; production automation is not yet deployed.
 
-## Current draft implementation (M3–M16, unmerged)
+## Current draft implementation (M3–M18, unmerged)
 
 The connected GitHub draft branch now includes series-first bounded agents,
 scene-by-scene voice/LTX ownership and human QA, Mac source provenance,
@@ -16,13 +16,19 @@ script drafts. The Arabic local dashboard shows learning proposals.
 
 **This is development code.** GitHub CI uses synthetic media and analytics.
 Real Chatterbox/LTX on the owner's Mac, actual video quality, commercial
-rights, independent backup and any YouTube upload remain unverified.
+rights, independent backup and any YouTube upload remain unverified. M17 exercises
+real Linux FFmpeg for synthetic audiovisual assembly. M18 sends an actually
+assembled two-scene MP4 through M7's real full-decode checks and verifies
+that two distinct synthetic audio tones remain in the correct scene order.
+Neither test produces an educational episode or licenses any asset.
 No Mac/Pi deployment, live model calls, automatic publication or merge to
 main has been performed by this draft work.
 
 See [M15/M16 launch and test pack](docs/M15_M16_TEST_PACK.md),
 [M14 scene provenance](docs/M14_FROZEN_MEDIA_CATALOGUE.md),
-and [M13 multi-scene pipeline](docs/M13_SCENE_PIPELINE.md).
+and [M13 multi-scene pipeline](docs/M13_SCENE_PIPELINE.md),
+[M17 real assembly](docs/M17_REAL_FFMPEG_INTEGRATION.md),
+[M18 final-master QA](docs/M18_REAL_FINAL_MASTER_GATE.md).
 
 ## Production principle
 
