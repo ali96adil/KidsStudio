@@ -1,0 +1,236 @@
+"""Read-only, loopback-only KidsStudio production dashboard.
+
+Uses Studio Brain's existing database and SeriesManager. No second database,
+no actions to execute models, no publishing, no editing or provider secrets.
+The dashboard is an observer; status is always derived from durable records.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+from functools import partial
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import ipaddress
+import json
+from pathlib import Path
+import sys
+from urllib.parse import urlsplit
+
+from .series_manager import SeriesManager
+from .studio_queue import StudioQueue
+
+
+STATE_COPY = {
+    "PLANNED": ("بانتظار السيناريو", "planned"),
+    "DRAFT_QUEUED": ("السيناريو قيد التحضير", "working"),
+    "REVIEW_QUEUED": ("السيناريو قيد المراجعة", "working"),
+    "OWNER_SCRIPT_REVIEW": ("بانتظار اعتماد السيناريو", "review"),
+    "SCRIPT_APPROVED": ("السيناريو معتمد، ينتظر الإنتاج", "ready"),
+    "RENDER_QUEUED": ("مهمة الإنتاج في الطابور", "working"),
+    "RENDERED_QA_PENDING": ("الفيديو مُنتج، ينتظر فحص الجودة", "review"),
+    "EPISODE_APPROVED": ("الحلقة معتمدة داخلياً", "complete"),
+    "BLOCKED": ("متوقفة وتحتاج تدخلاً", "blocked"),
+}
+STAGES = [
+    ("curriculum", "المنهج"),
+    ("script", "السيناريو"),
+    ("editorial", "المراجعة التحريرية"),
+    ("voice", "الصوت"),
+    ("animation", "التحريك"),
+    ("face", "تحسين الوجه"),
+    ("assembly", "المونتاج"),
+    ("final_qa", "الفحص النهائي"),
+]
+
+
+def stage_timeline(state: str, *, render_kind: str | None = None) -> list[dict[str, str]]:
+    """Conservative timeline: do not invent separate voice/LTX completion.
+
+    The current versioned Studio Brain queue does not have distinct voice,
+    A2V or face worker receipts. Even a finished composite video cannot prove
+    a specific TTS, LTX, or face job actually ran.
+    """
+    if state not in STATE_COPY:
+        state = "BLOCKED"
+    script_started = state != "PLANNED"
+    script_ready = state in {"OWNER_SCRIPT_REVIEW", "SCRIPT_APPROVED",
+                             "RENDER_QUEUED", "RENDERED_QA_PENDING", "EPISODE_APPROVED"}
+    script_approved = state in {"SCRIPT_APPROVED", "RENDER_QUEUED",
+                                "RENDERED_QA_PENDING", "EPISODE_APPROVED"}
+    rendered = state in {"RENDERED_QA_PENDING", "EPISODE_APPROVED"}
+    owner_ok = state == "EPISODE_APPROVED"
+    # A result can confirm assembly as a single operation, NOT individual
+    # TTS/animation/face stages. Those are marked 'not_tracked' until M6.
+    return [
+        {"id":"curriculum","name":STAGES[0][1],"status":"complete"},
+        {"id":"script","name":STAGES[1][1],
+         "status":"complete" if script_approved else
+                  ("in_review" if script_ready else "working" if script_started else "pending")},
+        {"id":"editorial","name":STAGES[2][1],
+         "status":"complete" if script_approved else
+                  ("in_review" if script_ready else "pending")},
+        *[
+            {"id":ident,"name":title,"status":"not_tracked"}
+            for ident,title in STAGES[3:6]
+        ],
+        {"id":"assembly","name":STAGES[6][1],
+         "status":"complete" if rendered else
+                  ("working" if state=="RENDER_QUEUED" else "pending")},
+        {"id":"final_qa","name":STAGES[7][1],
+         "status":"complete" if owner_ok else
+                  ("in_review" if state=="RENDERED_QA_PENDING" else "pending")},
+    ]
+
+
+def build_snapshot(queue: StudioQueue) -> dict:
+    registry = SeriesManager(queue)
+    data = registry.snapshot()
+    status=queue.status()
+    # Explicitly do not return raw queue payloads, full job result records,
+    # source paths, API prompts, original scripts, or provider credentials.
+    ids={ep["render_job_id"] for ep in data["episodes"] if ep["render_job_id"]}
+    render_kinds={}
+    if ids:
+        with queue._connection() as db:
+            for identifier in ids:
+                row=db.execute("SELECT kind FROM jobs WHERE job_id=?",(identifier,)).fetchone()
+                if row:
+                    render_kinds[identifier]=row["kind"]
+    counts={"episodes_total":len(data["episodes"]),
+            "scripts_waiting_production":0,
+            "episodes_waiting_qa":0,"episodes_approved":0,
+            "episodes_blocked":0,"open_jobs":0}
+    counts["open_jobs"]=status["counts"]["QUEUED"] + status["counts"]["LEASED"]
+    episodes=[]
+    for ep in data["episodes"]:
+        state=ep["state"]
+        label,tone=STATE_COPY.get(state,("حالة غير معروفة","blocked"))
+        if state=="SCRIPT_APPROVED":
+            counts["scripts_waiting_production"]+=1
+        if state=="RENDERED_QA_PENDING":
+            counts["episodes_waiting_qa"]+=1
+        if state=="EPISODE_APPROVED":
+            counts["episodes_approved"]+=1
+        if state=="BLOCKED":
+            counts["episodes_blocked"]+=1
+        episodes.append({
+            "series_id":ep["series_id"], "ordinal":ep["ordinal"],
+            "title":ep["title"],"objective":ep["objective"],"state":state,
+            "status_label":label,"tone":tone,"revision":ep["revision"],
+            "stages":stage_timeline(state,render_kind=render_kinds.get(ep["render_job_id"])),
+        })
+    series=[{"id":s["series_id"],"title":s["title"],"language":s["language"],
+             "state":s["state"],"total":s["total"],
+             "approved":s["episodes_approved"]} for s in data["series"]]
+    notes=[{"series_id":n["series_id"],"episode":n["ordinal"],
+            "text":n["note"],"created_at":n["created_at"]} for n in data["notes"][:50]]
+    return {"version":1,"generated_at":datetime.now(timezone.utc).isoformat(),
+            "overview":counts,"series":series,"episodes":episodes,"notes":notes,
+            "queue":{"paused":status["paused"],"counts":status["counts"]},
+            "limits":{"media_execution":False,"publishing":False,
+                      "voice_and_ltx_tracking":"NOT_YET_CONNECTED",
+                      "data_source":"Studio Brain SQLite; read-only"},
+            }
+
+
+def make_handler(queue: StudioQueue):
+    class DashboardHandler(BaseHTTPRequestHandler):
+        server_version="KidsStudioDashboard/1.0"
+        def log_message(self, fmt, *args):
+            # Do not persist private query strings or access addresses.
+            pass
+
+        def _reply(self, code, payload, content_type):
+            self.send_response(code)
+            self.send_header("Content-Type",content_type)
+            self.send_header("Cache-Control","no-store")
+            self.send_header("X-Content-Type-Options","nosniff")
+            self.send_header("X-Frame-Options","DENY")
+            self.send_header("Referrer-Policy","no-referrer")
+            self.send_header("Content-Security-Policy",
+                             "default-src 'self'; script-src 'self'; "
+                             "style-src 'self'; img-src 'self' data:; "
+                             "object-src 'none'; base-uri 'none'; "
+                             "frame-ancestors 'none'; connect-src 'self'")
+            self.send_header("Content-Length",str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_GET(self):
+            # Reject DNS rebinding via malicious Host header, even though
+            # the listener itself is bound to the loopback interface.
+            host=(self.headers.get("Host") or "").split(":",1)[0].lower()
+            if host not in ("127.0.0.1","localhost","[::1]"):
+                self._reply(403,b"Forbidden","text/plain; charset=utf-8")
+                return
+            path=urlsplit(self.path)
+            if path.query or path.fragment:
+                self._reply(400,b"Query strings disabled","text/plain; charset=utf-8")
+                return
+            if path.path in ("/", "/index.html"):
+                resource="dashboard.html";mime="text/html; charset=utf-8"
+            elif path.path=="/dashboard.js":
+                resource="dashboard.js";mime="application/javascript; charset=utf-8"
+            elif path.path=="/dashboard.css":
+                resource="dashboard.css";mime="text/css; charset=utf-8"
+            elif path.path=="/api/overview":
+                try:
+                    body=json.dumps(build_snapshot(queue),ensure_ascii=False,
+                                    separators=(",",":")).encode("utf-8")
+                except (OSError,ValueError,RuntimeError):
+                    self._reply(503,b'{"error":"snapshot_unavailable"}',
+                                "application/json; charset=utf-8")
+                    return
+                self._reply(200,body,"application/json; charset=utf-8")
+                return
+            elif path.path=="/api/health":
+                self._reply(200,b'{"status":"ok","read_only":true}',
+                            "application/json; charset=utf-8")
+                return
+            else:
+                self._reply(404,b"Not Found","text/plain; charset=utf-8")
+                return
+            # No arbitrary paths; read three fixed packaged assets only.
+            file=Path(__file__).parent/"dashboard_assets"/resource
+            if not file.is_file():
+                self._reply(503,b"Dashboard assets missing","text/plain; charset=utf-8")
+                return
+            self._reply(200,file.read_bytes(),mime)
+
+        def do_POST(self):
+            self._reply(405,b"Read-only dashboard","text/plain; charset=utf-8")
+        do_PUT=do_DELETE=do_PATCH=do_POST
+
+    return DashboardHandler
+
+
+def serve(db: Path, port: int = 8793) -> None:
+    if type(port) is not int or not 1024 <= port <= 65535:
+        raise ValueError("Port must be 1024..65535.")
+    queue=StudioQueue(db)
+    # Fail closed on absent/uninitialized series schema: don't silently create DB.
+    SeriesManager(queue).snapshot()
+    httpd=ThreadingHTTPServer(("127.0.0.1",port),make_handler(queue))
+    print(f"KidsStudio read-only dashboard: http://127.0.0.1:{port}/",flush=True)
+    try:
+        httpd.serve_forever(poll_interval=0.5)
+    finally:
+        httpd.server_close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    p=argparse.ArgumentParser(prog="studio-dashboard",
+        description="Read-only local KidsStudio production board")
+    p.add_argument("--db",required=True,type=Path)
+    p.add_argument("--port",type=int,default=8793)
+    args=p.parse_args(argv)
+    try:
+        serve(args.db,args.port)
+        return 0
+    except (ValueError,OSError) as exc:
+        print("STUDIO_DASHBOARD_ERROR: "+str(exc),file=sys.stderr)
+        return 2
+
+
+if __name__=="__main__":
+    raise SystemExit(main())
