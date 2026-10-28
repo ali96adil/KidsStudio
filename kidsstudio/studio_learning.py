@@ -32,6 +32,8 @@ SHA=re.compile(r"^[a-f0-9]{64}$")
 FEATURES=("hook_style","story_style","pace_style","participation_style")
 MIN_VIDEOS_PER_SIDE=3
 MIN_VIEWS_PER_SIDE=300
+# Shorts feeds do not reliably produce thumbnail impressions; do not
+# suppress meaningful Shorts learning merely because reach/CTR is missing.
 MIN_IMPRESSIONS_PER_SIDE=2000
 WINDOW_DAYS=7
 MAX_EPISODES=500
@@ -288,7 +290,8 @@ class LearningLedger:
                                if x["ctr_percent"] is not None]
                     if (len(collection)<MIN_VIDEOS_PER_SIDE or
                         seen_views<MIN_VIEWS_PER_SIDE or
-                        seen_impressions<MIN_IMPRESSIONS_PER_SIDE or
+                        (segment[1]=="long" and
+                         seen_impressions<MIN_IMPRESSIONS_PER_SIDE) or
                         len(valid_ret)<MIN_VIDEOS_PER_SIDE):
                         continue
                     eligible[style]={
