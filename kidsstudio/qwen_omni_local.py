@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -24,7 +25,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 import wave
 from typing import Callable
 
@@ -39,7 +39,7 @@ VIDEO_ROLES=frozenset(ROLE_CHECKS["ltx_animate"])
 AUDIO_ROLES=frozenset(ROLE_CHECKS["voice_synthesize"])
 MIN_GIB={"3b":32,"7b":64}
 DISK_GIB={"3b":20,"7b":40}
-MPS_VIDE0_MAX_SECONDS=10.0
+MPS_VIDEO_MAX_SECONDS=10.0
 WAV_MAX_SECONDS=20.0
 MAX_OUTPUT_TOKENS=160
 
@@ -91,7 +91,7 @@ def inspect_local(*,model:str|Path,expected_model_sha:str,
     if type(memory) is not int or type(free) is not int:
         raise OmniAdapterError("Unsigned fake/invalid hardware figures.")
     available=packages if packages is not None else {
-        name:__import__("importlib.util",fromlist=["find_spec"]).find_spec(name)
+        name:importlib.util.find_spec(name)
         is not None for name in ("torch","transformers","torchvision")}
     if not isinstance(available,dict) or set(available)!={
             "torch","transformers","torchvision"} or any(
@@ -152,7 +152,7 @@ def _video(path:Path,ffprobe:str)->float:
         streams=[x["codec_type"] for x in info["streams"]]
         duration=float(info["format"]["duration"])
         if streams.count("audio")!=1 or streams.count("video")!=1 or not (
-                0.5<=duration<=MPS_VIDE0_MAX_SECONDS):
+                0.5<=duration<=MPS_VIDEO_MAX_SECONDS):
             raise OmniAdapterError("Require short video WITH an audio soundtrack.")
         return duration
     except (OSError,ValueError,KeyError,TypeError,
@@ -202,6 +202,9 @@ def infer_local_qwen(model_dir:Path,conversation:list, *,
     """
     if device!="mps":
         raise OmniAdapterError("M42 hardware pilot only supports explicit Apple MPS.")
+    os.environ["HF_HUB_OFFLINE"]="1"
+    os.environ["TRANSFORMERS_OFFLINE"]="1"
+    os.environ["HF_DATASETS_OFFLINE"]="1"
     try:
         import torch
         from transformers import (Qwen2_5OmniThinkerForConditionalGeneration,
@@ -210,9 +213,6 @@ def infer_local_qwen(model_dir:Path,conversation:list, *,
         raise OmniAdapterError("Offline Qwen2.5-Omni Transformers dependencies missing.") from exc
     if not torch.backends.mps.is_available():
         raise OmniAdapterError("Apple MPS unavailable, CPU fallback forbidden.")
-    os.environ["HF_HUB_OFFLINE"]="1"
-    os.environ["TRANSFORMERS_OFFLINE"]="1"
-    os.environ["HF_DATASETS_OFFLINE"]="1"
     try:
         processor=Qwen2_5OmniProcessor.from_pretrained(
             str(model_dir),local_files_only=True,trust_remote_code=False)
@@ -300,6 +300,13 @@ def review_unqualified(*,role:str,model:str|Path,wav:str|Path,
         raise OmniAdapterError("New private absolute output file required.")
     if device!="mps":
         raise OmniAdapterError("Explicit Apple MPS required.")
+    # Real invocation must pass a *current hardware* resource screen.
+    # A test-injected backend is intentionally synthetic and still receives
+    # only UNSURE verdicts; it can never grant production permission.
+    if run_inference is None:
+        screen=inspect_local(model=model_path,expected_model_sha=model_sha)
+        if screen["status"]!="M42_RESOURCE_SCREEN_PASSED_MODEL_NOT_RUN":
+            raise OmniAdapterError("Owner Mac resource preflight is blocked.")
     backend=run_inference if run_inference is not None else infer_local_qwen
     response=backend(model_path,plan,use_audio_in_video=movie is not None,
                      device=device)
@@ -330,8 +337,12 @@ def review_unqualified(*,role:str,model:str|Path,wav:str|Path,
         raise OmniAdapterError("Model package mutated during inference.")
     if (digest(source)!=result["script_sha256"] or
         digest(voice)!=result.get("audio_sha256",result.get("wav_sha256")) or
-        (movie is not None and digest(movie)!=result["mp4_sha256"])):
-        raise OmniAdapterError("Scene media mutated during model observation.")
+        (movie is not None and digest(movie)!=result["mp4_sha256"]) or
+        (role in AUDIO_ROLES and
+         digest(transcript_file)!=result["transcript_sha256"]) or
+        (role in VIDEO_ROLES and
+         digest(frames)!=result["frames_manifest_sha256"])):
+        raise OmniAdapterError("Scene media, transcript or frames mutated during observation.")
     raw=json.dumps(result,sort_keys=True,ensure_ascii=False,
                    indent=2,allow_nan=False).encode("utf-8")
     fd=os.open(str(output_path),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
