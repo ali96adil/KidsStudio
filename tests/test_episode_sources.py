@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 from kidsstudio.episode_sources import EpisodeSourcePreflight, SourceError
-from kidsstudio.episode_assembly import EpisodeAssembler
+from kidsstudio.episode_assembly import EpisodeAssembler, EpisodeAssemblyError
 
 
 def sha(path:Path)->str:
@@ -95,7 +95,7 @@ class SourceTests(unittest.TestCase):
     def test_changed_file_after_constructor_is_blocked(self):
         inspector=self.inspector()
         self.wav.write_bytes(b"altered voice!")
-        with self.assertRaises(SourceError):
+        with self.assertRaises(EpisodeAssemblyError):
             inspector.preflight()
 
     def test_missing_provenance_and_disallowed_cleanup_blocked(self):
