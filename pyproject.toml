@@ -52,6 +52,7 @@ studio-orchestrator = "kidsstudio.studio_orchestrator:main"
 studio-cycle = "kidsstudio.studio_cycle:main"
 studio-real-audio-review = "kidsstudio.local_audio_review:main"
 studio-import-audio-review = "kidsstudio.audio_review_import:main"
+studio-import-visual-review = "kidsstudio.visual_review_import:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
