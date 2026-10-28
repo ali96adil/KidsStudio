@@ -69,7 +69,7 @@ class YouTubeAnalyticsReadOnlyTests(unittest.TestCase):
         self.assertEqual(parsed.netloc,"youtubeanalytics.googleapis.com")
         self.assertEqual(parsed.path,"/v2/reports")
         q=parse_qs(parsed.query)
-        self.assertEqual(q["ids"],["channel==MINE"])
+        self.assertEqual(q["ids"],["channel=="+self.channel])
         self.assertEqual(q["metrics"],[",".join(METRICS)])
         self.assertEqual(q["startDate"],[self.plan["profiles"][0]["published_date"]])
         self.assertEqual(q["endDate"],[
