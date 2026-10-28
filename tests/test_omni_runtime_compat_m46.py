@@ -216,7 +216,7 @@ class RuntimeCompat46(unittest.TestCase):
             record["status"]="M42_RESOURCE_SCREEN_BLOCKED"
             return record
         with self.assertRaises(RuntimeCompatError):
-            probe_runtime(**self.kw,execute=True,resource_screen=weak)
+            probe_runtime(**{**self.kw,"resource_screen":weak},execute=True)
         with self.assertRaises(RuntimeCompatError):
             probe_runtime(**self.kw,timeout_seconds=0,execute=True)
         self.assertFalse(self.path.exists())
