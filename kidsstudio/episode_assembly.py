@@ -219,6 +219,11 @@ class EpisodeAssembler:
         }
 
     def execute(self, *, run_id: str) -> dict[str, Any]:
+        from .resource_gate import cooperative_compute_lock
+        with cooperative_compute_lock(self.root):
+            return self._execute_reserved(run_id=run_id)
+
+    def _execute_reserved(self, *, run_id: str) -> dict[str, Any]:
         if not isinstance(run_id,str) or not NAME.fullmatch(run_id):
             raise EpisodeAssemblyError("Run id must be stable and safe.")
         evidence = self.preflight()
