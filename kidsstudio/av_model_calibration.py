@@ -16,7 +16,7 @@ import re
 import sys
 
 from .episode_assembly import digest
-from .real_media_evidence import private_file, private_dir, capture_frames
+from .real_media_evidence import private_file, private_dir, capture_frames, EvidenceCaptureError
 from .synchronized_av_review import AVRunner, AVReviewError
 
 CASES=("clean","audio_offset","wrong_narration","unsafe_visual")
@@ -199,7 +199,7 @@ def main(argv:list[str]|None=None)->int:
             ffprobe=args.ffprobe,out_dir=args.out,execute=args.execute)
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0 if not args.execute or result["all_canaries_match"] else 1
-    except (CalibrationError,AVReviewError,OSError,ValueError,TypeError,
+    except (CalibrationError,AVReviewError,EvidenceCaptureError,OSError,ValueError,TypeError,
             KeyError) as exc:
         print("M39_AV_CALIBRATION_BLOCKED: "+type(exc).__name__,file=sys.stderr)
         return 2
