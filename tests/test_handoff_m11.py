@@ -423,6 +423,128 @@ class HandoffTests(unittest.TestCase):
             check()
         self.assertEqual(journal.read_bytes(), b"unexpected live database log")
 
+    def _start_m21_local_tls(self, queue):
+        from http.server import ThreadingHTTPServer
+        import ssl
+        import subprocess
+        import threading
+        from kidsstudio.coordinator_api import Coordinator, create_handler
+        from kidsstudio.remote_worker import RemoteClient
+
+        cert = self.root / "m21-local-test.crt"
+        key = self.root / "m21-local-test.key"
+        subprocess.run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048",
+            "-nodes", "-sha256", "-days", "1",
+            "-keyout", str(key), "-out", str(cert),
+            "-subj", "/CN=localhost",
+            "-addext", "subjectAltName=DNS:localhost",
+        ], check=True, capture_output=True, timeout=20)
+        token = "m21-test-secret-" + "v" * 40
+        service = Coordinator(queue, self.root / "m21_vault",
+            {"mac-voice-01": (token, {"voice_synthesize"}),
+             "mac-editorial-01": ("e" * 40, {"script_draft"})})
+        http = ThreadingHTTPServer(
+            ("127.0.0.1", 0), create_handler(service))
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(cert), str(key))
+        http.socket = ctx.wrap_socket(http.socket, server_side=True)
+        worker = threading.Thread(target=http.serve_forever, daemon=True)
+        worker.start()
+        self.addCleanup(http.server_close)
+        self.addCleanup(http.shutdown)
+        base = f"https://localhost:{http.server_port}"
+        return RemoteClient(base, worker_id="mac-voice-01",
+                            token=token, ca_file=str(cert)), base, cert
+
+    def _check_m21(self, client, plan, scripts, recipes, snapshot):
+        from kidsstudio.live_m13_preflight import verify_live_two_scene_pilot
+        return verify_live_two_scene_pilot(
+            client, self.contract_file, plan,
+            expected_plan_sha256=sha(plan),
+            scene_scripts=tuple(scripts),
+            voice_recipes=tuple(recipes),
+            pi_snapshot=snapshot, pi_snapshot_sha256=sha(snapshot),
+            system="Darwin", arch="arm64",
+            memory_bytes=48*1024**3, free_bytes=110*1024**3,
+        )
+
+    @unittest.skipUnless(__import__("shutil").which("openssl"),
+                         "ephemeral loopback TLS test needs openssl")
+    def test_m21_real_tls_current_pi_matches_offline_snapshot_no_job_claimed(self):
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        client, base, cert = self._start_m21_local_tls(queue)
+        self.assertEqual(check()["scene_count"], 2)
+        original_db_sha = sha(queue.path)
+        response = self._check_m21(client, plan, scripts, recipes, backup)
+        self.assertEqual(response["status"],
+            "OFFLINE_AND_LIVE_M13_AGREE_OWNER_EXECUTION_NOT_AUTHORIZED")
+        self.assertTrue(response["live_pi_observed_over_authenticated_tls"])
+        self.assertTrue(response["target_episode_matches_offline_at_observation"])
+        self.assertFalse(response["whole_snapshot_freshness_proven"])
+        self.assertFalse(response["worker_job_claimed"])
+        self.assertFalse(response["model_execution_performed"])
+        self.assertFalse(response["public_release_authorized"])
+        self.assertEqual(sha(queue.path), original_db_sha)
+        with queue._connection() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0], 0)
+        self.assertNotIn(str(self.base), json.dumps(response))
+
+    @unittest.skipUnless(__import__("shutil").which("openssl"),
+                         "ephemeral loopback TLS test needs openssl")
+    def test_m21_stale_live_pi_rejected_after_pause_or_stage_queue(self):
+        from kidsstudio.remote_worker import RemoteWorkerError
+        from kidsstudio.series_manager import SeriesManager
+        from kidsstudio.studio_scenes import SceneLedger
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        client, base, cert = self._start_m21_local_tls(queue)
+        self._check_m21(client, plan, scripts, recipes, backup)
+        SeriesManager(queue).pause("colors-ar", "Owner temporarily paused scene pilot")
+        with self.assertRaises(RemoteWorkerError):
+            self._check_m21(client, plan, scripts, recipes, backup)
+        SeriesManager(queue).activate("colors-ar")
+        SceneLedger(queue).queue_stage(
+            "colors-ar", 1, 1, "voice_synthesize", "test_scene_01_voice")
+        with self.assertRaises(RemoteWorkerError):
+            self._check_m21(client, plan, scripts, recipes, backup)
+
+    @unittest.skipUnless(__import__("shutil").which("openssl"),
+                         "ephemeral loopback TLS test needs openssl")
+    def test_m21_unauthorized_tls_and_wrong_capability_rejected(self):
+        from kidsstudio.remote_worker import RemoteClient, RemoteWorkerError
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        client, base, cert = self._start_m21_local_tls(queue)
+        bad = RemoteClient(base, worker_id="mac-voice-01",
+                           token="wrong-" + "x" * 40, ca_file=str(cert))
+        with self.assertRaises(RemoteWorkerError):
+            self._check_m21(bad, plan, scripts, recipes, backup)
+        editorial = RemoteClient(base, worker_id="mac-editorial-01",
+                                 token="e"*40, ca_file=str(cert))
+        with self.assertRaises(RemoteWorkerError):
+            self._check_m21(editorial, plan, scripts, recipes, backup)
+        untrusted = RemoteClient(base, worker_id="mac-voice-01",
+                                 token=client.token)
+        with self.assertRaises(RemoteWorkerError):
+            self._check_m21(untrusted, plan, scripts, recipes, backup)
+
+    @unittest.skipUnless(__import__("shutil").which("openssl"),
+                         "ephemeral loopback TLS test needs openssl")
+    def test_m21_nonce_mismatch_rejected_even_after_valid_tls(self):
+        from kidsstudio.remote_worker import RemoteClient
+        from kidsstudio.live_m13_preflight import LivePreflightError
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        client, base, cert = self._start_m21_local_tls(queue)
+        class MutatingClient(RemoteClient):
+            def call(self, operation, body):
+                r = super().call(operation, body)
+                if operation == "pilot-readiness":
+                    r["nonce"] = "0"*32 if body["nonce"] != "0"*32 else "1"*32
+                return r
+        fake = MutatingClient(base, worker_id=client.worker_id,
+                              token=client.token, ca_file=str(cert))
+        with self.assertRaises(LivePreflightError):
+            self._check_m21(fake, plan, scripts, recipes, backup)
+
     def test_m19_wrong_stage_wrapper_is_blocked_even_if_script_matches(self):
         from kidsstudio.handoff_review import HandoffError
         check, plan, scripts, recipes = self.build_two_scene_pilot()
