@@ -217,7 +217,7 @@ class LearningLedger:
                             raise LearningError("Video profile changed; immutable identity required.")
                 else:
                     db.execute("""INSERT INTO studio_video_profiles
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",(
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",(
                         key[0],key[1],item["video_id"],item["language"],
                         item["format_type"],item["duration_seconds"],
                         item["published_date"],*(item[k] for k in FEATURES),
@@ -234,7 +234,7 @@ class LearningLedger:
                         raise LearningError("Analytics snapshot exists; no silent replacement.")
                     continue
                 db.execute("""INSERT INTO studio_video_metrics
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",(
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",(
                     key[0],key[1],key[2],WINDOW_DAYS,
                     item["views"],item["impressions"],item["ctr_percent"],
                     item["average_view_percentage"],
