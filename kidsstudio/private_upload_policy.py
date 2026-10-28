@@ -130,7 +130,7 @@ class PrivateUploadPolicy:
                         old["master_sha256"]==master_sha):
                 raise PrivatePolicyError("Already uploaded or same master was rejected.")
 
-    def queue(self,series_id:str,ordinal:int,*,render_job_id:str,
+    def enqueue_private(self,series_id:str,ordinal:int,*,render_job_id:str,
               master_sha256:str,plan_sha256:str,readiness_sha256:str,
               channel_id:str,made_for_kids:bool,
               contains_synthetic_media:bool)->dict:
