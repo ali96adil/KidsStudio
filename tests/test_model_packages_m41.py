@@ -124,7 +124,7 @@ class ShardedCheckpoint41(unittest.TestCase):
         self.assertEqual(digest(self.package),original_sha)
         with self.assertRaises(ModelPackageError):
             verify_checkpoint(self.dir,original_sha)
-        with self.assertRaises(ModelPackageError):
+        with self.assertRaises(ModelBundleError):
             self.enabled_bundle()
 
     def test_symlink_escape_and_unlisted_symlink_are_blocked(self):
@@ -164,7 +164,7 @@ class ShardedCheckpoint41(unittest.TestCase):
         cfg["reviewers"]["asr_whispercpp"]["model"]=str(self.dir)
         cfg["reviewers"]["asr_whispercpp"]["model_sha256"]=digest(self.package)
         self.h.file.write_text(json.dumps(cfg))
-        with self.assertRaises(ModelPackageError):
+        with self.assertRaises(ModelBundleError):
             LocalModelBundle(self.h.file,digest(self.h.file))
 
     def test_package_adapter_accepts_model_directory_with_real_mp4_and_mock_av(self):
