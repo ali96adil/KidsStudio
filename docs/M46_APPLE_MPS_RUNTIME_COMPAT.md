@@ -32,8 +32,9 @@ local dependency probe:
   rather than a CPU fallback.
 * A worker error or timeout produces no successful compatibility
   receipt; the new process group is terminated, including non-detached
-  children. A successful observation creates only one private
-  `mps_runtime.json` in a new output directory, with short, validated
+  children. A successful observation creates two private, immutable and SHA-linked reports —
+  `mps_runtime.json` (worker) and `runtime_receipt.json` (parent,
+  pinned to the M41 checkpoint and Python executable) — in a new output directory, with short, validated
   version strings and **all model-competence/publication flags false**.
 * The parent re-hashes the entire original M41 model directory and the
   Python interpreter executable after the check and refuses any
