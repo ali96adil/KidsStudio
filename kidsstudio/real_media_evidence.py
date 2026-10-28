@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import wave
 
 SHA=re.compile(r"^[a-f0-9]{64}$")
 SAFE_NAME=re.compile(r"^[a-z][a-z0-9_-]{2,47}$")
@@ -102,7 +103,8 @@ def capture_asr(*,wav:str|Path,script:str|Path,
                 expected_wav_sha:str,expected_script_sha:str,
                 whisper_binary:str,model:str|Path,
                 expected_model_sha:str,
-                out_dir:str|Path,language:str="ar")->dict:
+                out_dir:str|Path,language:str="ar",
+                ffmpeg_binary:str|None=None)->dict:
     if language not in ("ar","en"):
         raise EvidenceCaptureError("Only explicit Arabic or English transcription.")
     if any(not isinstance(x,str) or not SHA.fullmatch(x) for x in (
@@ -116,11 +118,32 @@ def capture_asr(*,wav:str|Path,script:str|Path,
         raise EvidenceCaptureError("WAV/source script/Whisper model differs from pinned bytes.")
     cmd=_binary(whisper_binary)
     out=private_dir(out_dir)
+    # whisper.cpp reference CLI expects 16-kHz mono signed 16-bit WAV.
+    # Preserve the originally SHA-pinned narration while converting the
+    # private inference copy only when an explicit local FFmpeg is supplied.
+    with wave.open(str(wav),"rb") as src:
+        compatible=(src.getnchannels()==1 and src.getsampwidth()==2
+                    and src.getframerate()==16000 and src.getcomptype()=="NONE")
+    input_wav=wav
+    if not compatible:
+        if ffmpeg_binary is None:
+            raise EvidenceCaptureError("whisper-cli needs 16-kHz mono PCM16 WAV; explicit FFmpeg conversion required.")
+        convert=_binary(ffmpeg_binary)
+        input_wav=out/"whisper_input_pcm16.wav"
+        _exec([convert,"-hide_banner","-loglevel","error",
+               "-nostdin","-n","-i",str(wav),
+               "-vn","-ar","16000","-ac","1",
+               "-c:a","pcm_s16le",str(input_wav)],timeout=120)
+        with wave.open(str(input_wav),"rb") as fp:
+            if not (fp.getnchannels()==1 and fp.getsampwidth()==2
+                    and fp.getframerate()==16000 and fp.getcomptype()=="NONE"
+                    and fp.getnframes()>=1600):
+                raise EvidenceCaptureError("Converted Whisper audio is not valid PCM16 16k.")
     prefix=out/"transcription"
     # whisper.cpp CLI creates transcription.txt, from the actual WAV.
     # A different/invalid executable will fail unless it produces genuine
     # expected output; model provenance still needs runtime qualification.
-    _exec([cmd,"-m",str(model_file),"-f",str(wav),"-l",language,
+    _exec([cmd,"-m",str(model_file),"-f",str(input_wav),"-l",language,
            "-otxt","-of",str(prefix),"-nt","-np"],timeout=900)
     transcription=out/"transcription.txt"
     if transcription.is_symlink() or not transcription.is_file():
@@ -139,6 +162,8 @@ def capture_asr(*,wav:str|Path,script:str|Path,
         "schema_version":1,"status":"REAL_LOCAL_ASR_EXECUTED_NOT_QA_APPROVED",
         "language":language,
         "wav_sha256":expected_wav_sha,
+        "whisper_input_sha256":digest(input_wav),
+        "whisper_input_converted":input_wav!=wav,
         "script_sha256":expected_script_sha,
         "model_sha256":expected_model_sha,
         "transcript_sha256":hashlib.sha256(raw).hexdigest(),
@@ -241,6 +266,7 @@ def main(argv:list[str]|None=None)->int:
     a.add_argument("--model",type=Path,required=True)
     a.add_argument("--model-sha256",required=True)
     a.add_argument("--language",choices=["ar","en"],required=True)
+    a.add_argument("--ffmpeg",help="Explicit local FFmpeg for WAV-to-16k PCM conversion")
     b=subs.add_parser("frames")
     b.add_argument("--mp4",type=Path,required=True)
     b.add_argument("--mp4-sha256",required=True)
@@ -256,7 +282,8 @@ def main(argv:list[str]|None=None)->int:
                 expected_script_sha=args.script_sha256,
                 whisper_binary=args.whisper,model=args.model,
                 expected_model_sha=args.model_sha256,
-                out_dir=args.out,language=args.language)
+                out_dir=args.out,language=args.language,
+                ffmpeg_binary=args.ffmpeg)
         else:
             result=capture_frames(mp4=args.mp4,
                 expected_mp4_sha=args.mp4_sha256,
