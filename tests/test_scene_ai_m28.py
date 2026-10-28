@@ -7,6 +7,7 @@ Pi SQLite state are exercised. A separate Google/Mac qualification remains.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 from pathlib import Path
@@ -64,7 +65,8 @@ class SceneAIQA28(unittest.TestCase):
                  "objective":"Recognize blue"}]
         }))
         self.scenes.register_plan(plan)
-        self.ai=SceneAIGate(self.queue)
+        self.key=b"ONLY_FOR_CI_SYNTHETIC_RUNNER_NOT_A_REAL_MODEL_TOKEN"
+        self.ai=SceneAIGate(self.queue,attestation_key=self.key)
         self.ai.initialize()
         self.wav=self.root/"narration.wav"
         with wave.open(str(self.wav),"wb") as w:
@@ -117,7 +119,7 @@ class SceneAIQA28(unittest.TestCase):
         observations={"schema_version":1,"stage":stage,
             "artifact_sha256":self.artifact_sha,
             "script_sha256":self.script_sha,
-            "model_execution_verified":False,"publishing_approved":False}
+            "model_execution_verified":True,"publishing_approved":False}
         if stage=="voice_synthesize":
             observations.update({
                 "script_file":str(self.script),"asr_file":str(self.asr),
@@ -156,6 +158,13 @@ class SceneAIQA28(unittest.TestCase):
             "technical_sha256":self.technical_sha,"reviewers":reviews,
             "publication_approved":False}
         if broken=="digest":result["artifact_sha256"]="0"*64
+        raw=json.dumps(result,sort_keys=True,ensure_ascii=False,
+                       separators=(",",":"),allow_nan=False).encode("utf-8")
+        result["runner_attestation"]={
+            "runner_id":"trusted_ci_simulated_runner",
+            "runtime_status":"REVIEW_MODELS_EXECUTED",
+            "hmac_sha256":hmac.new(self.key,raw,hashlib.sha256).hexdigest()
+        }
         self.review.write_text(json.dumps(result))
         return dict(report_file=self.review,observation_file=self.obs,rights_file=self.rights)
 
@@ -190,6 +199,22 @@ class SceneAIQA28(unittest.TestCase):
             self.ai.auto_approve("colors-ar",1,1,"voice_synthesize")
         with self.assertRaises(SceneError):
             self.scenes.queue_stage("colors-ar",1,1,"ltx_animate","ltx_test")
+
+    def test_untrusted_or_tampered_runner_cannot_approve(self):
+        self.make_evidence()
+        changed=json.loads(self.review.read_text())
+        changed["reviewers"][0]["checks"]["clarity"]["decision"]="NEEDS_FIX"
+        self.review.write_text(json.dumps(changed))
+        with self.assertRaises(SceneError):
+            self.ai.register("colors-ar",1,1,"voice_synthesize",
+                report_file=self.review,observation_file=self.obs,
+                rights_file=self.rights)
+        untrusted=SceneAIGate(self.queue)
+        self.make_evidence()
+        with self.assertRaises(SceneError):
+            untrusted.register("colors-ar",1,1,"voice_synthesize",
+                report_file=self.review,observation_file=self.obs,
+                rights_file=self.rights)
 
     def test_independent_provider_required(self):
         with self.assertRaises(SceneError):
