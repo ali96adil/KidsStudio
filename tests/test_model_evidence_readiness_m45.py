@@ -141,6 +141,13 @@ class OfflineEvidence45(unittest.TestCase):
             self.assess(av_canary_report=score_file,
                 av_canary_sha256=digest(score_file),
                 av_canary_manifest=c.manifest)
+        score["model_quality_qualified"]=False
+        score["findings"][0]["mp4_sha256"]="0"*64
+        score_file.write_text(json.dumps(score))
+        with self.assertRaises(EvidenceReadinessError):
+            self.assess(av_canary_report=score_file,
+                av_canary_sha256=digest(score_file),
+                av_canary_manifest=c.manifest)
 
     def test_explicit_write_creates_private_not_ready_snapshot_once(self):
         target=self.root/"readiness_m45.json"
