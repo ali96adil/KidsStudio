@@ -106,10 +106,10 @@ def _validate_profile(db,profile:dict)->None:
         raise AnalyticsCollectionError("Only produced/approved Studio Brain videos may be measured.")
 
 
-def _build_url(video_id:str,start:date,end:date)->str:
+def _build_url(channel_id:str,video_id:str,start:date,end:date)->str:
     # EXACTLY one video, one 7-day interval, only non-monetary read metrics.
     args={
-        "ids":"channel==MINE",
+        "ids":"channel=="+channel_id,
         "startDate":start.isoformat(),
         "endDate":end.isoformat(),
         "metrics":",".join(METRICS),
@@ -184,7 +184,7 @@ def build_collection(queue:StudioQueue,profiles_file:str|Path, *,
             seen_vid.add(video);seen_episodes.add(ep)
             start=date.fromisoformat(profile["published_date"])
             end=start+timedelta(days=6)
-            queries.append((profile,_build_url(video,start,end),start+timedelta(days=7)))
+            queries.append((profile,_build_url(channel_id,video,start,end),start+timedelta(days=7)))
     if not execute:
         return {},{
             "schema_version":1,
