@@ -163,9 +163,17 @@ class AudioWorker34(unittest.TestCase):
                 "publication_approved":False})
         h.scenes.reconcile()
         local_script=h.scripts[0]
+        # The fake ASR must return the EXACT scene's words to exercise
+        # deterministic WER, without pretending to understand test tone.
+        local_whisper=executable(self.root/"fake-voice-scene-asr",
+            "import sys\nfrom pathlib import Path\n"
+            "a=sys.argv\n"
+            "Path(a[a.index('-of')+1]+'.txt').write_text("+
+            repr(local_script.read_text(encoding="utf-8"))+")\n")
         output=self.run_review(
             job_id=voice["job_id"],script=local_script,
-            script_sha=digest(local_script))
+            script_sha=digest(local_script),
+            whisper_binary=str(local_whisper))
         # Exact SHA of this independently run FFmpeg M23 report must be
         # registered in the Pi before the signed M28 model report.
         tech=h.scenes.register_voice_technical(
