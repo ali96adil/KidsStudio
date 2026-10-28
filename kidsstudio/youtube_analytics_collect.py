@@ -241,14 +241,19 @@ def build_collection(queue:StudioQueue,profiles_file:str|Path, *,
     }
 
 
-def _write_new_json(file:str|Path,packet:dict)->None:
+def _validate_destination(file:str|Path)->Path:
     destination=Path(file).expanduser()
     if (not destination.is_absolute() or destination.is_symlink() or
         destination.suffix.lower()!=".json" or destination.exists() or
-        not destination.parent.is_dir() or
+        not destination.parent.is_dir() or destination.parent.is_symlink() or
         (destination.parent.stat().st_mode & 0o022)):
         raise AnalyticsCollectionError("Use a NEW JSON path under a non-writable-by-others private directory.")
     _ensure_private(destination.parent)
+    return destination
+
+
+def _write_new_json(file:str|Path,packet:dict)->None:
+    destination=_validate_destination(file)
     encoded=(json.dumps(packet,ensure_ascii=False,indent=2,allow_nan=False)+"\n").encode("utf-8")
     if len(encoded)>200_000:
         raise AnalyticsCollectionError("Refusing oversized private captured report.")
@@ -268,6 +273,8 @@ def main(argv=None)->int:
     try:
         if args.execute and args.out is None:
             raise AnalyticsCollectionError("--execute requires a new private output file.")
+        if args.execute:
+            _validate_destination(args.out) # Fail before any OAuth GET.
         packet,report=build_collection(
             StudioQueue(args.db),args.profiles,
             channel_id=args.channel_id,
