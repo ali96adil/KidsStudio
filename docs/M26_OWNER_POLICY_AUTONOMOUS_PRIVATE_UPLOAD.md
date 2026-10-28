@@ -77,13 +77,17 @@ studio-private-policy --db /PRIVATE/studio.sqlite init
 ```
 
 Grant one series, channel and bounded daily budget, using the actual
-owner-selected children's/synthetic-media classification:
+owner-selected children's audience and YouTube altered/synthetic-media
+disclosure classification (yes/no are mandatory, not inferred by AI).
+The following `yes` values are only an EXAMPLE; animated content is
+not necessarily subject to YouTube's altered/synthetic-content disclosure,
+so the actual correct value must be selected under current YouTube rules:
 
 ```sh
 studio-private-policy --db /PRIVATE/studio.sqlite grant colors-ar \
   --channel-id EXACT_UC_CHANNEL_ID \
   --max-uploads-24h 1 \
-  --made-for-kids --contains-synthetic-media \
+  --made-for-kids yes --contains-synthetic-media yes \
   --owner-note "Allow one AI-produced private preview daily; never auto-publish"
 ```
 
