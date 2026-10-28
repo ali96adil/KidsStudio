@@ -32,7 +32,9 @@ class LocalOmni42(unittest.TestCase):
         self.root=fixture.h.root
         self.model=fixture.dir
         config={"model_type":"qwen2_5_omni","architectures":
-                ["Qwen2_5OmniThinkerForConditionalGeneration"]}
+                ["Qwen2_5OmniThinkerForConditionalGeneration"],
+                "thinker_config":{"text_config":{
+                    "hidden_size":3584,"num_hidden_layers":28}}}
         fixture.settings.write_text(json.dumps(config))
         for row in fixture.items:
             if row["path"]=="config.json":
@@ -72,9 +74,9 @@ class LocalOmni42(unittest.TestCase):
 
     def test_mac_resource_presolve_does_not_claim_execution(self):
         ready=inspect_local(model=self.model,
-            expected_model_sha=self.sha,
-            system="Darwin",arch="arm64",ram_bytes=40*1024**3,
-            free_bytes=30*1024**3,
+            expected_model_sha=self.sha,variant="7b",
+            system="Darwin",arch="arm64",ram_bytes=80*1024**3,
+            free_bytes=60*1024**3,
             packages={"torch":True,"transformers":True,"torchvision":True})
         self.assertEqual(ready["status"],
                          "M42_RESOURCE_SCREEN_PASSED_MODEL_NOT_RUN")
@@ -84,6 +86,33 @@ class LocalOmni42(unittest.TestCase):
         self.assertFalse(ready["public_release_authorized"])
         self.assertEqual(ready["model_package_sha256"],self.sha)
         self.assertFalse((self.root/"unqualified_pronunciation.json").exists())
+
+    def test_commercial_pilot_blocks_research_only_3b_and_variant_laundering(self):
+        self.fixture.settings.write_text(json.dumps({
+            "model_type":"qwen2_5_omni",
+            "thinker_config":{"text_config":{
+                "hidden_size":2048,"num_hidden_layers":36}}
+        }))
+        for entry in self.fixture.items:
+            if entry["path"]=="config.json":
+                entry["sha256"]=digest(self.fixture.settings)
+                entry["bytes"]=self.fixture.settings.stat().st_size
+        self.fixture.save()
+        pin=digest(self.fixture.package)
+        for variant in ("3b","7b"):
+            screen=inspect_local(model=self.model,expected_model_sha=pin,
+                variant=variant,system="Darwin",arch="arm64",
+                ram_bytes=128*1024**3,free_bytes=100*1024**3,
+                packages={"torch":True,"transformers":True,
+                          "torchvision":True})
+            self.assertEqual(screen["status"],"M42_RESOURCE_SCREEN_BLOCKED")
+            self.assertEqual(screen["architecture_identified_from_config"],"3b")
+            self.assertEqual(screen["commercial_license_status"],
+                             "RESEARCH_LICENSE_BLOCKED")
+            self.assertIn("QWEN_OMNI_3B_RESEARCH_LICENSE_BLOCKS_COMMERCIAL_PILOT",
+                          screen["blockers"])
+            self.assertFalse(screen["model_quality_qualified"])
+            self.assertFalse(screen["public_release_authorized"])
 
     def test_small_mac_or_missing_dependency_stays_blocked(self):
         for kw in (
