@@ -32,6 +32,7 @@ studio-import-bunny = "kidsstudio.private_asset_intake:main"
 studio-handoff-review = "kidsstudio.handoff_review:main"
 studio-assembly-lineage = "kidsstudio.assembly_lineage:main"
 studio-scene-assembly = "kidsstudio.scene_assembly:main"
+studio-scene-catalogue = "kidsstudio.scene_catalogue:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
