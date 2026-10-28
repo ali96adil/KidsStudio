@@ -125,6 +125,36 @@ class RealEvidence29(unittest.TestCase):
                          digest(Path(result["transcript_file"])))
         self.assertFalse(result["publication_authorized"])
 
+    def test_48k_narration_is_resampled_to_whisper_pcm16(self):
+        source=self.base/"highrate.wav"
+        with wave.open(str(source),"wb") as w:
+            w.setnchannels(1);w.setsampwidth(2);w.setframerate(48000)
+            w.writeframes(b"".join(struct.pack("<h",
+                round(9000*math.sin(2*math.pi*440*i/48000)))
+                for i in range(48000)))
+        original_sha=digest(source)
+        with self.assertRaises(EvidenceCaptureError):
+            capture_asr(wav=source,script=self.script,
+                expected_wav_sha=original_sha,
+                expected_script_sha=digest(self.script),
+                whisper_binary=str(self.fake_whisper),
+                model=self.fake_model,expected_model_sha=digest(self.fake_model),
+                out_dir=self.base/"requires_conversion",language="ar")
+        result=capture_asr(wav=source,script=self.script,
+            expected_wav_sha=original_sha,
+            expected_script_sha=digest(self.script),
+            whisper_binary=str(self.fake_whisper),
+            model=self.fake_model,expected_model_sha=digest(self.fake_model),
+            ffmpeg_binary=self.ffmpeg,
+            out_dir=self.base/"converted",language="ar")
+        self.assertEqual(digest(source),original_sha)
+        self.assertTrue(result["whisper_input_converted"])
+        converted=self.base/"converted"/"whisper_input_pcm16.wav"
+        with wave.open(str(converted),"rb") as w:
+            self.assertEqual((w.getframerate(),w.getnchannels(),w.getsampwidth()),
+                             (16000,1,2))
+        self.assertEqual(result["whisper_input_sha256"],digest(converted))
+
     def test_model_pin_is_mandatory(self):
         with self.assertRaises(EvidenceCaptureError):
             capture_asr(wav=self.wav,script=self.script,
