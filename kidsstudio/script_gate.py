@@ -30,18 +30,21 @@ def current_script_mode(db, sid: str, ordinal: int) -> str | None:
         has=db.execute("""SELECT 1 FROM sqlite_master WHERE
             type='table' AND name='studio_script_ai_reviews'""").fetchone()
         if not has:return None
-        proof=db.execute("""SELECT 1 FROM studio_script_ai_reviews
+        proof=db.execute("""SELECT first_provider,second_provider,
+                first_report_sha256,second_report_sha256,
+                report_bundle_sha256
+            FROM studio_script_ai_reviews
             WHERE series_id=? AND ordinal=? AND revision=?
               AND original_sha256=? AND draft_job_id=?
               AND verdict='AI_SCRIPT_PRIVATE_READY'
-              AND first_provider!=second_provider
-              AND first_report_sha256 GLOB '[0-9a-f]*'
-              AND length(first_report_sha256)=64
-              AND second_report_sha256 GLOB '[0-9a-f]*'
-              AND length(second_report_sha256)=64
-              AND length(report_bundle_sha256)=64""",
+              AND first_provider!=second_provider""",
             (sid,ordinal,ep["revision"],ep["source_sha256"],
              ep["draft_job_id"])).fetchone()
+        if proof and not all(
+                isinstance(proof[key],str) and SHA.fullmatch(proof[key])
+                for key in ("first_report_sha256","second_report_sha256",
+                            "report_bundle_sha256")):
+            return None
         audit=db.execute("""SELECT 1 FROM studio_series_audit
             WHERE series_id=? AND ordinal=? AND action=?""",
             (sid,ordinal,AI_ACTION)).fetchone()
