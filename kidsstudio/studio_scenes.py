@@ -321,3 +321,66 @@ class SceneLedger:
                 "scene_count":len(scenes),
                 "scenes":list(scenes.values()),
                 "publication_approved":False}
+
+
+def assert_scenes_ready(db, sid: str, ordinal: int,
+                        episode_script_sha: str) -> list[dict]:
+    """Return exact ordered approved scene receipts or fail closed.
+
+    Caller owns an existing Studio Brain transaction; no writes performed.
+    """
+    plan=db.execute("""SELECT episode_script_sha256 FROM studio_scene_plans
+        WHERE series_id=? AND ordinal=?""",(sid,ordinal)).fetchone()
+    if not plan or plan["episode_script_sha256"]!=episode_script_sha:
+        raise SceneError("Owner-approved scene plan differs from parent script.")
+    scenes=db.execute("""SELECT scene,script_sha256 FROM studio_scenes
+        WHERE series_id=? AND ordinal=? ORDER BY scene""",
+        (sid,ordinal)).fetchall()
+    if not 2<=len(scenes)<=40 or [x["scene"] for x in scenes]!=list(range(1,len(scenes)+1)):
+        raise SceneError("Contiguous 2–40 scene plan required.")
+    ready=[]
+    for scene in scenes:
+        index=scene["scene"]
+        parts=db.execute("""SELECT * FROM studio_scene_stages WHERE
+            series_id=? AND ordinal=? AND scene=?""",
+            (sid,ordinal,index)).fetchall()
+        by_kind={row["stage"]:row for row in parts}
+        if len(parts)!=2 or set(by_kind)!=set(STAGES):
+            raise SceneError("Every scene requires voice and LTX stages.")
+        voice=by_kind["voice_synthesize"]
+        ltx=by_kind["ltx_animate"]
+        if (voice["state"]!="QA_APPROVED" or ltx["state"]!="QA_APPROVED" or
+            voice["scene_script_sha256"]!=scene["script_sha256"] or
+            ltx["scene_script_sha256"]!=scene["script_sha256"] or
+            ltx["source_voice_sha256"]!=voice["artifact_sha256"]):
+            raise SceneError("Scene lacks approved WAV or matched LTX.")
+        evidence=db.execute("""SELECT 1 FROM studio_scene_audio_checks
+            WHERE series_id=? AND ordinal=? AND scene=?
+            AND ltx_job_id=? AND voice_sha256=? AND a2v_sha256=?
+            AND status='TECH_COMPATIBLE_HUMAN_QA_REQUIRED'""",
+            (sid,ordinal,index,ltx["job_id"],
+             voice["artifact_sha256"],ltx["artifact_sha256"])).fetchone()
+        if not evidence:
+            raise SceneError("Current scene audio technical evidence missing.")
+        for kind,row,status,typ in (
+            ("voice_synthesize",voice,"VOICE_RENDERED_PENDING_QA","wav"),
+            ("ltx_animate",ltx,"A2V_RENDERED_PENDING_QA","mp4")
+        ):
+            job=db.execute("""SELECT kind,state,result_json FROM jobs
+                WHERE job_id=?""",(row["job_id"],)).fetchone()
+            try: result=json.loads(job["result_json"] or "{}") if job else {}
+            except (TypeError,ValueError):result={}
+            if (not job or job["kind"]!=kind or job["state"]!="COMPLETED"
+                or result.get("status")!=status or result.get("artifact_type")!=typ
+                or result.get("artifact_sha256")!=row["artifact_sha256"]
+                or result.get("publication_approved") is not False):
+                raise SceneError("Scene owner QA not backed by completed Pi receipt.")
+        ready.append({
+            "scene":index,
+            "script_sha256":scene["script_sha256"],
+            "voice_job_id":voice["job_id"],
+            "voice_sha256":voice["artifact_sha256"],
+            "ltx_job_id":ltx["job_id"],
+            "ltx_sha256":ltx["artifact_sha256"],
+        })
+    return ready
