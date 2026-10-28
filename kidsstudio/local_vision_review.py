@@ -370,5 +370,35 @@ def main(argv:list[str]|None=None)->int:
         print("VISION_REVIEW_BLOCKED: "+type(exc).__name__,file=sys.stderr)
         return 2
 
+def main_sign(argv:list[str]|None=None)->int:
+    p=argparse.ArgumentParser(prog="studio-bind-vision-m10")
+    p.add_argument("--pending-report",type=Path,required=True)
+    p.add_argument("--m10-report",type=Path,required=True)
+    p.add_argument("--m10-sha256",required=True)
+    p.add_argument("--rights",type=Path,required=True)
+    p.add_argument("--observations",type=Path,required=True)
+    p.add_argument("--out",type=Path,required=True)
+    p.add_argument("--execute",action="store_true")
+    args=p.parse_args(argv)
+    if not args.execute:
+        print(json.dumps({"status":"NO_SIGNING_OR_QA_WITHOUT_EXECUTE",
+                          "m28_stage_approved":False,
+                          "public_release_authorized":False}))
+        return 0
+    try:
+        key=os.environ.get("KIDS_STUDIO_SCENE_QA_RUNNER_KEY","").encode("utf-8")
+        result=sign_after_m10(pending_report=args.pending_report,
+            m10_report=args.m10_report,
+            expected_m10_sha=args.m10_sha256,
+            rights_file=args.rights,observation_file=args.observations,
+            attestation_key=key,out_file=args.out)
+        print(json.dumps(result,ensure_ascii=False,indent=2))
+        return 0
+    except (LocalVisionError,EvidenceCaptureError,SceneError,OSError,
+            ValueError,TypeError) as exc:
+        print("VISION_M10_BIND_BLOCKED: "+type(exc).__name__,file=sys.stderr)
+        return 2
+
+
 if __name__=="__main__":
     raise SystemExit(main())
