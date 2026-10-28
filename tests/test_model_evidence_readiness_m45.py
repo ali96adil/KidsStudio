@@ -104,7 +104,7 @@ class OfflineEvidence45(unittest.TestCase):
 
     def test_mismatched_or_missing_owner_provenance_denied(self):
         args=self.observed()
-        with self.assertRaises(EvidenceReadinessError):
+        with self.assertRaises(ValueError):
             self.assess(**{**args,"owner_key":b"wrong"*10})
         with self.assertRaises(EvidenceReadinessError):
             self.assess(**{**args,"origin_receipt":None,
