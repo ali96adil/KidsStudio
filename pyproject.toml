@@ -26,6 +26,8 @@ studio-archive = "kidsstudio.private_archive:main"
 studio-private-readiness = "kidsstudio.private_release:main"
 studio-backup-drill = "kidsstudio.backup_drill:main"
 studio-acceptance-review = "kidsstudio.acceptance_review:main"
+studio-mac-contract = "kidsstudio.mac_contract:main"
+studio-audio-continuity = "kidsstudio.audio_continuity:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
