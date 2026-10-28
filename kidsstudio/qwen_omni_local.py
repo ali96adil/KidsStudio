@@ -378,6 +378,7 @@ def main(argv:list[str]|None=None)->int:
     p.add_argument("--language",choices=("ar","en"),default="ar")
     p.add_argument("--mp4",type=Path)
     p.add_argument("--frames-manifest",type=Path)
+    p.add_argument("--ffprobe",type=str)
     p.add_argument("--output",type=Path)
     p.add_argument("--device",choices=("mps",),default="mps")
     x=p.parse_args(argv)
@@ -403,7 +404,7 @@ def main(argv:list[str]|None=None)->int:
             wav=x.wav,script=x.script,output=x.output,
             transcript=x.transcript,mp4=x.mp4,
             frames_manifest=x.frames_manifest,device=x.device,
-            variant=x.variant)
+            variant=x.variant,ffprobe=x.ffprobe)
         print(json.dumps(result,ensure_ascii=False))
         return 0
     except (OmniAdapterError,ModelPackageError,EvidenceCaptureError,
