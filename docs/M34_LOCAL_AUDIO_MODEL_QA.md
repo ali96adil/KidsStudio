@@ -20,7 +20,7 @@ The worker launches FFmpeg, Whisper and both model adapters with an allowlisted 
 
 ## Standalone future invocation, with REAL local approved paths
 
-Install an actual Whisper.cpp model and **two different audio-capable reviewer adapters/checkpoints** outside GitHub; review their provenance and ensure their intended capability is actual WAV perception. Store independent worker secret outside source control. Then:
+Install an actual Whisper.cpp model and **two different audio-capable reviewer adapters/checkpoints** (SHA-pinned `.bin`, `.gguf` or `.safetensors` files, according to adapter requirements) outside GitHub; review their provenance and ensure their intended capability is actual WAV perception. Store independent worker secret outside source control. Then:
 
 ```sh
 studio-real-audio-review \
