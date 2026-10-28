@@ -20,7 +20,7 @@ import sqlite3
 import ssl
 import sys
 import time
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .episode_assembly import _ensure_private
@@ -304,7 +304,8 @@ class GoogleYouTubeTransport:
 
 def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
                    journal:UploadJournal,token:str, *,
-                   transport:Any|None=None)->dict:
+                   transport:Any|None=None,
+                   before_network:Callable[[],None]|None=None)->dict:
     """Never auto-retry. A pending/failed POST or PUT requires manual recovery."""
     safe=validate_plan(plan,media,readiness,readiness_sha)
     if not isinstance(token,str) or len(token)<30 or any(ch.isspace() for ch in token):
@@ -324,6 +325,8 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
     # This is the LAST step before network: persist the single attempt.
     journal.reserve(plan["render_job_id"],safe["master_sha256"],plan_sha)
     try:
+        if before_network is not None:
+            before_network()
         session=transport.start(token,metadata,safe["master_bytes"])
         offset=0
         with Path(media).open("rb") as stream:
@@ -353,7 +356,10 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
                         # another videos.insert call or duplicate upload.
                         return {
                             "schema_version":1,
+                            "schema_version":1,
                             "status":"YOUTUBE_PRIVATE_PROCESSING_PENDING",
+                            "series_id":safe["series_id"],
+                            "episode_number":safe["episode_number"],
                             "video_id":video_id,"render_job_id":plan["render_job_id"],
                             "video_sha256":safe["master_sha256"],
                             "channel_id":plan["target_channel_id"],
@@ -414,10 +420,19 @@ def verify_existing(plan:dict,media:Path,readiness:Path,
         result.get("verified_using_authenticated_youtube_api") is not True):
         raise YouTubePrivateError("Authenticated private video proof differs.")
     if result.get("processing_status")!="succeeded":
-        return {"status":"YOUTUBE_PRIVATE_PROCESSING_PENDING",
+        return {"schema_version":1,
+                "status":"YOUTUBE_PRIVATE_PROCESSING_PENDING",
+                "series_id":safe["series_id"],
+                "episode_number":safe["episode_number"],
+                "render_job_id":plan["render_job_id"],
+                "video_sha256":safe["master_sha256"],
                 "video_id":existing["video_id"],
+                "channel_id":plan["target_channel_id"],
+                "youtube_privacy":"private",
                 "processing_status":result.get("processing_status"),
-                "ready_for_owner_review":False,"public_release_authorized":False}
+                "platform_privacy_verified":True,
+                "ready_for_owner_review":False,
+                "public_release_authorized":False}
     if existing["state"]=="UPLOADED_UNVERIFIED":
         journal.record_verified(plan["render_job_id"],existing["video_id"])
     return {"schema_version":1,
