@@ -94,6 +94,14 @@ class PiVisualReviewBridge36(unittest.TestCase):
                 self.assertEqual(db.execute("""SELECT count(*) FROM studio_scene_ai_reviews
                     WHERE stage='ltx_animate'""").fetchone()[0],0)
         self.assertFalse(out["m31_repair_queued"])
+        with self.host.queue._connection() as db:
+            evidence=db.execute("""SELECT state, report_sha256, technical_sha256
+                FROM studio_scene_visual_observations
+                WHERE scene=1 AND ltx_job_id=?""",(self.job_id,)).fetchone()
+            self.assertEqual(evidence["state"],"AV_AUDIO_REVIEW_REQUIRED")
+            self.assertEqual(evidence["technical_sha256"],digest(self.vision.m10))
+            self.assertEqual(evidence["report_sha256"],
+                digest(self.vision.root/"vision"/"signed_m28.json"))
         self.assertFalse(out["public_release_authorized"])
 
     def test_exact_m10_replay_no_duplicate_receipt(self):
@@ -101,6 +109,9 @@ class PiVisualReviewBridge36(unittest.TestCase):
         another=self.invoke(execute=True)
         self.assertTrue(another["technical_receipt_registered"])
         self.assertEqual(self.technical_count(),1)
+        with self.host.queue._connection() as db:
+            self.assertEqual(db.execute("""SELECT count(*) FROM
+                studio_scene_visual_observations""").fetchone()[0],1)
 
     def test_changed_m10_bytes_or_rights_block_before_mutation(self):
         with self.assertRaises(VisionImportError):
