@@ -128,6 +128,47 @@ class StudioOrchestrator:
                 "plan_sha256":plan_sha,
                 "public_release_authorized":False}
 
+    @staticmethod
+    def _repair_available(db,sid:str,num:int,scene:int,stage:str,receipt)->bool:
+        """Read-only narrow check; actual dispatch repeats all M31 guards."""
+        if not (receipt and receipt["state"]=="PENDING_QA" and
+                _has(db,"studio_scene_ai_reviews") and
+                _has(db,"studio_scene_repair_plans") and
+                _has(db,"studio_scene_repair_attempts")):
+            return False
+        qa=db.execute("""SELECT state,technical_sha256,artifact_sha256
+            FROM studio_scene_ai_reviews WHERE
+            series_id=? AND ordinal=? AND scene=? AND stage=? AND
+            job_id=?""",(sid,num,scene,stage,receipt["job_id"])).fetchone()
+        plan=db.execute("""SELECT recipes_json FROM studio_scene_repair_plans
+            WHERE series_id=? AND ordinal=? AND scene=? AND stage=?""",
+            (sid,num,scene,stage)).fetchone()
+        if not qa or qa["state"]!="AI_SCENE_NEEDS_FIX" or not plan or (
+            qa["artifact_sha256"]!=receipt["artifact_sha256"]):
+            return False
+        try:budget=len(json.loads(plan["recipes_json"]))
+        except (TypeError,ValueError):return False
+        used=db.execute("""SELECT COUNT(*) FROM studio_scene_repair_attempts
+            WHERE series_id=? AND ordinal=? AND scene=? AND stage=?""",
+            (sid,num,scene,stage)).fetchone()[0]
+        if used>=min(2,budget):
+            return False
+        if stage=="voice_synthesize":
+            if db.execute("""SELECT 1 FROM studio_scene_stages WHERE
+                series_id=? AND ordinal=? AND scene=?
+                AND stage='ltx_animate'""",(sid,num,scene)).fetchone():
+                return False
+            tech=db.execute("""SELECT report_sha256 FROM
+                studio_scene_voice_checks WHERE series_id=? AND ordinal=?
+                AND scene=? AND voice_job_id=?""",
+                (sid,num,scene,receipt["job_id"])).fetchone()
+        else:
+            tech=db.execute("""SELECT report_sha256 FROM
+                studio_scene_audio_checks WHERE series_id=? AND ordinal=?
+                AND scene=? AND ltx_job_id=?""",
+                (sid,num,scene,receipt["job_id"])).fetchone()
+        return bool(tech and tech["report_sha256"]==qa["technical_sha256"])
+
     def status(self,filename:str|Path)->dict:
         plan,sha=read_plan(filename)
         sid=plan["series_id"];num=plan["episode_number"]
@@ -202,11 +243,17 @@ class StudioOrchestrator:
                                  previous["state"]=="QA_APPROVED" else
                                  ("BLOCK","PREVIOUS_SCENE_NOT_APPROVED"))
                     elif voice["state"]!="QA_APPROVED":
-                        pending=(("BLOCK","SCENE_VOICE_"+voice["state"]))
+                        pending=(("REPAIR","REPAIR_REJECTED_SCENE") if
+                            self._repair_available(db,sid,num,index,
+                                "voice_synthesize",voice) else
+                            ("BLOCK","SCENE_VOICE_"+voice["state"]))
                     elif not ltx:
                         pending=("QUEUE","NEXT_LTX")
                     elif ltx["state"]!="QA_APPROVED":
-                        pending=("BLOCK","SCENE_LTX_"+ltx["state"])
+                        pending=(("REPAIR","REPAIR_REJECTED_SCENE") if
+                            self._repair_available(db,sid,num,index,
+                                "ltx_animate",ltx) else
+                            ("BLOCK","SCENE_LTX_"+ltx["state"]))
                 if pending is None and scene_status:
                     pending=("QUEUE","ASSEMBLE_FINAL_EPISODE")
             elif ep:
@@ -246,6 +293,18 @@ class StudioOrchestrator:
         action=snapshot["next_action"]
         plan,_=read_plan(filename)
         sid=plan["series_id"];num=plan["episode_number"]
+        if action=="REPAIR_REJECTED_SCENE":
+            result=self.repair.run_once(series_id=sid,ordinal=num)
+            if result["status"]!="M31_BOUNDED_SCENE_REPAIR_QUEUED":
+                return {"status":"M32_BLOCKED_NO_JOB_QUEUED",
+                        "next_action":"REPAIR_PLAN_INELIGIBLE",
+                        "blockers":["M31_REPAIR_FENCED"],
+                        "public_release_authorized":False}
+            return {"status":"M32_ONE_PRIVATE_JOB_QUEUED",
+                    "job_id":result["new_job_id"],
+                    "action":"REPAIR_REJECTED_SCENE",
+                    "repair_attempt":result["repair_attempt"],
+                    "public_release_authorized":False}
         if action=="FIRST_AI_VOICE":
             job=self.scenes.queue_first_voice_ai(
                 sid,num,plan["scenes"][0]["voice_recipe"],
