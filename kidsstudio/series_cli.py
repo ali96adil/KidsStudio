@@ -106,6 +106,11 @@ def main(argv: list[str] | None = None) -> int:
     pilot.add_argument("--recipe",required=True)
     pilot.add_argument("--plan-sha256",required=True)
     pilot.add_argument("--owner-note",required=True)
+    voiceqa=commands.add_parser("register-scene-voice-qa")
+    voiceqa.add_argument("series_id")
+    voiceqa.add_argument("episode",type=int)
+    voiceqa.add_argument("scene",type=int)
+    voiceqa.add_argument("--report",type=Path,required=True)
     commands.add_parser("sync-scene-stages")
     scene_audio=commands.add_parser("register-scene-audio")
     scene_audio.add_argument("series_id")
@@ -119,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
     scene_approve.add_argument("--stage",choices=["voice_synthesize","ltx_animate"],required=True)
     scene_approve.add_argument("--sha256",required=True)
     scene_approve.add_argument("--note",required=True)
+    scene_approve.add_argument("--owner-listened",action="store_true",
+                               help="Explicit human WAV listening for M23 pilot voice only")
     scene_status=commands.add_parser("scene-status")
     scene_status.add_argument("series_id")
     scene_status.add_argument("episode",type=int)
@@ -149,6 +156,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.plan_sha256,args.owner_note)
             result={"job_id":job,
                     "status":"FIRST_SCENE_VOICE_QUEUED_OWNER_APPROVED_NO_MODEL_RUN"}
+        elif args.cmd=="register-scene-voice-qa":
+            result=scenes.register_voice_technical(
+                args.series_id,args.episode,args.scene,args.report)
         elif args.cmd=="sync-scene-stages":
             result={"updated_stages":scenes.reconcile()}
         elif args.cmd=="register-scene-audio":
@@ -156,7 +166,8 @@ def main(argv: list[str] | None = None) -> int:
             result={"status":"SCENE_AUDIO_EVIDENCE_REGISTERED"}
         elif args.cmd=="approve-scene-stage":
             scenes.approve(args.series_id,args.episode,args.scene,args.stage,
-                           args.sha256,args.note)
+                           args.sha256,args.note,
+                           owner_listened=args.owner_listened)
             result={"status":"SCENE_STAGE_QA_APPROVED"}
         elif args.cmd=="scene-status":
             result=scenes.snapshot(args.series_id,args.episode)
