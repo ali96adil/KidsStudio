@@ -21,7 +21,8 @@ import sys
 from uuid import uuid4
 
 from .real_media_evidence import (
-    capture_asr,private_file,private_dir,digest,_binary,EvidenceCaptureError
+    capture_asr,private_file,private_dir,digest,_binary,EvidenceCaptureError,
+    media_subprocess_env
 )
 from .voice_qa import inspect_voice,VoiceQAError
 from .scene_ai_qa import ROLE_CHECKS,_private,SceneError,PROVIDER
@@ -80,7 +81,7 @@ class AudioRunner:
         try:
             proc=subprocess.run(argv,stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,stderr=subprocess.PIPE,
-                timeout=300,check=False)
+                timeout=300,check=False,env=media_subprocess_env())
         except (OSError,subprocess.TimeoutExpired) as exc:
             raise AudioModelError("Local independent audio model unavailable or timed out.") from exc
         if (proc.returncode!=0 or len(proc.stdout)>100000 or
