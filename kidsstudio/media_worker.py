@@ -306,6 +306,10 @@ class RemoteMediaWorker:
                              {"recipe_id","script_sha256","catalogue_sha256"}
                              if job.get("kind")=="episode_assemble" and
                                isinstance(payload,dict) and "catalogue_sha256" in payload else
+                             {"recipe_id","script_sha256","pilot_scene",
+                              "pilot_plan_sha256"} if
+                             job.get("kind")=="voice_synthesize" and
+                               isinstance(payload,dict) and "pilot_scene" in payload else
                              {"recipe_id","script_sha256"} if
                              job.get("kind") in ("episode_assemble","voice_synthesize") else
                              {"recipe_id"})):
@@ -352,6 +356,43 @@ class RemoteMediaWorker:
             except RemoteWorkerError:
                 pass
             return {"status": "CONFIG_REJECTED", "job_id": job_id}
+        # M22: an owner-queued first-scene pilot cannot use the ordinary
+        # scene voice path without an immediate live Pi lease/lineage check.
+        # Keep this BEFORE MediaJournal.begin and any GPU/model invocation.
+        # No retry or implicit continuation if the Pi has changed.
+        if kind == "voice_synthesize" and "pilot_scene" in payload:
+            try:
+                if (type(payload["pilot_scene"]) is not int or
+                    payload["pilot_scene"]!=1 or
+                    not isinstance(payload["pilot_plan_sha256"],str) or
+                    not HEX.fullmatch(payload["pilot_plan_sha256"])):
+                    raise MediaError("Pilot plan SHA and first-scene marker required.")
+                check_request={
+                    "job_id":job_id,"generation":generation,
+                    "pilot_plan_sha256":payload["pilot_plan_sha256"],
+                    "pilot_scene":1,
+                    "script_sha256":payload["script_sha256"],
+                    "recipe_id":recipe_id,
+                }
+                proof=self.pi.call("pilot-voice-lease-check",check_request)
+                if (not isinstance(proof,dict) or
+                    set(proof)!=set(check_request)|{
+                        "status","model_execution_authorized",
+                        "publication_approved","server_time"} or
+                    proof["status"]!="PINNED_SINGLE_VOICE_LEASE_CURRENT_NOT_EXECUTED" or
+                    any(proof.get(key)!=value for key,value in check_request.items()) or
+                    proof["model_execution_authorized"] is not False or
+                    proof["publication_approved"] is not False):
+                    raise MediaError("Live Pi pilot voice lease proof disagrees.")
+            except (MediaError,RemoteWorkerError,ValueError,TypeError,KeyError):
+                try:
+                    self.pi.call("fail",{
+                        "job_id":job_id,"generation":generation,
+                        "error_code":"MEDIA_CONFIGURATION_REJECTED",
+                    })
+                except RemoteWorkerError:
+                    pass
+                return {"status":"PILOT_LEASE_REJECTED","job_id":job_id}
         digest = hashlib.sha256(
             json.dumps({"kind": kind, "payload": payload},
                        sort_keys=True).encode("utf-8")
