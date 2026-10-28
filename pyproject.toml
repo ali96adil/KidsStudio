@@ -37,6 +37,7 @@ studio-learning = "kidsstudio.studio_learning:main"
 studio-mac-quick-probe = "kidsstudio.mac_quick_probe:main"
 studio-two-scene-preflight = "kidsstudio.two_scene_preflight:main"
 studio-m13-snapshot-gate = "kidsstudio.m13_snapshot_gate:main"
+studio-live-m13-preflight = "kidsstudio.live_m13_preflight:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
