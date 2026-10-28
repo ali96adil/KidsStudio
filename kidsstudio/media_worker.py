@@ -57,6 +57,7 @@ class MediaRecipes:
 
     def __init__(self, file: str | Path):
         source = Path(file).expanduser().resolve()
+        self.catalogue_sha256 = _sha(source)
         if source.stat().st_size > 60_000:
             raise MediaError("Recipe catalogue too large.")
         data = json.loads(source.read_text(encoding="utf-8"))
@@ -299,6 +300,9 @@ class RemoteMediaWorker:
             not isinstance(payload, dict) or
             set(payload) != ({"recipe_id","script_sha256","voice_sha256"} if
                              job.get("kind")=="ltx_animate" else
+                             {"recipe_id","script_sha256","catalogue_sha256"}
+                             if job.get("kind")=="episode_assemble" and
+                               isinstance(payload,dict) and "catalogue_sha256" in payload else
                              {"recipe_id","script_sha256"} if
                              job.get("kind") in ("episode_assemble","voice_synthesize") else
                              {"recipe_id"})):
@@ -318,6 +322,14 @@ class RemoteMediaWorker:
         try:
             local_recipe = self.recipes.resolve(kind, recipe_id)
             if kind == "episode_assemble":
+                if ("scene_evidence" in local_recipe["inputs"]) != (
+                    "catalogue_sha256" in payload):
+                    raise MediaError("Pi and Mac disagree on mandatory multi-scene SHA pin.")
+                if "catalogue_sha256" in payload:
+                    if (not isinstance(payload["catalogue_sha256"],str) or
+                        not HEX.fullmatch(payload["catalogue_sha256"]) or
+                        payload["catalogue_sha256"] != self.recipes.catalogue_sha256):
+                        raise MediaError("Frozen Mac catalogue SHA differs from owner-approved Pi job.")
                 assembler = EpisodeAssembler(local_recipe["inputs"]["episode_recipe"])
                 if assembler.recipe["script"]["sha256"] != payload["script_sha256"]:
                     raise MediaError("Script hash disagrees with owner-approved episode.")
