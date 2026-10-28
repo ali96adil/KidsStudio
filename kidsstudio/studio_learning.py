@@ -241,8 +241,12 @@ class LearningLedger:
                     item["average_view_duration_seconds"],
                     item["estimated_watch_minutes"],source_sha,time.time()))
                 added+=1
+        # Agent-style one-shot detection runs automatically after an explicitly
+        # owner-authorized import. It never changes a script or publication.
+        learned=[self.analyze(sid) for sid in sorted({k[0] for k in indexed})]
         return {"status":"ANALYTICS_SNAPSHOTS_IMPORTED_NO_PRODUCTION_CHANGE",
                 "profiles":len(profiles),"new_snapshots":added,
+                "new_learning_proposals":sum(x["new_proposals"] for x in learned),
                 "source_sha256":source_sha,"production_modified":False,
                 "publishing_performed":False}
 
