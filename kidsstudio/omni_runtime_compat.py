@@ -231,7 +231,7 @@ def probe_runtime(*,model:str|Path,model_sha256:str,variant:str="7b",
     if (checkpoint_digest(directory)!=model_sha256 or
         digest(resolved)!=python_sha):
         raise RuntimeCompatError("Local model or Python executable changed during MPS check.")
-    return {
+    receipt={
         "schema_version":1,
         "status":"M46_RUNTIME_OBSERVATION_NOT_MODEL_QUALIFICATION",
         "model_package_sha256":model_sha256,
@@ -251,6 +251,8 @@ def probe_runtime(*,model:str|Path,model_sha256:str,variant:str="7b",
         "public_release_authorized":False,
         "files_written":True,
     }
+    receipt_sha=_write_exclusive(folder/"runtime_receipt.json",receipt)
+    return {**receipt,"runtime_receipt_sha256":receipt_sha}
 
 
 def main(argv:list[str]|None=None)->int:
