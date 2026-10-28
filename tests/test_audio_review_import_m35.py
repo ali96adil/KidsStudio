@@ -128,6 +128,31 @@ class AudioReviewImport35(unittest.TestCase):
             self.assertEqual(db.execute(
                 "SELECT count(*) FROM studio_scene_voice_checks").fetchone()[0], 0)
 
+    def test_exact_m23_only_interrupted_import_can_resume(self):
+        self.host.scenes.register_voice_technical(
+            "colors-ar", 1, 1, self.folder / "voice_technical.json")
+        with self.host.queue._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT count(*) FROM studio_scene_voice_checks").fetchone()[0], 1)
+        applied = self.run_import(execute=True)
+        self.assertEqual(applied["status"],
+                         "M35_AI_VOICE_APPROVED_INTERNAL_PRIVATE_ONLY")
+        self.assertEqual(self.host.coord.status(self.host.plan)["next_action"],
+                         "NEXT_LTX")
+
+    def test_different_preexisting_m23_receipt_does_not_overwrite(self):
+        self.host.scenes.register_voice_technical(
+            "colors-ar", 1, 1, self.folder / "voice_technical.json")
+        with self.host.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_voice_checks
+                SET report_sha256=? WHERE series_id=? AND ordinal=?
+                AND scene=?""", ("b"*64, "colors-ar", 1, 1))
+        with self.assertRaises(AudioImportError):
+            self.run_import(execute=True)
+        with self.host.queue._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT count(*) FROM studio_scene_ai_reviews").fetchone()[0], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
