@@ -180,8 +180,12 @@ def build_snapshot(queue: StudioQueue) -> dict:
         ai_scene_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_scene_ai_reviews'""").fetchone())
         if ai_scene_tracking_installed:
-            for item in db.execute("""SELECT series_id,ordinal,stage,state
-                FROM studio_scene_ai_reviews"""):
+            for item in db.execute("""SELECT a.series_id,a.ordinal,
+                    a.stage,a.state FROM studio_scene_ai_reviews a
+                JOIN studio_scene_stages s
+                    ON s.series_id=a.series_id AND s.ordinal=a.ordinal
+                    AND s.scene=a.scene AND s.stage=a.stage
+                    AND s.job_id=a.job_id"""):
                 key=(item["series_id"],item["ordinal"])
                 ai=scene_ai_states.setdefault(key,{
                     "state":"AI_SCENE_REVIEW_TRACKED_NOT_MODEL_INFERENCE_PROOF",
@@ -193,6 +197,24 @@ def build_snapshot(queue: StudioQueue) -> dict:
                         ai["ltx_ready"]+=1
                 elif item["state"]=="AI_SCENE_NEEDS_FIX":
                     ai["needs_fix"]+=1
+        repairs_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_scene_repair_attempts'""").fetchone())
+        if repairs_installed:
+            for item in db.execute("""SELECT r.series_id,r.ordinal,
+                COUNT(*) AS total,
+                SUM(CASE WHEN s.job_id=r.new_job_id AND
+                    s.state IN ('QUEUED','PENDING_QA') THEN 1 ELSE 0 END)
+                    AS active
+                FROM studio_scene_repair_attempts r
+                JOIN studio_scene_stages s ON s.series_id=r.series_id
+                    AND s.ordinal=r.ordinal AND s.scene=r.scene
+                    AND s.stage=r.stage
+                GROUP BY r.series_id,r.ordinal"""):
+                key=(item["series_id"],item["ordinal"])
+                scenes=scene_states.setdefault(key,{"total":0,
+                    "voice_approved":0,"ltx_approved":0,"blocked":0})
+                scenes["repairs_queued_total"]=item["total"]
+                scenes["repairs_current_pending"]=item["active"]
         audio_tracking_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_audio_checks'""").fetchone())
         if audio_tracking_installed:
