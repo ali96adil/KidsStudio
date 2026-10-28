@@ -12,11 +12,13 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import ipaddress
 import json
+import sqlite3
 from pathlib import Path
 import sys
 from urllib.parse import urlsplit
 
 from .series_manager import SeriesManager
+from .acceptance_review import inspect_studio, AcceptanceError
 from .studio_queue import StudioQueue
 
 
@@ -217,6 +219,18 @@ def make_handler(queue: StudioQueue):
                                     separators=(",",":")).encode("utf-8")
                 except (OSError,ValueError,RuntimeError):
                     self._reply(503,b'{"error":"snapshot_unavailable"}',
+                                "application/json; charset=utf-8")
+                    return
+                self._reply(200,body,"application/json; charset=utf-8")
+                return
+            elif path.path=="/api/acceptance":
+                # Explicit read-only manual report; no backup generation,
+                # external engine execution, media transfers or publishing.
+                try:
+                    body=json.dumps(inspect_studio(queue),ensure_ascii=False,
+                                    separators=(",",":")).encode("utf-8")
+                except (AcceptanceError,OSError,ValueError,sqlite3.DatabaseError):
+                    self._reply(503,b'{"error":"acceptance_snapshot_unavailable"}',
                                 "application/json; charset=utf-8")
                     return
                 self._reply(200,body,"application/json; charset=utf-8")
