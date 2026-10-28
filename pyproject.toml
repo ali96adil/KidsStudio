@@ -60,6 +60,7 @@ studio-av-calibrate = "kidsstudio.av_model_calibration:main"
 studio-model-bundle = "kidsstudio.model_runtime_bundle:main"
 studio-model-package = "kidsstudio.model_package:main"
 studio-qwen-omni-adapter = "kidsstudio.qwen_omni_local:main"
+studio-model-pilot = "kidsstudio.model_pilot_probe:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
