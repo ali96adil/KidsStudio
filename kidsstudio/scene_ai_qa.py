@@ -8,6 +8,7 @@ reviewer identity or image observations are absent. No PUBLIC permission.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from pathlib import Path
 import re
@@ -80,8 +81,11 @@ def _word_error_rate(reference: str, hypothesis: str) -> float:
 
 
 class SceneAIGate:
-    def __init__(self, queue: StudioQueue):
+    def __init__(self, queue: StudioQueue, *, attestation_key: bytes | None = None):
         self.queue=queue
+        # A trusted local model-execution worker must own this key; no
+        # recipient-chosen provider name is an authenticated proof.
+        self.attestation_key=attestation_key
 
     def initialize(self) -> None:
         with self.queue._connection(write=True) as db:
@@ -114,7 +118,27 @@ class SceneAIGate:
         required={"schema_version","series_id","episode_number","scene",
                   "stage","job_id","script_sha256","artifact_sha256",
                   "observations_sha256","rights_sha256","technical_sha256",
-                  "reviewers","publication_approved"}
+                  "reviewers","publication_approved","runner_attestation"}
+        if (not isinstance(self.attestation_key,bytes) or
+            len(self.attestation_key)<32):
+            raise SceneError("Trusted AI model runner attestation key unavailable.")
+        attestation=report.get("runner_attestation") if isinstance(report,dict) else None
+        if (not isinstance(attestation,dict) or
+            set(attestation)!={"runner_id","runtime_status","hmac_sha256"} or
+            not isinstance(attestation["runner_id"],str) or
+            not PROVIDER.fullmatch(attestation["runner_id"]) or
+            attestation["runtime_status"]!="REVIEW_MODELS_EXECUTED" or
+            not isinstance(attestation["hmac_sha256"],str) or
+            not SHA.fullmatch(attestation["hmac_sha256"])):
+            raise SceneError("Signed local AI runtime attestation required.")
+        unsigned={key:value for key,value in report.items()
+                  if key!="runner_attestation"}
+        signed_payload=json.dumps(unsigned,sort_keys=True,
+            ensure_ascii=False,separators=(",",":"),allow_nan=False).encode("utf-8")
+        expected_hmac=hmac.new(self.attestation_key,signed_payload,
+                               hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected_hmac,attestation["hmac_sha256"]):
+            raise SceneError("Untrusted or tampered AI model execution report.")
         if (set(report)!=required or report.get("schema_version")!=1 or
             report["series_id"]!=sid or report["episode_number"]!=ordinal or
             report["scene"]!=scene or report["stage"]!=stage or
@@ -178,7 +202,7 @@ class SceneAIGate:
             obs.get("stage")!=stage or
             obs.get("artifact_sha256")!=report["artifact_sha256"] or
             obs.get("script_sha256")!=report["script_sha256"] or
-            obs.get("model_execution_verified") is not False or
+            obs.get("model_execution_verified") is not True or
             obs.get("publishing_approved") is not False):
             raise SceneError("Scene observation lineage unavailable.")
         wer=None
