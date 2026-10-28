@@ -136,15 +136,22 @@ class StudioOrchestrator:
                 _has(db,"studio_scene_repair_plans") and
                 _has(db,"studio_scene_repair_attempts")):
             return False
-        qa=db.execute("""SELECT state,technical_sha256,artifact_sha256
+        qa=db.execute("""SELECT state,technical_sha256,
+                artifact_sha256,script_sha256,report_sha256,
+                first_provider,second_provider
             FROM studio_scene_ai_reviews WHERE
             series_id=? AND ordinal=? AND scene=? AND stage=? AND
             job_id=?""",(sid,num,scene,stage,receipt["job_id"])).fetchone()
-        plan=db.execute("""SELECT recipes_json FROM studio_scene_repair_plans
+        plan=db.execute("""SELECT recipes_json,script_sha256 FROM studio_scene_repair_plans
             WHERE series_id=? AND ordinal=? AND scene=? AND stage=?""",
             (sid,num,scene,stage)).fetchone()
-        if not qa or qa["state"]!="AI_SCENE_NEEDS_FIX" or not plan or (
-            qa["artifact_sha256"]!=receipt["artifact_sha256"]):
+        if (not qa or qa["state"]!="AI_SCENE_NEEDS_FIX" or not plan or
+            qa["artifact_sha256"]!=receipt["artifact_sha256"] or
+            qa["script_sha256"]!=receipt["scene_script_sha256"] or
+            plan["script_sha256"]!=receipt["scene_script_sha256"] or
+            qa["first_provider"]==qa["second_provider"] or
+            not isinstance(qa["report_sha256"],str) or
+            not SHA.fullmatch(qa["report_sha256"])):
             return False
         try:budget=len(json.loads(plan["recipes_json"]))
         except (TypeError,ValueError):return False
