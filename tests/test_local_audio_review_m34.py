@@ -143,6 +143,47 @@ class AudioWorker34(unittest.TestCase):
         self.assertTrue(observed["model_execution_verified"])
         self.assertEqual(self.wav.read_bytes()[:4],b"RIFF")
 
+    def test_pi_exact_source_m23_m28_bridge_enables_next_ltx_not_owner_upload(self):
+        # A full Pi database gate, but synthetic audio reviewers.
+        from test_studio_orchestrator_m32 import Orchestration32
+        h=Orchestration32("test_plan_cannot_advertise_public_permission")
+        h.setUp()
+        self.addCleanup(h.doCleanups)
+        h.coord.pin(h.plan)
+        voice=h.coord.tick(h.plan)
+        self.assertEqual(voice["action"],"FIRST_AI_VOICE")
+        leased=h.queue.claim(worker_id="fake-mac-audio",
+                             capabilities=["voice_synthesize"])
+        self.assertEqual(leased["job_id"],voice["job_id"])
+        h.queue.complete(job_id=leased["job_id"],worker_id="fake-mac-audio",
+            generation=leased["generation"],result={
+                "status":"VOICE_RENDERED_PENDING_QA",
+                "artifact_type":"wav","artifact_sha256":digest(self.wav),
+                "artifact_bytes":self.wav.stat().st_size,
+                "publication_approved":False})
+        h.scenes.reconcile()
+        local_script=h.scripts[0]
+        output=self.run_review(
+            job_id=voice["job_id"],script=local_script,
+            script_sha=digest(local_script))
+        # Exact SHA of this independently run FFmpeg M23 report must be
+        # registered in the Pi before the signed M28 model report.
+        tech=h.scenes.register_voice_technical(
+            "colors-ar",1,1,self.root/"run01"/"voice_technical.json")
+        self.assertFalse(tech["owner_listening_performed"])
+        gate=SceneAIGate(h.queue,attestation_key=self.key)
+        gate.initialize()
+        checked=gate.register("colors-ar",1,1,"voice_synthesize",
+            report_file=output["signed_report_file"],
+            observation_file=self.root/"run01"/"observations.json",
+            rights_file=self.rights)
+        self.assertEqual(checked["status"],"AI_SCENE_READY_PRIVATE_ONLY")
+        self.assertFalse(checked["public_release_authorized"])
+        decision=gate.auto_approve("colors-ar",1,1,"voice_synthesize")
+        self.assertEqual(decision["status"],"AI_STAGE_APPROVED_INTERNAL_ONLY")
+        self.assertEqual(h.coord.status(h.plan)["next_action"],"NEXT_LTX")
+        self.assertEqual(h.queue.status()["counts"]["QUEUED"],0)
+
     def test_wrong_source_or_rights_rejected_without_new_output(self):
         with self.assertRaises(AudioModelError):
             self.run_review(wav_sha="0"*64)
