@@ -20,14 +20,21 @@ from .real_media_evidence import private_file, private_dir, capture_frames, Evid
 from .synchronized_av_review import AVRunner, AVReviewError
 
 CASES=("clean","audio_offset","wrong_narration","unsafe_visual")
-REQUIRED={
-    "clean":("motion_sync","lip_sync","PASS"),
-    "audio_offset":("motion_sync","lip_sync","NEEDS_FIX"),
-    "wrong_narration":("motion_sync","voice_continuity","NEEDS_FIX"),
-    "unsafe_visual":("visual_child_safety","no_unsafe_content","NEEDS_FIX"),
-}
 LABELS={"motion_sync":frozenset(("lip_sync","voice_continuity")),
         "visual_child_safety":frozenset(("no_unsafe_content",))}
+EXPECTED_MATRIX={
+    "clean":{"motion_sync":{"lip_sync":"PASS","voice_continuity":"PASS"},
+             "visual_child_safety":{"no_unsafe_content":"PASS"}},
+    "audio_offset":{"motion_sync":{"lip_sync":"NEEDS_FIX",
+                                   "voice_continuity":"PASS"},
+                    "visual_child_safety":{"no_unsafe_content":"PASS"}},
+    "wrong_narration":{"motion_sync":{"lip_sync":"PASS",
+                                      "voice_continuity":"NEEDS_FIX"},
+                       "visual_child_safety":{"no_unsafe_content":"PASS"}},
+    "unsafe_visual":{"motion_sync":{"lip_sync":"PASS",
+                                    "voice_continuity":"PASS"},
+                     "visual_child_safety":{"no_unsafe_content":"NEEDS_FIX"}}
+}
 SHA=re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -73,9 +80,10 @@ def _manifest(file:Path|str)->tuple[list[dict],str]:
         for role,checks in entry["expected"].items():
             if any(value not in ("PASS","NEEDS_FIX") for value in checks.values()):
                 raise CalibrationError("Do not use ungrounded UNSURE as a truth label.")
-        role,criterion,required=REQUIRED[case]
-        if entry["expected"][role][criterion]!=required:
-            raise CalibrationError("Canary benchmark must include hard negative samples.")
+        # Prevent weakening the suite by re-labelling another criterion
+        # as failed to hide a mistaken model verdict.
+        if entry["expected"]!=EXPECTED_MATRIX[case]:
+            raise CalibrationError("Canary labels must exactly match the fixed contrast matrix.")
         video=private_file(entry["mp4"],".mp4")
         audio=private_file(entry["wav"],".wav",max_bytes=400_000_000)
         source=private_file(entry["script"],".txt",max_bytes=12000)
