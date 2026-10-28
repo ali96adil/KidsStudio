@@ -27,6 +27,7 @@ from .model_pilot_probe import _verify_result,PilotProbeError,ALL_ROLES
 from .qwen_omni_local import inspect_local,OmniAdapterError
 from .real_media_evidence import private_file,_binary,EvidenceCaptureError
 from .av_model_calibration import _manifest,CalibrationError
+from .omni_runtime_compat import _verify_worker,RuntimeCompatError
 
 SHA=re.compile(r"^[0-9a-f]{64}$")
 MAX_REPORT=200_000
@@ -81,6 +82,11 @@ def assess_model_evidence(*,model:str|Path,model_sha256:str,
     transcript:str|Path|None=None,mp4:str|Path|None=None,
     frames_manifest:str|Path|None=None,
     ffprobe:str|Path|None=None,
+    mps_runtime_receipt:str|Path|None=None,
+    mps_runtime_receipt_sha256:str|None=None,
+    mps_worker_report:str|Path|None=None,
+    mps_worker_sha256:str|None=None,
+    mps_python:str|Path|None=None,
     av_canary_report:str|Path|None=None,
     av_canary_sha256:str|None=None,
     av_canary_manifest:str|Path|None=None,
@@ -125,6 +131,49 @@ def assess_model_evidence(*,model:str|Path,model_sha256:str,
     _gate(gates,"M42_CURRENT_MAC_RESOURCE_SCREEN",
           "PASS_OFFLINE_SCREEN_ONLY" if resource_ok else "BLOCKED",
           "Resource screen is not Mac MPS inference or measured GPU memory.")
+    scalar_ok=False
+    mps_supplied=any(x is not None for x in (
+        mps_runtime_receipt,mps_runtime_receipt_sha256,
+        mps_worker_report,mps_worker_sha256,mps_python))
+    if not mps_supplied:
+        _gate(gates,"M46_MPS_SCALAR_API_COMPAT","NOT_SUPPLIED",
+              "No owner-Mac Torch/Transformers scalar report supplied.")
+    else:
+        if any(x is None for x in (
+            mps_runtime_receipt,mps_runtime_receipt_sha256,
+            mps_worker_report,mps_worker_sha256,mps_python)):
+            raise EvidenceReadinessError("M46 evidence requires both reports and exact Python binary.")
+        mac_receipt,_=_read_pinned(
+            mps_runtime_receipt,mps_runtime_receipt_sha256,max_bytes=7000)
+        _,worker_path=_read_pinned(
+            mps_worker_report,mps_worker_sha256,max_bytes=7000)
+        worker,verified_worker_sha=_verify_worker(worker_path)
+        binary=Path(mps_python).expanduser()
+        if not binary.is_absolute() or not binary.is_file():
+            raise EvidenceReadinessError("M46 installed Python executable missing.")
+        resolved=binary.resolve(strict=True)
+        if (mac_receipt.get("schema_version")!=1 or
+            mac_receipt.get("status")!=
+            "M46_RUNTIME_OBSERVATION_NOT_MODEL_QUALIFICATION" or
+            mac_receipt.get("model_package_sha256")!=model_sha256 or
+            mac_receipt.get("python_binary_sha256")!=digest(resolved) or
+            mac_receipt.get("runtime_report_sha256")!=verified_worker_sha or
+            verified_worker_sha!=mps_worker_sha256 or
+            mac_receipt.get("torch_version")!=worker["torch_version"] or
+            mac_receipt.get("transformers_version")!=worker["transformers_version"] or
+            mac_receipt.get("mps_scalar_probe_reported") is not True or
+            mac_receipt.get("model_weights_loaded") is not False or
+            mac_receipt.get("model_inference_performed") is not False or
+            mac_receipt.get("model_quality_qualified") is not False or
+            mac_receipt.get("mac_pi_hardware_qualified") is not False or
+            mac_receipt.get("private_upload_permitted") is not False or
+            mac_receipt.get("public_release_authorized") is not False or
+            mac_receipt.get("network_isolation_verified") is not False or
+            mac_receipt.get("source_provenance_verified") is not False):
+            raise EvidenceReadinessError("M46 scalar report cannot be promoted to device/model qualification.")
+        scalar_ok=True
+        _gate(gates,"M46_MPS_SCALAR_API_COMPAT","PASS_UNATTESTED_BYTES_ONLY",
+              "Exact Python and scalar output tied to local package; this is not a 7B load or independently verified Mac GPU.")
     metrics_present=any(x is not None for x in (
         adapter,pilot_metrics,pilot_metrics_sha256,model_diagnostic,
         model_diagnostic_sha256,script,wav,transcript,mp4,
@@ -278,13 +327,15 @@ def assess_model_evidence(*,model:str|Path,model_sha256:str,
     blockers=[x["id"] for x in gates
               if x["state"] not in (
                 "PASS_OFFLINE","PASS_OWNER_CLAIM","PASS_OFFLINE_SCREEN_ONLY",
-                "PASS_BYTES_ONLY","PASS_SOURCE_BYTES_ONLY")]
+                "PASS_BYTES_ONLY","PASS_SOURCE_BYTES_ONLY",
+                "PASS_UNATTESTED_BYTES_ONLY")]
     report={"schema_version":1,
         "status":"M45_EVIDENCE_INVENTORY_NOT_PRODUCTION_READY",
         "checkpoint_package_sha256":model_sha256,
         "pilot_role":pilot_role,
         "owner_origin_attestation_checked":origin_ok,
         "resource_screen_passed_without_inference":resource_ok,
+        "mps_scalar_report_bytes_checked":scalar_ok,
         "exact_pilot_observation_bytes_checked":metric_ok,
         "four_canary_source_bytes_checked":canary_checked,
         "gates":gates,"blockers":blockers,
@@ -333,6 +384,11 @@ def main(argv:list[str]|None=None)->int:
     p.add_argument("--script");p.add_argument("--wav")
     p.add_argument("--transcript");p.add_argument("--mp4")
     p.add_argument("--frames-manifest");p.add_argument("--ffprobe")
+    p.add_argument("--mps-runtime-receipt")
+    p.add_argument("--mps-runtime-receipt-sha256")
+    p.add_argument("--mps-worker-report")
+    p.add_argument("--mps-worker-sha256")
+    p.add_argument("--mps-python")
     p.add_argument("--av-canary-report")
     p.add_argument("--av-canary-sha256")
     p.add_argument("--av-canary-manifest")
@@ -352,6 +408,11 @@ def main(argv:list[str]|None=None)->int:
             model_diagnostic_sha256=x.model_diagnostic_sha256,
             script=x.script,wav=x.wav,transcript=x.transcript,
             mp4=x.mp4,frames_manifest=x.frames_manifest,ffprobe=x.ffprobe,
+            mps_runtime_receipt=x.mps_runtime_receipt,
+            mps_runtime_receipt_sha256=x.mps_runtime_receipt_sha256,
+            mps_worker_report=x.mps_worker_report,
+            mps_worker_sha256=x.mps_worker_sha256,
+            mps_python=x.mps_python,
             av_canary_report=x.av_canary_report,
             av_canary_sha256=x.av_canary_sha256,
             av_canary_manifest=x.av_canary_manifest,
@@ -360,7 +421,7 @@ def main(argv:list[str]|None=None)->int:
         return 0
     except (EvidenceReadinessError,ModelPackageError,ModelOriginError,
             PilotProbeError,OmniAdapterError,EvidenceCaptureError,
-            CalibrationError,OSError,ValueError,TypeError,KeyError) as exc:
+            CalibrationError,RuntimeCompatError,OSError,ValueError,TypeError,KeyError) as exc:
         print("M45_EVIDENCE_READINESS_BLOCKED: "+type(exc).__name__,
               file=sys.stderr)
         return 2
