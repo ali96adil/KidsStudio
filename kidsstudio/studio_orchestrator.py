@@ -73,6 +73,13 @@ def read_plan(file: str|Path)->tuple[dict,str]:
         raise OrchestrationError("Exact private final-montage recipe/catalogue required.")
     return plan,digest(path)
 
+def _scene_set_sha(scenes:list[dict])->str:
+    """Canonical current approved scene job IDs + full original media hashes."""
+    payload=json.dumps(scenes,sort_keys=True,ensure_ascii=False,
+                       separators=(",",":"),allow_nan=False).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _has(db,table:str)->bool:
     return bool(db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
                            (table,)).fetchone())
@@ -137,6 +144,94 @@ class StudioOrchestrator:
                  plan["scene_plan_sha256"],self.queue.clock()))
         return {"status":"M32_PRIVATE_PLAN_PINNED_NO_JOBS_QUEUED",
                 "plan_sha256":plan_sha,
+                "public_release_authorized":False}
+
+    def bind_assembly(self,filename:str|Path,*,evidence_file:str|Path,
+                      catalogue_sha256:str)->dict:
+        """M48: one-time owner binding AFTER all exact scene stages pass QA.
+
+        Pi checks owner-supplied Mac M14 metadata against Pi job ledger.
+        Mac separately checks original bytes again at M16 execution.
+        No model calls, file writes or upload.
+        """
+        if (not isinstance(catalogue_sha256,str) or
+            not SHA.fullmatch(catalogue_sha256)):
+            raise OrchestrationError("Exact frozen Mac catalogue SHA required.")
+        plan,plan_sha=read_plan(filename)
+        if plan["assembly"]["catalogue_sha256"]!=PENDING_ASSEMBLY:
+            raise OrchestrationError("Legacy pre-pinned assembly cannot be rebound.")
+        candidate=Path(evidence_file).expanduser()
+        if (not candidate.is_absolute() or candidate.is_symlink() or
+            candidate.suffix.lower()!=".json"):
+            raise OrchestrationError("Private non-symlink M14 scene evidence required.")
+        source=candidate.resolve()
+        _ensure_private(source.parent)
+        if not source.is_file() or not 100<=source.stat().st_size<=150000:
+            raise OrchestrationError("M14 scene evidence missing or oversized.")
+        try:
+            manifest=json.loads(source.read_text(encoding="utf-8"))
+        except (UnicodeError,ValueError,OSError) as exc:
+            raise OrchestrationError("Malformed M14 scene evidence.") from exc
+        exact={"schema_version","series_id","episode_number","script_sha256",
+               "assembly_recipe_sha256","scene_plan_sha256",
+               "voice_output_root","ltx_output_root","scenes",
+               "publication_approved"}
+        if (not isinstance(manifest,dict) or set(manifest)!=exact or
+            manifest["schema_version"]!=1 or
+            manifest["series_id"]!=plan["series_id"] or
+            manifest["episode_number"]!=plan["episode_number"] or
+            manifest["script_sha256"]!=plan["script_sha256"] or
+            manifest["scene_plan_sha256"]!=plan["scene_plan_sha256"] or
+            manifest["publication_approved"] is not False or
+            not isinstance(manifest["assembly_recipe_sha256"],str) or
+            not SHA.fullmatch(manifest["assembly_recipe_sha256"]) or
+            not isinstance(manifest["scenes"],list) or
+            len(manifest["scenes"])!=len(plan["scenes"])):
+            raise OrchestrationError("M14 evidence is not the current immutable plan.")
+        evidence_sha=digest(source)
+        sid=plan["series_id"];num=plan["episode_number"]
+        from .studio_scenes import assert_scenes_ready
+        with self.queue._connection(write=True) as db:
+            if db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()[0]:
+                raise OrchestrationError("Studio paused; cannot bind final montage.")
+            pinned=db.execute("""SELECT plan_sha256 FROM studio_orchestrator_plans
+                WHERE series_id=? AND ordinal=?""",(sid,num)).fetchone()
+            ep=db.execute("""SELECT e.state,e.source_sha256,
+                s.state AS series_state FROM studio_episodes e
+                JOIN studio_series s ON e.series_id=s.series_id
+                WHERE e.series_id=? AND e.ordinal=?""",(sid,num)).fetchone()
+            if (not pinned or pinned["plan_sha256"]!=plan_sha or
+                not ep or ep["state"]!="SCRIPT_APPROVED" or
+                ep["series_state"]!="ACTIVE" or
+                ep["source_sha256"]!=plan["script_sha256"]):
+                raise OrchestrationError("Current approved pinned M32 plan required.")
+            if db.execute("""SELECT 1 FROM studio_orchestrator_assembly_bindings
+                WHERE series_id=? AND ordinal=?""",(sid,num)).fetchone():
+                raise OrchestrationError("Final montage already bound; never overwrite.")
+            current=assert_scenes_ready(db,sid,num,plan["script_sha256"])
+            expected_keys={"scene","scene_script_sha256","voice_job_id",
+                           "ltx_job_id","voice_sha256","ltx_sha256"}
+            for scene,evidence in zip(current,manifest["scenes"]):
+                if (not isinstance(evidence,dict) or set(evidence)!=expected_keys or
+                    evidence["scene"]!=scene["scene"] or
+                    evidence["scene_script_sha256"]!=scene["script_sha256"] or
+                    any(evidence[key]!=scene[key] for key in (
+                        "voice_job_id","ltx_job_id","voice_sha256","ltx_sha256"))):
+                    raise OrchestrationError("M14 metadata differs from current Pi scene receipts.")
+            bound=_scene_set_sha(current)
+            db.execute("""INSERT INTO studio_orchestrator_assembly_bindings
+                (series_id,ordinal,plan_sha256,catalogue_sha256,
+                 evidence_sha256,scene_set_sha256,created_at)
+                VALUES (?,?,?,?,?,?,?)""",(sid,num,plan_sha,
+                catalogue_sha256,evidence_sha,bound,self.queue.clock()))
+        return {"schema_version":1,
+                "status":"M48_FROZEN_ASSEMBLY_PINNED_NO_JOB_QUEUED",
+                "plan_sha256":plan_sha,
+                "scene_evidence_sha256":evidence_sha,
+                "catalogue_sha256":catalogue_sha256,
+                "scene_set_sha256":bound,
+                "render_job_queued":False,
+                "private_upload_permitted":False,
                 "public_release_authorized":False}
 
     @staticmethod
@@ -400,7 +495,9 @@ def main(argv:list[str]|None=None)->int:
     p=argparse.ArgumentParser(prog="studio-orchestrator")
     p.add_argument("--db",type=Path,required=True)
     p.add_argument("--plan",type=Path)
-    p.add_argument("command",choices=["init","pin","status","tick"])
+    p.add_argument("command",choices=["init","pin","status","tick","bind-assembly"])
+    p.add_argument("--evidence",type=Path)
+    p.add_argument("--catalogue-sha256")
     args=p.parse_args(argv)
     try:
         q=StudioQueue(args.db)
@@ -412,9 +509,16 @@ def main(argv:list[str]|None=None)->int:
         else:
             if args.plan is None:
                 raise OrchestrationError("Private --plan required.")
-            result=(coord.pin(args.plan) if args.command=="pin" else
-                    coord.status(args.plan) if args.command=="status" else
-                    coord.tick(args.plan))
+            if args.command=="bind-assembly":
+                if args.evidence is None or args.catalogue_sha256 is None:
+                    raise OrchestrationError("M14 evidence and catalogue SHA required.")
+                result=coord.bind_assembly(
+                    args.plan,evidence_file=args.evidence,
+                    catalogue_sha256=args.catalogue_sha256)
+            else:
+                result=(coord.pin(args.plan) if args.command=="pin" else
+                        coord.status(args.plan) if args.command=="status" else
+                        coord.tick(args.plan))
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0 if result["status"]!="M32_BLOCKED_NO_JOB_QUEUED" else 1
     except (OrchestrationError,SceneError,SeriesError,RepairError,QueueError,
