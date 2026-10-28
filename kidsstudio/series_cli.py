@@ -100,6 +100,12 @@ def main(argv: list[str] | None = None) -> int:
     scene_job.add_argument("scene",type=int)
     scene_job.add_argument("--stage",required=True,choices=["voice_synthesize","ltx_animate"])
     scene_job.add_argument("--recipe",required=True)
+    pilot=commands.add_parser("queue-first-voice-pilot")
+    pilot.add_argument("series_id")
+    pilot.add_argument("episode",type=int)
+    pilot.add_argument("--recipe",required=True)
+    pilot.add_argument("--plan-sha256",required=True)
+    pilot.add_argument("--owner-note",required=True)
     commands.add_parser("sync-scene-stages")
     scene_audio=commands.add_parser("register-scene-audio")
     scene_audio.add_argument("series_id")
@@ -137,6 +143,12 @@ def main(argv: list[str] | None = None) -> int:
             job=scenes.queue_stage(args.series_id,args.episode,args.scene,
                                    args.stage,args.recipe)
             result={"job_id":job,"status":"SCENE_MEDIA_QUEUED"}
+        elif args.cmd=="queue-first-voice-pilot":
+            job=scenes.queue_first_voice_pilot(
+                args.series_id,args.episode,args.recipe,
+                args.plan_sha256,args.owner_note)
+            result={"job_id":job,
+                    "status":"FIRST_SCENE_VOICE_QUEUED_OWNER_APPROVED_NO_MODEL_RUN"}
         elif args.cmd=="sync-scene-stages":
             result={"updated_stages":scenes.reconcile()}
         elif args.cmd=="register-scene-audio":
