@@ -58,13 +58,25 @@ def check_readiness(queue: StudioQueue, archive_dir: str | Path,
         qa=db.execute("""SELECT * FROM studio_quality_reviews
             WHERE series_id=? AND ordinal=? AND render_job_id=?""",
             (series_id,ordinal,ep["render_job_id"])).fetchone()
-        if (qa is None or qa["state"]!="READY_FOR_OWNER_EPISODE_APPROVAL" or
+        ai_mode=bool(qa and qa["state"]=="AI_INTERNAL_READY_PRIVATE_ONLY")
+        if (qa is None or qa["state"] not in (
+            "READY_FOR_OWNER_EPISODE_APPROVAL","AI_INTERNAL_READY_PRIVATE_ONLY") or
             qa["checks_passed"]!=11 or
             not qa["review_report_sha256"] or
             not SHA.fullmatch(qa["review_report_sha256"]) or
             not SHA.fullmatch(qa["tech_report_sha256"]) or
             qa["media_sha256"]!=video_sha):
-            raise PrivateReleaseError("M7 technical and human QA on current render required.")
+            raise PrivateReleaseError("Current M7 technical plus owner/independent AI QA required.")
+        if ai_mode:
+            ai=db.execute("""SELECT * FROM studio_ai_final_reviews
+                WHERE series_id=? AND ordinal=? AND render_job_id=?""",
+                (series_id,ordinal,ep["render_job_id"])).fetchone()
+            if (not ai or ai["status"]!="AI_INTERNAL_READY_PRIVATE_ONLY" or
+                ai["media_sha256"]!=video_sha or
+                ai["script_sha256"]!=ep["source_sha256"] or
+                ai["review_bundle_sha256"]!=qa["review_report_sha256"] or
+                ai["pedagogy_provider"]==ai["visual_provider"]):
+                raise PrivateReleaseError("Independent M27 AI reviewer receipts missing.")
         stages=db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_episode_stages'""").fetchone()
         if stages:
@@ -138,7 +150,7 @@ def check_readiness(queue: StudioQueue, archive_dir: str | Path,
         ("episode_master",video_sha),
         ("approved_script",ep["source_sha256"]),
         ("technical_qa",qa["tech_report_sha256"]),
-        ("owner_qa",qa["review_report_sha256"]),
+        ("agent_qa" if ai_mode else "owner_qa",qa["review_report_sha256"]),
     ):
         if items.get(role)!=expected:
             raise PrivateReleaseError(f"Archived {role} differs from approved receipt.")
@@ -149,10 +161,13 @@ def check_readiness(queue: StudioQueue, archive_dir: str | Path,
         "render_job_id":ep["render_job_id"],
         "video_sha256":video_sha,
         "archive_manifest_sha256":archive["archive_manifest_sha256"],
-        "owner_final_qa":True,
+        "owner_final_qa":not ai_mode,
+        "ai_internal_review_approved":ai_mode,
         "upload_performed":False,"video_visibility":"NOT_SET",
         "public_release_authorized":False,
-        "next_action":"Owner manually reviews private-upload settings and authorizes separately.",
+        "next_action":("Owner final review occurs AFTER successful PRIVATE upload."
+                       if ai_mode else
+                       "Owner manually reviews private-upload settings and authorizes separately."),
     }
 
 
