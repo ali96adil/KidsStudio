@@ -50,8 +50,11 @@ def _exact_file(file:str,expected:str,root:Path,*,executable:bool,
     if source.is_symlink():
         raise ModelBundleError("Symlinked model or executable denied.")
     if model:
-        return verify_checkpoint(source,expected,private_root=root,
-                                 allow_directory=allow_directory)
+        try:
+            return verify_checkpoint(source,expected,private_root=root,
+                                     allow_directory=allow_directory)
+        except ModelPackageError as exc:
+            raise ModelBundleError("Pinned local reviewer checkpoint rejected.") from exc
     if not source.is_file():
         raise ModelBundleError("Executable must be a regular file.")
     real=Path(_binary(str(source)))
