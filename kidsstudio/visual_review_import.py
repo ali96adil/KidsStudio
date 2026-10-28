@@ -181,6 +181,44 @@ def import_visual_review(*, queue: StudioQueue, series_id: str,
     if execute and not tech:
         # Atomic current-Pi/source/voice revalidation inside M13 registration.
         SceneLedger(queue).register_audio(series_id, episode, scene, m10_report)
+    if execute:
+        # Immutable audit of why this specific LTX job remains pending.
+        # It is an observation, NEVER a signed M28 approval/repair trigger.
+        # A crash after M10 but before this write is safe to retry.
+        with queue._connection(write=True) as db:
+            db.execute("""CREATE TABLE IF NOT EXISTS
+                studio_scene_visual_observations(
+                series_id TEXT NOT NULL, ordinal INTEGER NOT NULL,
+                scene INTEGER NOT NULL, ltx_job_id TEXT NOT NULL,
+                report_sha256 TEXT NOT NULL, technical_sha256 TEXT NOT NULL,
+                state TEXT NOT NULL CHECK(state='AV_AUDIO_REVIEW_REQUIRED'),
+                created_at REAL NOT NULL,
+                PRIMARY KEY(series_id, ordinal, scene, ltx_job_id)
+            )""")
+            current = db.execute("""SELECT s.job_id,s.state,t.report_sha256
+                FROM studio_scene_stages s JOIN studio_scene_audio_checks t
+                ON t.series_id=s.series_id AND t.ordinal=s.ordinal
+                AND t.scene=s.scene AND t.ltx_job_id=s.job_id
+                WHERE s.series_id=? AND s.ordinal=? AND s.scene=?
+                AND s.stage='ltx_animate'""",
+                (series_id,episode,scene)).fetchone()
+            if (not current or current["job_id"]!=signed["job_id"] or
+                current["state"]!="PENDING_QA" or
+                current["report_sha256"]!=tech_sha):
+                raise VisionImportError("Current M10 or LTX stage changed during import.")
+            old=db.execute("""SELECT report_sha256,technical_sha256
+                FROM studio_scene_visual_observations
+                WHERE series_id=? AND ordinal=? AND scene=?
+                AND ltx_job_id=?""",
+                (series_id,episode,scene,signed["job_id"])).fetchone()
+            if old and (old["report_sha256"]!=signed_sha or
+                        old["technical_sha256"]!=tech_sha):
+                raise VisionImportError("Different visual review already frozen for this job.")
+            if not old:
+                db.execute("""INSERT INTO studio_scene_visual_observations
+                    VALUES (?,?,?,?,?,?,?,?)""",
+                    (series_id,episode,scene,signed["job_id"],signed_sha,
+                     tech_sha,"AV_AUDIO_REVIEW_REQUIRED",queue.clock()))
     return {
         "status": ("M36_VISUAL_REVIEW_AV_EVIDENCE_REQUIRED" if execute
                    else "M36_SIGNED_CURRENT_VISUAL_PREFLIGHT_NO_WRITES"),
