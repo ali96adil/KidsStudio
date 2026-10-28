@@ -219,6 +219,7 @@ def assess_model_evidence(*,model:str|Path,model_sha256:str,
             canary.get("public_release_authorized") is not False or
             not isinstance(canary.get("findings"),list) or
             len(canary["findings"])!=4 or
+            any(not isinstance(x,dict) for x in canary["findings"]) or
             {x.get("case_id") for x in canary["findings"]}!=
             {x["id"] for x in canaries}):
             raise EvidenceReadinessError("Canary score cannot be passed off as owner-qualified ground truth.")
