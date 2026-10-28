@@ -41,7 +41,7 @@ class FakeOllamaOpener:
             checks=["age_appropriate","visual_consistency","no_unsafe_content"]
         answer={"summary":"Synthetic evaluator mock, not actual Ollama inference. Unit test only.",
                 "checks":{key:{
-                    "decision":"UNSURE" if key=="lip_sync" else "PASS",
+                    "decision":"UNSURE" if key in ("lip_sync","voice_continuity") else "PASS",
                     "evidence":"Synthetic evaluation. This is mock output, not vision evidence: "+key
                 } for key in checks}}
         return FakeResult(json.dumps({"done":True,
