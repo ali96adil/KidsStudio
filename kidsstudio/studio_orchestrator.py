@@ -527,7 +527,10 @@ class StudioOrchestrator:
                     catalogue_sha=binding["catalogue_sha256"]
             job=self.series.queue_render(sid,num,
                 plan["assembly"]["recipe_id"],media_kind="episode_assemble",
-                catalogue_sha256=catalogue_sha)
+                catalogue_sha256=catalogue_sha,
+                orchestrator_plan_sha256=current_sha,
+                require_orchestrator_binding=(
+                    plan["assembly"]["catalogue_sha256"]==PENDING_ASSEMBLY))
         else:
             return {"status":"M32_NO_APPROVED_AUTOMATED_ACTION",
                     "next_action":action,
