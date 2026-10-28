@@ -5,6 +5,7 @@ It uses the existing local SQLite queue and its atomic job/audit contract.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -307,12 +308,25 @@ class SeriesManager:
 
     def queue_render(self, series_id: str, ordinal: int,
                      recipe_id: str, *, media_kind: str = "godot_render",
-                     catalogue_sha256: str | None = None) -> str:
-        """Owner-only action; Mac validates locally pinned recipe and assets."""
+                     catalogue_sha256: str | None = None,
+                     orchestrator_plan_sha256: str | None = None,
+                     require_orchestrator_binding: bool = False) -> str:
+        """Atomically fence M32 scene/catalogue pins before render enqueue.
+
+        The optional M50 guards are for StudioOrchestrator. Existing explicit
+        owner queue calls keep their pre-existing requirements.
+        """
         if not isinstance(recipe_id,str) or not RECIPE.fullmatch(recipe_id):
             raise SeriesError("Use a pinned local recipe identifier.")
         if media_kind not in ("godot_render", "episode_assemble"):
             raise SeriesError("Unsupported media kind.")
+        if orchestrator_plan_sha256 is not None and (
+            media_kind != "episode_assemble" or
+            not isinstance(orchestrator_plan_sha256,str) or
+            not DIGEST.fullmatch(orchestrator_plan_sha256)):
+            raise SeriesError("M50 requires exact M32 orchestration plan SHA.")
+        if require_orchestrator_binding and orchestrator_plan_sha256 is None:
+            raise SeriesError("M50 deferred catalogue requires orchestrator pin.")
         with self.queue._connection(write=True) as db:
             paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
             if not paused or paused["paused"]:
@@ -340,8 +354,8 @@ class SeriesManager:
             requires_frozen_catalogue=False
             if db.execute("""SELECT 1 FROM sqlite_master WHERE
                 type='table' AND name='studio_scene_plans'""").fetchone():
-                scene_plan=db.execute("""SELECT 1 FROM studio_scene_plans
-                    WHERE series_id=? AND ordinal=?""",
+                scene_plan=db.execute("""SELECT plan_sha256,episode_script_sha256
+                    FROM studio_scene_plans WHERE series_id=? AND ordinal=?""",
                     (series_id,ordinal)).fetchone()
                 if scene_plan:
                     requires_frozen_catalogue=True
@@ -358,6 +372,41 @@ class SeriesManager:
                 raise SeriesError("M14 multi-scene owner catalogue SHA256 is mandatory.")
             if not requires_frozen_catalogue and catalogue_sha256 is not None:
                 raise SeriesError("Catalogue SHA is only supported on M13 multi-scene recipes.")
+            # M50: the final M32 plan and (for deferred montage) the exact
+            # evidence/catalogue binding are checked INSIDE the same SQLite
+            # write transaction which creates the render job. An older status
+            # snapshot can never authorize a newer, changed scene plan.
+            if orchestrator_plan_sha256 is not None:
+                pinned=db.execute("""SELECT plan_sha256,script_sha256,
+                    scene_plan_sha256 FROM studio_orchestrator_plans
+                    WHERE series_id=? AND ordinal=?""",
+                    (series_id,ordinal)).fetchone()
+                active=db.execute("""SELECT state FROM studio_series
+                    WHERE series_id=?""",(series_id,)).fetchone()
+                if (not requires_frozen_catalogue or not pinned or not scene_plan
+                    or not active or active["state"]!="ACTIVE"
+                    or pinned["plan_sha256"]!=orchestrator_plan_sha256
+                    or pinned["script_sha256"]!=ep["source_sha256"]
+                    or pinned["scene_plan_sha256"]!=scene_plan["plan_sha256"]
+                    or scene_plan["episode_script_sha256"]!=ep["source_sha256"]):
+                    raise SeriesError("M50 pinned plan changed before atomic enqueue.")
+                if require_orchestrator_binding:
+                    binding=db.execute("""SELECT plan_sha256,catalogue_sha256,
+                        scene_set_sha256 FROM studio_orchestrator_assembly_bindings
+                        WHERE series_id=? AND ordinal=?""",
+                        (series_id,ordinal)).fetchone()
+                    from .studio_scenes import assert_scenes_ready
+                    ready=assert_scenes_ready(db,series_id,ordinal,
+                                              ep["source_sha256"])
+                    frozen=hashlib.sha256(json.dumps(
+                        ready,sort_keys=True,ensure_ascii=False,
+                        separators=(",",":"),allow_nan=False
+                    ).encode("utf-8")).hexdigest()
+                    if (not binding or
+                        binding["plan_sha256"]!=orchestrator_plan_sha256 or
+                        binding["catalogue_sha256"]!=catalogue_sha256 or
+                        binding["scene_set_sha256"]!=frozen):
+                        raise SeriesError("M50 catalogue/scene binding changed before enqueue.")
             key=(f"series:{series_id}:episode:{ordinal}:"
                  f"render:{media_kind}:a{ep['render_attempt']}:{ep['source_sha256'][:16]}")
             payload_data=({"recipe_id":recipe_id,
