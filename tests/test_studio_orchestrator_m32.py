@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 from kidsstudio.studio_queue import StudioQueue
-from kidsstudio.series_manager import SeriesManager
+from kidsstudio.series_manager import SeriesManager,SeriesError
 from kidsstudio.studio_scenes import SceneLedger
 from kidsstudio.script_ai_quality import ScriptAIQuality
 from kidsstudio.studio_orchestrator import StudioOrchestrator,OrchestrationError
@@ -160,6 +160,12 @@ class Orchestration32(unittest.TestCase):
         self.approve(2,"ltx_animate",video2)
         self.assertEqual(self.coord.status(self.plan)["next_action"],
                          "ASSEMBLE_FINAL_EPISODE")
+        self.queue.set_paused(True)
+        self.assertEqual(self.coord.tick(self.plan)["next_action"],"PAUSED")
+        with self.assertRaises(SeriesError):
+            self.manager.queue_render("colors-ar",1,"assembly_one",
+                media_kind="episode_assemble",catalogue_sha256="d"*64)
+        self.queue.set_paused(False)
         assembled=self.coord.tick(self.plan)
         self.assertEqual(assembled["action"],"ASSEMBLE_FINAL_EPISODE")
         self.assertEqual(self.queue.get(assembled["job_id"])["kind"],"episode_assemble")
