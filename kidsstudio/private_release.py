@@ -78,6 +78,24 @@ def check_readiness(queue: StudioQueue, archive_dir: str | Path,
                     x["script_sha256"]!=ep["source_sha256"] for x in current)
             ):
                 raise PrivateReleaseError("Audio/animation stage QA incomplete.")
+            if current and db.execute("""SELECT 1 FROM sqlite_master
+                    WHERE type='table' AND name='studio_audio_checks'""").fetchone():
+                lineage=db.execute("""SELECT stage,job_id,artifact_sha256 FROM
+                    studio_episode_stages WHERE series_id=? AND ordinal=?""",
+                    (series_id,ordinal)).fetchall()
+                kinds={item["stage"]:item for item in lineage}
+                voice=kinds.get("voice_synthesize")
+                ltx=kinds.get("ltx_animate")
+                audio=(db.execute("""SELECT voice_sha256,a2v_sha256,status
+                     FROM studio_audio_checks WHERE series_id=? AND ordinal=?
+                     AND ltx_job_id=?""",
+                     (series_id,ordinal,ltx["job_id"])).fetchone()
+                     if voice and ltx else None)
+                if (not audio or
+                    audio["voice_sha256"]!=voice["artifact_sha256"] or
+                    audio["a2v_sha256"]!=ltx["artifact_sha256"] or
+                    audio["status"]!="TECH_COMPATIBLE_OWNER_LIPSYNC_REVIEW_PENDING"):
+                    raise PrivateReleaseError("Current LTX audio technical evidence missing.")
     items={x["role"]:x["sha256"] for x in archive["files"]}
     for role, expected in (
         ("episode_master",video_sha),
