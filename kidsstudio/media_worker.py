@@ -19,9 +19,11 @@ from .cycle import run_character_cycle
 from .workflow_audit import audit_character_workflow
 from .godot_render import render_godot_project
 from .episode_assembly import EpisodeAssembler, EpisodeAssemblyError
+from .voice_animation_stage import StagePlan, StageError
 from .remote_worker import RemoteClient, RemoteWorkerError
 
-MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble"})
+MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble",
+                         "voice_synthesize", "ltx_animate"})
 HEX = re.compile(r"^[a-f0-9]{64}$")
 SAFE = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 JOB = re.compile(r"^[a-f0-9]{32}$")
@@ -80,7 +82,8 @@ class MediaRecipes:
             names = (
                 ("blueprint", "workflow", "profile", "reference")
                 if kind == "character_generate" else
-                (("project_report",) if kind == "godot_render" else ("episode_recipe",))
+                (("project_report",) if kind == "godot_render" else
+                 ("episode_recipe",) if kind == "episode_assemble" else ("stage_recipe",))
             )
             if (not isinstance(inputs, dict) or not isinstance(pins, dict) or
                 set(inputs) != set(names) or set(pins) != set(names)):
@@ -219,6 +222,15 @@ class MediaExecutor:
             if artifact != (dest / "episode_qa_master.mp4").resolve():
                 raise MediaError("Unexpected episode output location.")
             status = "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"
+        elif kind in ("voice_synthesize", "ltx_animate"):
+            stage = StagePlan(recipe["inputs"]["stage_recipe"])
+            if stage.kind != kind or stage.output_root != Path(recipe["output_root"]).resolve():
+                raise MediaError("Pinned media stage type/output root mismatch.")
+            report = stage.run(job_id)
+            artifact = (dest / ("narration.wav" if kind == "voice_synthesize" else "a2v.mp4")).resolve()
+            if not artifact.is_file() or report["artifact_sha256"] != _sha(artifact):
+                raise MediaError("Generated stage output digest disagrees with receipt.")
+            status = report["status"]
         elif kind == "character_generate":
             ins = recipe["inputs"]
             result = run_character_cycle(
@@ -238,7 +250,9 @@ class MediaExecutor:
             "result_status": status,
             "artifact_sha256": _sha(artifact),
             "artifact_bytes": artifact.stat().st_size,
-            "artifact_type": "mp4" if kind in ("godot_render", "episode_assemble") else "rig_report",
+            "artifact_type": ("wav" if kind == "voice_synthesize" else "mp4"
+                              if kind in ("godot_render","episode_assemble","ltx_animate")
+                              else "rig_report"),
             "publication_approved": False,
         }
 
@@ -263,8 +277,10 @@ class RemoteMediaWorker:
         if (not isinstance(job_id, str) or not JOB.fullmatch(job_id) or
             type(generation) is not int or generation < 1 or
             not isinstance(payload, dict) or
-            set(payload) != ({"recipe_id","script_sha256"} if
-                             job.get("kind")=="episode_assemble" else
+            set(payload) != ({"recipe_id","script_sha256","voice_sha256"} if
+                             job.get("kind")=="ltx_animate" else
+                             {"recipe_id","script_sha256"} if
+                             job.get("kind") in ("episode_assemble","voice_synthesize") else
                              {"recipe_id"})):
             if isinstance(job_id, str) and JOB.fullmatch(job_id) and (
                 type(generation) is int and generation >= 1
@@ -285,7 +301,14 @@ class RemoteMediaWorker:
                 assembler = EpisodeAssembler(local_recipe["inputs"]["episode_recipe"])
                 if assembler.recipe["script"]["sha256"] != payload["script_sha256"]:
                     raise MediaError("Script hash disagrees with owner-approved episode.")
-        except (MediaError, EpisodeAssemblyError, OSError, ValueError):
+            elif kind in ("voice_synthesize", "ltx_animate"):
+                stage = StagePlan(local_recipe["inputs"]["stage_recipe"])
+                evidence = stage.preflight()
+                if stage.kind != kind or evidence["script_sha256"] != payload["script_sha256"]:
+                    raise MediaError("Media stage or approved script mismatch.")
+                if kind == "ltx_animate" and evidence["source_voice_sha256"] != payload["voice_sha256"]:
+                    raise MediaError("LTX source WAV differs from approved voice receipt.")
+        except (MediaError, EpisodeAssemblyError, StageError, OSError, ValueError):
             try:
                 self.pi.call("fail", {
                     "job_id": job_id, "generation": generation,
