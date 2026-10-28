@@ -217,6 +217,57 @@ class SceneWorkflowTests(unittest.TestCase):
             recipe_id="ep01_verified_v1",video_prober=fake_probe)
         return result,path,proof,catalog
 
+    def test_m49_real_m14_catalogue_binds_to_deferred_pi_and_mac(self):
+        # Crosses M13 -> M14 (real private JSON) -> M48/M49 (Pi binding)
+        # -> M16 (Mac original catalogue lookup), with NO real model calls.
+        from kidsstudio.studio_orchestrator import StudioOrchestrator
+        _,recipe,evidence,catalogue=self.freeze_for_mac_worker()
+        with self.queue._connection() as db:
+            plan_sha=db.execute("""SELECT plan_sha256 FROM studio_scene_plans
+                WHERE series_id='colors-ar' AND ordinal=1""").fetchone()[0]
+        operator_plan=self.root/"operator_scene_plan.json"
+        operator_plan.write_text(json.dumps({
+            "schema_version":1,"series_id":"colors-ar","episode_number":1,
+            "script_sha256":sha(self.parent),"scene_plan_sha256":plan_sha,
+            "scenes":[{
+                "scene":i,"script_sha256":sha(self.scene_text[i-1]),
+                "voice_recipe":f"voice_scene{i}",
+                "ltx_recipe":f"ltx_scene{i}"
+            } for i in (1,2)],
+            "assembly":{"recipe_id":"ep01_verified_v1",
+                        "catalogue_sha256":"AFTER_SCENE_QA"},
+            "public_release_authorized":False
+        }))
+        coordinator=StudioOrchestrator(self.queue)
+        coordinator.initialize()
+        coordinator.pin(operator_plan)
+        self.assertEqual(coordinator.status(operator_plan)["next_action"],
+                         "M48_ASSEMBLY_CATALOGUE_NOT_BOUND")
+        self.assertEqual(coordinator.tick(operator_plan)["status"],
+                         "M32_BLOCKED_NO_JOB_QUEUED")
+        with self.assertRaises(Exception):
+            coordinator.bind_assembly(
+                operator_plan,evidence_file=evidence,
+                catalogue_file=catalogue,catalogue_sha256="f"*64)
+        bound=coordinator.bind_assembly(
+            operator_plan,evidence_file=evidence,
+            catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        self.assertEqual(bound["scene_evidence_sha256"],sha(evidence))
+        self.assertEqual(bound["catalogue_sha256"],sha(catalogue))
+        self.assertFalse(bound["render_job_queued"])
+        self.assertEqual(coordinator.status(operator_plan)["next_action"],
+                         "ASSEMBLE_FINAL_EPISODE")
+        queued=coordinator.tick(operator_plan)
+        self.assertEqual(queued["action"],"ASSEMBLE_FINAL_EPISODE")
+        payload=json.loads(self.queue.get(queued["job_id"])["payload"])
+        self.assertEqual(payload["catalogue_sha256"],sha(catalogue))
+        self.assertEqual(payload["recipe_id"],"ep01_verified_v1")
+        local=MediaRecipes(catalogue).resolve(
+            "episode_assemble","ep01_verified_v1")
+        self.assertEqual(local["sha256"]["episode_recipe"],sha(recipe))
+        self.assertEqual(local["sha256"]["scene_evidence"],sha(evidence))
+        self.assertFalse((self.root/"assembled").exists())
+
     def test_m14_owner_frozen_catalogue_rechecks_all_real_scene_files(self):
         result,recipe,proof,catalog=self.freeze_for_mac_worker()
         self.assertEqual(result["status"],
