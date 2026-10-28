@@ -187,20 +187,19 @@ class Coordinator:
                     not isinstance(item["owner_review_note"],str) or
                     len(item["owner_review_note"].strip())<5):
                     raise TransportError("Pilot plan/parent/scene/approval changed.")
+                from .script_gate import current_script_mode
                 if (db.execute("""SELECT COUNT(*) FROM studio_scene_stages
                     WHERE series_id=? AND ordinal=?""",
                     (item["series_id"],item["ordinal"])).fetchone()[0]!=1 or
-                    not db.execute("""SELECT 1 FROM studio_series_audit
-                    WHERE series_id=? AND ordinal=?
-                    AND action='SCRIPT_APPROVED_BY_OWNER'""",
-                    (item["series_id"],item["ordinal"])).fetchone()):
-                    raise TransportError("Pilot duplicate stages or owner audit missing.")
+                    current_script_mode(db,item["series_id"],item["ordinal"]) is None):
+                    raise TransportError("Pilot stage or current owner/M30 approval proof missing.")
                 db.execute("COMMIT")
             return {"status":"PINNED_SINGLE_VOICE_LEASE_CURRENT_NOT_EXECUTED",
                     "job_id":leased["job_id"],"generation":leased["generation"],
                     "pilot_scene":1,"pilot_plan_sha256":plan_sha,
                     "script_sha256":script_sha,"recipe_id":recipe_id,
-                    "model_execution_authorized":False,"publication_approved":False}
+                    "model_execution_authorized":False,"publication_approved":False,
+                    "server_time":self.queue.clock()}
 
         if action == "request-private-upload":
             if "youtube_private_upload" not in capabilities:
