@@ -141,15 +141,13 @@ class ScriptAIQualityTests(unittest.TestCase):
         with self.queue._connection() as db:
             self.assertIsNone(db.execute("""SELECT 1 FROM studio_series_audit
                 WHERE action='SCRIPT_APPROVED_BY_OWNER'""").fetchone())
-        pilot=scenes.queue_first_voice_pilot(
+        pilot=scenes.queue_first_voice_ai(
             "colors-ar",1,"first_synthetic_voice",
-            registered["plan_sha256"],
-            "M30 two-provider AI script reviewed before private-only pilot")
+            registered["plan_sha256"])
         self.assertEqual(len(pilot),32)
         with self.assertRaises(SceneError):
-            scenes.queue_first_voice_pilot("colors-ar",1,"other_recipe",
-                 registered["plan_sha256"],
-                 "Replayed pilot without immutable media reconciliation")
+            scenes.queue_first_voice_ai("colors-ar",1,"other_recipe",
+                 registered["plan_sha256"])
 
     def test_second_reviewer_must_not_be_same_provider(self):
         self.models=FakeModels(same=True)
