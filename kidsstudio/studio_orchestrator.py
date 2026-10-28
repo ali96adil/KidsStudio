@@ -257,6 +257,12 @@ class StudioOrchestrator:
                     any(evidence[key]!=scene[key] for key in (
                         "voice_job_id","ltx_job_id","voice_sha256","ltx_sha256"))):
                     raise OrchestrationError("M14 metadata differs from current Pi scene receipts.")
+            # Narrow the time-of-check/time-of-use window: neither copy
+            # may change between metadata parsing, Pi QA verification and
+            # the durable one-time binding.
+            if (digest(local_catalogue)!=catalogue_sha256 or
+                digest(source)!=evidence_sha):
+                raise OrchestrationError("M14 evidence/catalogue changed during binding.")
             bound=_scene_set_sha(current)
             db.execute("""INSERT INTO studio_orchestrator_assembly_bindings
                 (series_id,ordinal,plan_sha256,catalogue_sha256,
