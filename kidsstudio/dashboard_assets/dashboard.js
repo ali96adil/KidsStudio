@@ -101,6 +101,16 @@
       list.append(part);
     }
     host.append(list);
+    const qa=episode.quality||{state:"NOT_CONFIGURED",criteria_passed:0};
+    const states={
+      NOT_CONFIGURED:"نظام فحص M7 غير مفعّل",
+      NOT_STARTED:"الفحص النهائي لم يبدأ",
+      TECH_PASSED_WAITING_HUMAN:"الفحص التقني ناجح · بانتظار المراجعة البشرية",
+      READY_FOR_OWNER_EPISODE_APPROVAL:"المراجعة موثقة · بانتظار اعتماد الحلقة"
+    };
+    host.append(make("p","small-explainer",
+      "فحص الجودة M7: "+(states[qa.state]||"تحتاج مراجعة فنية")+" · "+
+      fmt(qa.criteria_passed||0)+" من 11 معياراً موثقاً"));
     const note=make("p","small-explainer",
        "ملاحظة: مراحل الصوت والتحريك وتحسين الوجه لا تُعلن كمكتملة بدون سجلات تشغيل موثّقة منفصلة.");
     host.append(note);
