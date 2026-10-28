@@ -173,8 +173,22 @@ class SeriesManager:
                 topic=(f"Series {sid}, episode {ordinal}: {ep['title']}. "
                        f"Learning objective: {ep['objective']}. "
                        "Continue this curriculum in order.")
-                payload=_json_object({"language":language,"topic":topic,
-                                      "auto_review":True},"payload")
+                request={"language":language,"topic":topic,"auto_review":True}
+                # M15 learning may influence a FUTURE original draft, never
+                # change approved episodes or bypass independent editorial QA.
+                if db.execute("""SELECT 1 FROM sqlite_master WHERE
+                    type='table' AND name='studio_learning_proposals'""").fetchone():
+                    adoption=db.execute("""SELECT proposal_id,feature_name,
+                        winning_style FROM studio_learning_proposals
+                        WHERE series_id=? AND status='ADOPT_FOR_FUTURE_EXPERIMENT'
+                        ORDER BY decided_at DESC LIMIT 1""",(sid,)).fetchone()
+                    if adoption:
+                        request["learning_experiment"]={
+                            "proposal_id":adoption["proposal_id"],
+                            "feature":adoption["feature_name"],
+                            "style":adoption["winning_style"]
+                        }
+                payload=_json_object(request,"payload")
                 if len(topic)>400:
                     raise SeriesError("Lesson topic exceeds worker input size.")
                 prior=db.execute("SELECT * FROM jobs WHERE request_key=?",
