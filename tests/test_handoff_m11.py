@@ -312,6 +312,122 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaises(PilotPreflightError):
             check()
 
+    def prepare_m20_snapshot(self, *, owner_audit=True):
+        import sqlite3
+        from kidsstudio.studio_queue import StudioQueue
+        from kidsstudio.series_manager import SeriesManager
+        from kidsstudio.studio_scenes import SceneLedger
+        from kidsstudio.m13_snapshot_gate import verify_two_scene_snapshot
+
+        _, plan, scripts, recipes = self.build_two_scene_pilot()
+        queue = StudioQueue(self.root / "m20_live_source.sqlite")
+        queue.initialize()
+        manager = SeriesManager(queue)
+        manager.initialize()
+        manager.create_series("colors-ar", "Learning colors", "ar",
+            [{"title": "The red ball", "objective": "Identify a red ball"}],
+            activate=True)
+        with queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_episodes SET state='SCRIPT_APPROVED',
+                source_sha256=?, owner_review_note=? WHERE
+                series_id='colors-ar' AND ordinal=1""",
+                (sha(self.assets["approved_script"]),
+                 "Owner listened and read both original scene scripts"))
+            if owner_audit:
+                manager._audit(db, "colors-ar", 1, "SCRIPT_APPROVED_BY_OWNER")
+        ledger = SceneLedger(queue)
+        ledger.initialize()
+        ledger.register_plan(plan)
+        snapshot = self.root / "m20_offline_backup.sqlite"
+        # SQLite online backup gives a consistent, WAL-free, closed file.
+        with sqlite3.connect(queue.path) as source:
+            with sqlite3.connect(snapshot) as destination:
+                source.backup(destination)
+        pinned_backup_sha = sha(snapshot)
+        pinned_plan_sha = sha(plan)
+
+        def check(*, snapshot_sha=None, plan_sha=None):
+            return verify_two_scene_snapshot(
+                self.contract_file, plan,
+                expected_plan_sha256=plan_sha or pinned_plan_sha,
+                scene_scripts=tuple(scripts),
+                voice_recipes=tuple(recipes),
+                pi_snapshot=snapshot,
+                pi_snapshot_sha256=snapshot_sha or pinned_backup_sha,
+                system="Darwin", arch="arm64",
+                memory_bytes=48*1024**3, free_bytes=110*1024**3,
+            )
+        return check, queue, plan, scripts, recipes, snapshot
+
+    def test_m20_offline_registered_m13_records_match_mac_without_any_execution(self):
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        before = {str(p): sha(p) for p in self.base.rglob("*") if p.is_file()}
+        result = check()
+        after = {str(p): sha(p) for p in self.base.rglob("*") if p.is_file()}
+        self.assertEqual(result["status"],
+                         "OFFLINE_M13_SNAPSHOT_MATCH_NOT_LIVE_PI_ATTESTED")
+        self.assertEqual(result["scene_count"], 2)
+        self.assertTrue(result["owner_approval_record_found_in_snapshot"])
+        self.assertTrue(result["offline_scene_records_match"])
+        self.assertFalse(result["snapshot_freshness_verified"])
+        self.assertFalse(result["live_pi_state_verified"])
+        self.assertFalse(result["model_inference_performed"])
+        self.assertFalse(result["any_worker_jobs_queued"])
+        self.assertFalse(result["publication_approved"])
+        self.assertEqual(before, after)
+        self.assertNotIn(str(self.base), json.dumps(result))
+        self.assertFalse((self.root / "output").exists())
+
+    def test_m20_rejects_modified_snapshot_bytes_and_stale_plan(self):
+        from kidsstudio.m13_snapshot_gate import SnapshotGateError
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        backup.write_bytes(backup.read_bytes() + b"offline-copy-tampered")
+        with self.assertRaises(SnapshotGateError):
+            check()
+        # Even when the operator repins changed snapshot bytes, M13 still
+        # requires the plan to match the already registered canonical record.
+        with self.assertRaises(SnapshotGateError):
+            check(snapshot_sha=sha(backup))
+
+    def test_m20_rejects_a_re_pinned_snapshot_with_different_scene_objective(self):
+        import sqlite3
+        from kidsstudio.m13_snapshot_gate import SnapshotGateError
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        with sqlite3.connect(backup) as db:
+            db.execute("""UPDATE studio_scenes SET objective='Altered after approval'
+                WHERE series_id='colors-ar' AND ordinal=1 AND scene=2""")
+        with self.assertRaises(SnapshotGateError):
+            check(snapshot_sha=sha(backup))
+
+    def test_m20_requires_owner_audit_not_just_episode_state(self):
+        from kidsstudio.m13_snapshot_gate import SnapshotGateError
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot(
+            owner_audit=False)
+        with self.assertRaises(SnapshotGateError):
+            check()
+
+    def test_m20_rejects_in_progress_stage_even_when_approved_plan_matches(self):
+        from kidsstudio.studio_scenes import SceneLedger
+        from kidsstudio.m13_snapshot_gate import SnapshotGateError
+        import sqlite3
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        SceneLedger(queue).queue_stage(
+            "colors-ar", 1, 1, "voice_synthesize", "voice_scene_01")
+        with sqlite3.connect(queue.path) as src:
+            with sqlite3.connect(backup) as dst:
+                src.backup(dst)
+        with self.assertRaises(SnapshotGateError):
+            check(snapshot_sha=sha(backup))
+
+    def test_m20_rejects_wal_or_shm_snapshot_sidecars_without_writing(self):
+        from kidsstudio.m13_snapshot_gate import SnapshotGateError
+        check, queue, plan, scripts, recipes, backup = self.prepare_m20_snapshot()
+        journal = self.root / (backup.name + "-wal")
+        journal.write_bytes(b"unexpected live database log")
+        with self.assertRaises(SnapshotGateError):
+            check()
+        self.assertEqual(journal.read_bytes(), b"unexpected live database log")
+
     def test_m19_wrong_stage_wrapper_is_blocked_even_if_script_matches(self):
         from kidsstudio.handoff_review import HandoffError
         check, plan, scripts, recipes = self.build_two_scene_pilot()
