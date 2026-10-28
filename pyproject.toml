@@ -63,6 +63,7 @@ studio-qwen-omni-adapter = "kidsstudio.qwen_omni_local:main"
 studio-model-pilot = "kidsstudio.model_pilot_probe:main"
 studio-model-origin = "kidsstudio.model_origin_attestation:main"
 studio-model-readiness = "kidsstudio.model_evidence_readiness:main"
+studio-omni-runtime-compat = "kidsstudio.omni_runtime_compat:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
