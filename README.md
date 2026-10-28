@@ -4,7 +4,7 @@ AI-powered bilingual educational animation studio for children.
 
 **Status:** Early R&D. The Godot/ComfyUI experiments described below were run on a Mac outside this repository; production automation is not yet deployed.
 
-## Current draft implementation (M3–M33, unmerged)
+## Current draft implementation (M3–M34, unmerged)
 
 The connected GitHub draft branch now includes series-first bounded agents,
 scene-by-scene voice/LTX ownership and human QA, Mac source provenance,
@@ -43,7 +43,8 @@ and [M13 multi-scene pipeline](docs/M13_SCENE_PIPELINE.md),
 [M30 two-real-model script review and multi-scene WAV QA](docs/M30_AI_SCRIPT_AND_MULTISCENE_VOICE_QA.md),
 [M31 bounded scene repair with preserved voice and accepted clips](docs/M31_BOUNDED_SCENE_REPAIR.md),
 [M32 conservative one-job orchestrator and integrated device test gate](docs/M32_COORDINATOR_READINESS.md),
-[M33 authenticated AI pilot voice lease + bounded private production cycle](docs/M33_PI_MAC_AUTH_CYCLE.md).
+[M33 authenticated AI pilot voice lease + bounded private production cycle](docs/M33_PI_MAC_AUTH_CYCLE.md),
+[M34 private WAV→Whisper→two actual audio-capable CLI adapters→M23/M28 signed report](docs/M34_LOCAL_AUDIO_MODEL_QA.md).
 
 ## Production principle
 
