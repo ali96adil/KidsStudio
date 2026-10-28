@@ -189,6 +189,16 @@ class Repair31(unittest.TestCase):
                 SET state='AI_SCENE_READY_PRIVATE_ONLY'""")
         self.assertEqual(self.repair.run_once()["status"],"M31_NO_ELIGIBLE_REPAIRS")
 
+    def test_negative_ai_technical_report_must_still_match_current_m23(self):
+        self.render();self.fail_ai();self.repair.register_plan(self.plan())
+        with self.q._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_ai_reviews SET
+                technical_sha256=? WHERE scene=1 AND
+                stage='voice_synthesize'""",("e"*64,))
+        self.assertEqual(self.repair.run_once()["status"],"M31_NO_ELIGIBLE_REPAIRS")
+        with self.q._connection() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM studio_scene_repair_attempts").fetchone()[0],0)
+
     def test_paused_queue_or_inactive_series_cannot_dispatch(self):
         self.render();self.fail_ai();self.repair.register_plan(self.plan())
         self.q.set_paused(True)
