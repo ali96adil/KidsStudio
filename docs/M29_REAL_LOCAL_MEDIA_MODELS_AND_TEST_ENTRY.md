@@ -19,9 +19,12 @@ binaries or already-existing output paths fail closed.
 **local whisper.cpp `whisper-cli` executable** against a local WAV,
 an exact owner-pinned script TXT and owner-pinned local Whisper
 `.bin` model. It records actual CLI execution, source hashes, model
-hash and UTF-8 transcript bytes. There is no generated AI reviewer
-PASS and no claim that the words, pronunciation, language choice or
-copyright are correct. The first test pass uses a synthetic fake
+hash and UTF-8 transcript bytes. Whisper's 16-kHz mono PCM16 input
+is verified; an original 48-kHz WAV can be converted to a separate
+private inference copy using explicit FFmpeg, without changing the
+pinned original recording. The input hash and conversion flag are
+recorded. There is no generated AI reviewer PASS and no claim that the
+words, pronunciation, language choice or copyright are correct. The first test pass uses a synthetic fake
 Whisper CLI executable; user-model quality is NOT yet verified.
 
 Example safe invocation (future Mac only, with **real** paths and SHA):
@@ -35,6 +38,7 @@ studio-capture-real-evidence asr \
   --whisper /PRIVATE/bin/whisper-cli \
   --model /PRIVATE/models/ggml-medium.bin \
   --model-sha256 EXACT_MODEL_SHA \
+  --ffmpeg /PRIVATE/bin/ffmpeg \
   --language ar --out /PRIVATE/runs/scene01_asr_v01
 ```
 
