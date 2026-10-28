@@ -219,6 +219,20 @@ class FullTwoScenePrivateCycle38(unittest.TestCase):
             self.accept_voice(index,voice)
             ltx=self.queue_stage("NEXT_LTX")
             self.complete_scene_job(ltx,"ltx_animate",self.clips[index-1])
+            if index==2:
+                # Replay of scene one's correctly signed model evidence
+                # cannot approve the second scene or consume its M10.
+                with self.assertRaises(AVImportError):
+                    import_synchronized(queue=self.h.queue,
+                        series_id="colors-ar",episode=1,scene=2,
+                        report_dir=self.media/"scene1_synchronized_av_evidence",
+                        m10_report=self.m10[1],rights_file=self.rights[1],
+                        runner_key=self.av.key,execute=True)
+                with self.h.queue._connection() as db:
+                    self.assertFalse(db.execute("""SELECT 1 FROM
+                        studio_scene_audio_checks WHERE
+                        series_id='colors-ar' AND ordinal=1
+                        AND scene=2""").fetchone())
             self.accept_ltx(index,ltx)
         state=self.h.scenes.snapshot("colors-ar",1)
         self.assertTrue(all(
