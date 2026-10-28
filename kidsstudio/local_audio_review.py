@@ -25,6 +25,7 @@ from .real_media_evidence import (
     media_subprocess_env
 )
 from .voice_qa import inspect_voice,VoiceQAError
+from .model_package import verify_checkpoint, checkpoint_digest, ModelPackageError
 from .scene_ai_qa import ROLE_CHECKS,_private,SceneError,PROVIDER
 
 HEX=re.compile(r"^[a-f0-9]{64}$")
@@ -56,12 +57,9 @@ class AudioRunner:
                    for x in (expected_binary_sha,expected_model_sha))):
             raise AudioModelError("Provider, model and exact executable hashes required.")
         self.binary=_binary(binary)
-        suffix=Path(model).expanduser().suffix.lower()
-        if suffix not in (".bin",".gguf",".safetensors"):
-            raise AudioModelError("Explicit pinned local model checkpoint required.")
-        self.model=private_file(model,suffix,max_bytes=7*1024**3)
+        self.model=verify_checkpoint(model,expected_model_sha)
         if (digest(Path(self.binary))!=expected_binary_sha or
-            digest(self.model)!=expected_model_sha):
+            checkpoint_digest(self.model)!=expected_model_sha):
             raise AudioModelError("Local model runner or checkpoint digest differs.")
         self.binary_sha=expected_binary_sha
         self.model_sha=expected_model_sha
@@ -185,7 +183,7 @@ def review_voice(*,series_id:str,episode:int,scene:int,job_id:str,
                    transcript=transcript,language=language,out_dir=out)
         if (digest(wav)!=wav_sha or digest(script)!=script_sha or
             digest(Path(runner.binary))!=runner.binary_sha or
-            digest(runner.model)!=runner.model_sha):
+            checkpoint_digest(runner.model)!=runner.model_sha):
             raise AudioModelError("Source or approved model changed during inference.")
         reviewers.append({
             "role":role,"provider_id":runner.provider_id,
@@ -274,7 +272,7 @@ def main(argv:list[str]|None=None)->int:
             runner_key=key,out_dir=args.out)
         print(json.dumps(result,ensure_ascii=False,indent=2))
         return 0
-    except (AudioModelError,EvidenceCaptureError,VoiceQAError,SceneError,
+    except (AudioModelError,ModelPackageError,EvidenceCaptureError,VoiceQAError,SceneError,
             OSError,ValueError,TypeError,KeyError) as exc:
         print("M34_AUDIO_REVIEW_BLOCKED: "+type(exc).__name__,file=sys.stderr)
         return 2
