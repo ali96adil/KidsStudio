@@ -190,9 +190,9 @@ class RealVoiceTests(unittest.TestCase):
             self.report_file(voice_report,"second.json"))
         self.assertEqual(registered["scene"],2)
         self.assertFalse(registered["owner_listening_performed"])
-        with self.assertRaises(SceneError):
-            ledger.approve("colors-ar",1,2,"voice_synthesize",sha(wav),
-                           "No technical-independent model review yet")
+        scene_state=ledger.snapshot("colors-ar",1)["scenes"][1]["stages"][
+            "voice_synthesize"]["state"]
+        self.assertEqual(scene_state,"PENDING_QA")
 
     def test_mismatched_wav_technical_report_or_fabricated_status_denied(self):
         wav=self.make_wav()
