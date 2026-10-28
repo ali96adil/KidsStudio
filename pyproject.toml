@@ -47,6 +47,7 @@ studio-private-upload-agent = "kidsstudio.private_upload_agent:main"
 studio-capture-real-evidence = "kidsstudio.real_media_evidence:main"
 studio-real-vision-review = "kidsstudio.local_vision_review:main"
 studio-bind-vision-m10 = "kidsstudio.local_vision_review:main_sign"
+studio-review-script-ai = "kidsstudio.script_ai_quality:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]
