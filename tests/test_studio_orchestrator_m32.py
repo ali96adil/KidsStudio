@@ -220,22 +220,45 @@ class Orchestration32(unittest.TestCase):
         file.write_text(json.dumps(manifest))
         return file
 
+    def _deferred_catalogue(self,evidence):
+        # Pi sees only an owner-transferred copy of the M14 catalogue.
+        # Its original Mac paths are metadata, not files read by the Pi.
+        manifest=json.loads(evidence.read_text())
+        file=self.root/"m14_owner_catalogue.json"
+        file.write_text(json.dumps({
+            "schema_version":1,
+            "recipes":{"assembly_one":{
+                "kind":"episode_assemble",
+                "output_root":str(self.root/"mac_assembled"),
+                "inputs":{
+                    "episode_recipe":str(self.root/"mac_episode_recipe.json"),
+                    "scene_evidence":str(self.root/"mac_scene_evidence.json")},
+                "sha256":{
+                    "episode_recipe":manifest["assembly_recipe_sha256"],
+                    "scene_evidence":sha(evidence)}
+            }}
+        }))
+        return file
+
     def test_m48_deferred_catalogue_binding_allows_real_timing_and_no_overwrite(self):
         self._complete_deferred_scene_stages()
         evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
         bound=self.coord.bind_assembly(
-            self.plan,evidence_file=evidence,catalogue_sha256="b"*64)
+            self.plan,evidence_file=evidence,catalogue_file=catalogue,
+            catalogue_sha256=sha(catalogue))
         self.assertEqual(bound["status"],"M48_FROZEN_ASSEMBLY_PINNED_NO_JOB_QUEUED")
         self.assertFalse(bound["render_job_queued"])
         self.assertEqual(self.coord.status(self.plan)["next_action"],
                          "ASSEMBLE_FINAL_EPISODE")
         with self.assertRaises(OrchestrationError):
             self.coord.bind_assembly(
-                self.plan,evidence_file=evidence,catalogue_sha256="c"*64)
+                self.plan,evidence_file=evidence,catalogue_file=catalogue,
+                catalogue_sha256="c"*64)
         started=self.coord.tick(self.plan)
         self.assertEqual(started["action"],"ASSEMBLE_FINAL_EPISODE")
         job=json.loads(self.queue.get(started["job_id"])["payload"])
-        self.assertEqual(job["catalogue_sha256"],"b"*64)
+        self.assertEqual(job["catalogue_sha256"],sha(catalogue))
         self.assertFalse(started["public_release_authorized"])
 
     def test_m48_rejects_partial_scene_or_swapped_evidence(self):
@@ -245,6 +268,7 @@ class Orchestration32(unittest.TestCase):
         with self.assertRaises(OrchestrationError):
             self.coord.bind_assembly(
                 self.plan,evidence_file=self.root/"nothing.json",
+                catalogue_file=self.root/"missing_catalogue.json",
                 catalogue_sha256="b"*64)
         for scene in (1,2):
             voice=self.coord.tick(self.plan)
@@ -254,16 +278,19 @@ class Orchestration32(unittest.TestCase):
             mp4=self.pass_job(ltx["job_id"],"ltx_animate")
             self.approve(scene,"ltx_animate",mp4)
         evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
         original=json.loads(evidence.read_text())
         swapped=json.loads(evidence.read_text())
         swapped["scenes"][0]["voice_sha256"]="f"*64
         evidence.write_text(json.dumps(swapped))
         with self.assertRaises(OrchestrationError):
             self.coord.bind_assembly(
-                self.plan,evidence_file=evidence,catalogue_sha256="b"*64)
+                self.plan,evidence_file=evidence,catalogue_file=catalogue,
+                catalogue_sha256=sha(catalogue))
         evidence.write_text(json.dumps(original))
         self.coord.bind_assembly(
-            self.plan,evidence_file=evidence,catalogue_sha256="b"*64)
+            self.plan,evidence_file=evidence,catalogue_file=catalogue,
+                catalogue_sha256=sha(catalogue))
         with self.queue._connection(write=True) as db:
             db.execute("""UPDATE studio_scene_stages SET artifact_sha256=?
                 WHERE series_id='colors-ar' AND ordinal=1 AND scene=2
@@ -274,6 +301,51 @@ class Orchestration32(unittest.TestCase):
         self.assertNotEqual(state["next_action"],"ASSEMBLE_FINAL_EPISODE")
         self.assertEqual(self.coord.tick(self.plan)["status"],
                          "M32_BLOCKED_NO_JOB_QUEUED")
+
+    def test_m49_rejects_forged_catalogue_metadata_and_wrong_digest(self):
+        self._complete_deferred_scene_stages()
+        evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
+        with self.assertRaises(OrchestrationError):
+            self.coord.bind_assembly(self.plan,evidence_file=evidence,
+                catalogue_file=catalogue,catalogue_sha256="0"*64)
+        original=json.loads(catalogue.read_text())
+        wrong=json.loads(catalogue.read_text())
+        wrong["recipes"]["assembly_one"]["sha256"]["scene_evidence"]="a"*64
+        catalogue.write_text(json.dumps(wrong))
+        with self.assertRaises(OrchestrationError):
+            self.coord.bind_assembly(self.plan,evidence_file=evidence,
+                catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        wrong=json.loads(json.dumps(original))
+        wrong["recipes"]["assembly_one"]["sha256"]["episode_recipe"]="f"*64
+        catalogue.write_text(json.dumps(wrong))
+        with self.assertRaises(OrchestrationError):
+            self.coord.bind_assembly(self.plan,evidence_file=evidence,
+                catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        wrong=json.loads(json.dumps(original))
+        wrong["recipes"]["different_episode"]=wrong["recipes"].pop("assembly_one")
+        catalogue.write_text(json.dumps(wrong))
+        with self.assertRaises(OrchestrationError):
+            self.coord.bind_assembly(self.plan,evidence_file=evidence,
+                catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        catalogue.write_text(json.dumps(original))
+        bound=self.coord.bind_assembly(self.plan,evidence_file=evidence,
+            catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        self.assertEqual(bound["catalogue_sha256"],sha(catalogue))
+        self.assertFalse(bound["render_job_queued"])
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+
+    def test_m49_refuses_symlinked_catalogue_without_dispatch(self):
+        self._complete_deferred_scene_stages()
+        evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
+        alias=self.root/"catalogue_redirect.json"
+        alias.symlink_to(catalogue)
+        with self.assertRaises(OrchestrationError):
+            self.coord.bind_assembly(self.plan,evidence_file=evidence,
+                catalogue_file=alias,catalogue_sha256=sha(catalogue))
+        self.assertEqual(self.coord.status(self.plan)["next_action"],
+                         "M48_ASSEMBLY_CATALOGUE_NOT_BOUND")
 
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
