@@ -199,7 +199,8 @@ class SceneWorkflowTests(unittest.TestCase):
         with self.assertRaises(SceneAssemblyError):
             write_scene_recipe(path,recipe,evidence)
         self.series.queue_render("colors-ar",1,"episode_all",
-                                  media_kind="episode_assemble")
+                                  media_kind="episode_assemble",
+                                  catalogue_sha256="a"*64)
 
     def freeze_for_mac_worker(self):
         self.complete_plan()
