@@ -304,6 +304,9 @@ class SeriesManager:
         if media_kind not in ("godot_render", "episode_assemble"):
             raise SeriesError("Unsupported media kind.")
         with self.queue._connection(write=True) as db:
+            paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
+            if not paused or paused["paused"]:
+                raise SeriesError("Studio queue paused; no assembly or render dispatch.")
             ep=db.execute("""SELECT * FROM studio_episodes
                 WHERE series_id=? AND ordinal=?""",(series_id,ordinal)).fetchone()
             if ep is None or ep["state"]!="SCRIPT_APPROVED":
