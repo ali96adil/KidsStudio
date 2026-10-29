@@ -279,9 +279,11 @@ class Coordinator:
             raise TransportError("Worker capability does not permit this job.")
 
         if action == "heartbeat":
-            self.queue.heartbeat(
+            renewed=self.queue.heartbeat(
                 job_id=leased["job_id"], worker_id=worker_id,
                 generation=leased["generation"], lease_seconds=600)
+            if renewed["state"]!="LEASED":
+                raise TransportError("M54 montage lease revoked during render.")
             return {"ok": True}
 
         if action == "fail":
