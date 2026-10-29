@@ -686,6 +686,10 @@ class Orchestration32(unittest.TestCase):
             from kidsstudio.studio_scenes import assert_scenes_ready
             scene=assert_scenes_ready(db,"colors-ar",1,ep["source_sha256"])
         old=json.loads(lease["payload"])
+        old_digest=hashlib.sha256(json.dumps({
+            "kind":"episode_assemble","payload":old
+        },sort_keys=True).encode("utf-8")).hexdigest()
+        self.assertEqual(_original_request_sha(old),old_digest)
         sid="colors-ar"
         proposal={
             "schema_version":1,
