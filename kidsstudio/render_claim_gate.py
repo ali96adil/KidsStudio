@@ -41,9 +41,12 @@ def m32_montage_claim_blocker(db: sqlite3.Connection, job: Any) -> str | None:
               ON s.series_id=e.series_id
             WHERE e.render_job_id=?""", (job["job_id"],)).fetchone()
         if ep is None:
-            # An unlinked standalone queue job is not claimed as M32-approved.
-            # This helper does not establish an OS/DB-writer security boundary.
-            return None
+            # When M32 manages any episode, a raw/unlinked episode_assemble
+            # enqueue must NOT sidestep the orchestrator by omitting the
+            # episode's render_job_id linkage.
+            if db.execute("SELECT 1 FROM studio_orchestrator_plans LIMIT 1").fetchone():
+                return "M52_UNLINKED_MONTAGE_JOB"
+            return None  # No M32 plans: preserve pre-orchestrator queue use.
 
         sid,ordinal=ep["series_id"],ep["ordinal"]
         pinned=db.execute("""SELECT plan_sha256,script_sha256,
