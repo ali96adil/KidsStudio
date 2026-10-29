@@ -72,6 +72,10 @@ class M56RecoveryPlanTests(unittest.TestCase):
                 "sha256":{"episode_recipe":sha(self.recipe_path)}
             }}}))
         self.recipes=MediaRecipes(self.catalogue)
+        # Only this M56 algorithm unit fixture has synthetic, not M14-sealed,
+        # two-scene bytes. Separate M13/M14 CI tests cover the real seal.
+        # Bypass its unrelated stage receipt parser *in the test only*.
+        self.recipes.resolve=lambda kind,rid:self.recipes.recipes[rid]
         self.payload={"recipe_id":"assembly_one",
                       "script_sha256":sha(self.script)}
         self.journal=MediaJournal(self.root/"journal.sqlite")
