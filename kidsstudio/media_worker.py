@@ -442,6 +442,29 @@ class RemoteMediaWorker:
                     fresh["model_execution_authorized"] is not False or
                     fresh["publication_approved"] is not False):
                     raise MediaError("Pilot lease changed immediately before voice call.")
+            # M53: after the journal reservation and immediately before
+            # FFmpeg (or the supplied bounded media executor), reauthorize
+            # this exact generation/recipe/source on the Pi. A stale lease,
+            # paused studio, altered M32 contract or lost Pi connection
+            # prevents execution. STARTED remains quarantined on failure.
+            if state == "NEW" and kind == "episode_assemble":
+                request={
+                    "job_id":job_id,"generation":generation,
+                    "payload":payload,
+                }
+                proof=self.pi.call("montage-pre-execution-check",request)
+                expected=set(request)|{
+                    "status","publication_approved","render_started"}
+                if (not isinstance(proof,dict) or
+                    set(proof) not in (expected,expected|{"server_time"}) or
+                    proof.get("status")!=
+                    "M53_CURRENT_PRIVATE_MONTAGE_LEASE_NOT_EXECUTED" or
+                    proof.get("job_id")!=job_id or
+                    proof.get("generation")!=generation or
+                    proof.get("payload")!=payload or
+                    proof.get("publication_approved") is not False or
+                    proof.get("render_started") is not False):
+                    raise MediaError("M53 Pi montage reauthorization refused.")
             result = receipt if state == "DONE" else self.executor.execute(
                 kind, recipe_id, job_id
             )
