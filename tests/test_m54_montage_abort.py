@@ -84,7 +84,10 @@ class M54AbortTests(unittest.TestCase):
             Path(args[-1]).write_bytes(b"private partial mp4: test only")
             cancel.set()
         def fake_prober(path,executable):
-            return {"width":384,"height":384,"duration":1.5,"audio_streams":1}
+            normalized="normalized" in Path(path).name
+            return {"width":1280 if normalized else 384,
+                    "height":720 if normalized else 384,
+                    "duration":1.5,"audio_streams":1}
         assembler=EpisodeAssembler(recipe_path,runner=fake_runner,
                                    prober=fake_prober)
         run_id="0"*32  # Actual queue UUID may begin with a digit.
