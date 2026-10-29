@@ -488,6 +488,79 @@ class Orchestration32(unittest.TestCase):
             self.coord.series.queue_render=original
         self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
 
+    def _m52_queue_deferred_montage(self):
+        self._complete_deferred_scene_stages()
+        evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
+        self.coord.bind_assembly(self.plan,evidence_file=evidence,
+            catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        started=self.coord.tick(self.plan)
+        self.assertEqual(started["action"],"ASSEMBLE_FINAL_EPISODE")
+        self.assertEqual(self.queue.get(started["job_id"])["state"],"QUEUED")
+        return started["job_id"]
+
+    def _m52_assert_claim_revoked(self,job_id,reason):
+        lease=self.queue.claim(worker_id="mac-worker",
+                               capabilities=["episode_assemble"])
+        self.assertIsNone(lease)
+        stale=self.queue.get(job_id)
+        self.assertEqual(stale["state"],"FAILED")
+        self.assertEqual(stale["error_code"],"M52_CLAIM_PROVENANCE_REVOKED")
+        with self.queue._connection() as db:
+            event=db.execute("""SELECT info_json FROM events
+                WHERE job_id=? AND event_type='M52_RENDER_CLAIM_REVOKED'
+                ORDER BY happened_at DESC LIMIT 1""",(job_id,)).fetchone()
+        self.assertIsNotNone(event)
+        self.assertEqual(json.loads(event["info_json"])["reason"],reason)
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+
+    def test_m52_valid_deferred_final_montage_receives_one_lease(self):
+        job_id=self._m52_queue_deferred_montage()
+        leased=self.queue.claim(worker_id="mac-worker",
+            capabilities=["episode_assemble"])
+        self.assertIsNotNone(leased)
+        self.assertEqual(leased["job_id"],job_id)
+        self.assertEqual(leased["state"],"LEASED")
+        self.assertEqual(leased["generation"],1)
+        self.assertEqual(self.queue.claim(worker_id="mac-worker",
+            capabilities=["episode_assemble"]),None)
+
+    def test_m52_frozen_catalogue_mutation_after_enqueue_blocks_mac_claim(self):
+        job_id=self._m52_queue_deferred_montage()
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_orchestrator_assembly_bindings
+                SET catalogue_sha256=? WHERE series_id='colors-ar'
+                AND ordinal=1""",("f"*64,))
+        self._m52_assert_claim_revoked(job_id,"M52_ASSEMBLY_BINDING_CHANGED")
+
+    def test_m52_scene_qa_mutation_after_enqueue_blocks_mac_claim(self):
+        job_id=self._m52_queue_deferred_montage()
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_stages SET artifact_sha256=?
+                WHERE series_id='colors-ar' AND ordinal=1 AND scene=2
+                AND stage='ltx_animate'""",("f"*64,))
+        self._m52_assert_claim_revoked(
+            job_id,"M52_RENDER_PROVENANCE_UNVERIFIABLE")
+
+    def test_m52_render_recipe_contract_mutation_after_enqueue_is_rejected(self):
+        job_id=self._m52_queue_deferred_montage()
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_orchestrator_render_contracts
+                SET recipe_id=? WHERE series_id='colors-ar'
+                AND ordinal=1""",("swapped_recipe",))
+        self._m52_assert_claim_revoked(job_id,
+            "M52_ORCHESTRATION_CONTRACT_CHANGED")
+
+    def test_m52_unlinked_direct_queue_job_cannot_bypass_m32_claim(self):
+        self._complete_deferred_scene_stages()
+        raw=self.queue.enqueue(kind="episode_assemble",
+            request_key="orphan:render:episode_assemble",
+            payload={"recipe_id":"assembly_one",
+                     "script_sha256":sha(self.parent),
+                     "catalogue_sha256":"d"*64},max_attempts=1)
+        self._m52_assert_claim_revoked(raw["job_id"],
+            "M52_UNLINKED_MONTAGE_JOB")
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
