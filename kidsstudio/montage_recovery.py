@@ -16,6 +16,7 @@ import re
 import sqlite3
 import sys
 from typing import Any, Callable
+from dataclasses import dataclass
 from urllib.parse import quote
 
 from .episode_assembly import (
@@ -40,12 +41,18 @@ class RecoveryError(ValueError):
     """Untrusted, missing or inconsistent private evidence."""
 
 
+@dataclass(frozen=True)
+class RecoveryJournal:
+    """Read-only journal locator: inspection must not initialize SQLite."""
+    path: Path
+
+
 def _canonical(value: dict[str, Any]) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True,
                       separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
-def _journal_started(journal: MediaJournal, job_id: str,
+def _journal_started(journal: MediaJournal | RecoveryJournal, job_id: str,
                      request_sha: str, recipe_id: str) -> None:
     if not journal.path.is_file() or journal.path.is_symlink():
         raise RecoveryError("M55 journal missing or symlinked; fail closed.")
@@ -62,7 +69,7 @@ def _journal_started(journal: MediaJournal, job_id: str,
 
 
 def inspect_quarantined_montage(
-    recipes: MediaRecipes, journal: MediaJournal, *,
+    recipes: MediaRecipes, journal: MediaJournal | RecoveryJournal, *,
     job_id: str, payload: dict[str, Any],
     prober: Callable[[Path, str], dict[str, Any]] = probe_video,
 ) -> dict[str, Any]:
@@ -225,7 +232,7 @@ def inspect_quarantined_montage(
 
 
 def freeze_recovery_inspection(
-    recipes: MediaRecipes, journal: MediaJournal, *,
+    recipes: MediaRecipes, journal: MediaJournal | RecoveryJournal, *,
     job_id: str, payload: dict[str, Any],
     prober: Callable[[Path, str], dict[str, Any]] = probe_video,
 ) -> dict[str, Any]:
@@ -281,7 +288,10 @@ def main(argv: list[str] | None = None) -> int:
             raise RecoveryError("M55 payload file oversized or empty.")
         payload=json.loads(args.payload_json.read_text(encoding="utf-8"))
         recipes=MediaRecipes(args.recipes)
-        journal=MediaJournal(args.journal)
+        journal_path=Path(args.journal).expanduser()
+        if journal_path.is_symlink() or not journal_path.is_file():
+            raise RecoveryError("M55 existing Mac journal required.")
+        journal=RecoveryJournal(journal_path.resolve())
         report=(freeze_recovery_inspection(recipes,journal,job_id=args.job_id,
             payload=payload) if args.freeze_evidence else
             inspect_quarantined_montage(recipes,journal,job_id=args.job_id,
