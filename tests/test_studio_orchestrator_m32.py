@@ -561,6 +561,79 @@ class Orchestration32(unittest.TestCase):
         self._m52_assert_claim_revoked(raw["job_id"],
             "M52_UNLINKED_MONTAGE_JOB")
 
+    def test_m53_fresh_leased_montage_passes_before_ffmpeg(self):
+        job_id=self._m52_queue_deferred_montage()
+        leased=self.queue.claim(worker_id="mac-worker",
+                                capabilities=["episode_assemble"])
+        payload=json.loads(leased["payload"])
+        proof=self.queue.pre_execute_montage(
+            job_id=job_id,worker_id="mac-worker",
+            generation=leased["generation"],payload=payload)
+        self.assertEqual(proof["status"],
+            "M53_CURRENT_PRIVATE_MONTAGE_LEASE_NOT_EXECUTED")
+        self.assertEqual(proof["payload"],payload)
+        self.assertIs(proof["render_started"],False)
+        self.assertIs(proof["publication_approved"],False)
+        self.assertEqual(self.queue.get(job_id)["state"],"LEASED")
+
+    def test_m53_m49_binding_mutates_after_lease_and_pre_exec_revokes(self):
+        job_id=self._m52_queue_deferred_montage()
+        leased=self.queue.claim(worker_id="mac-worker",
+                                capabilities=["episode_assemble"])
+        payload=json.loads(leased["payload"])
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_orchestrator_assembly_bindings
+                SET catalogue_sha256=? WHERE series_id='colors-ar'
+                AND ordinal=1""",("f"*64,))
+        proof=self.queue.pre_execute_montage(
+            job_id=job_id,worker_id="mac-worker",
+            generation=leased["generation"],payload=payload)
+        self.assertEqual(proof["status"],"M53_PRE_EXEC_DENIED_NO_RENDER")
+        self.assertEqual(self.queue.get(job_id)["state"],"FAILED")
+        self.assertEqual(self.queue.get(job_id)["error_code"],
+                         "M53_PRE_EXEC_PROVENANCE_REVOKED")
+        with self.queue._connection() as db:
+            event=db.execute("""SELECT info_json FROM events
+                WHERE job_id=? AND event_type='M53_RENDER_PRE_EXEC_REVOKED'
+                ORDER BY happened_at DESC LIMIT 1""",(job_id,)).fetchone()
+        self.assertEqual(json.loads(event["info_json"])["reason"],
+                         "M52_ASSEMBLY_BINDING_CHANGED")
+        with self.assertRaises(Exception):
+            self.queue.complete(job_id=job_id,worker_id="mac-worker",
+                generation=leased["generation"],result={"status":"fake"})
+
+    def test_m53_queue_pause_after_lease_blocks_render(self):
+        job_id=self._m52_queue_deferred_montage()
+        leased=self.queue.claim(worker_id="mac-worker",
+                                capabilities=["episode_assemble"])
+        self.queue.set_paused(True)
+        proof=self.queue.pre_execute_montage(
+            job_id=job_id,worker_id="mac-worker",
+            generation=leased["generation"],
+            payload=json.loads(leased["payload"]))
+        self.assertEqual(proof["status"],"M53_PRE_EXEC_DENIED_NO_RENDER")
+        self.assertEqual(self.queue.get(job_id)["state"],"FAILED")
+
+    def test_m53_wrong_worker_generation_and_payload_fail_closed(self):
+        from kidsstudio.studio_queue import QueueError
+        job_id=self._m52_queue_deferred_montage()
+        leased=self.queue.claim(worker_id="mac-worker",
+                                capabilities=["episode_assemble"])
+        payload=json.loads(leased["payload"])
+        for worker,gen in (("other-worker",leased["generation"]),
+                           ("mac-worker",leased["generation"]+1)):
+            with self.assertRaises(QueueError):
+                self.queue.pre_execute_montage(
+                    job_id=job_id,worker_id=worker,generation=gen,
+                    payload=payload)
+        self.assertEqual(self.queue.get(job_id)["state"],"LEASED")
+        altered=dict(payload); altered["catalogue_sha256"]="a"*64
+        proof=self.queue.pre_execute_montage(
+            job_id=job_id,worker_id="mac-worker",
+            generation=leased["generation"],payload=altered)
+        self.assertEqual(proof["status"],"M53_PRE_EXEC_DENIED_NO_RENDER")
+        self.assertEqual(self.queue.get(job_id)["state"],"FAILED")
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
