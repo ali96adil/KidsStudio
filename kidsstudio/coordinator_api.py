@@ -243,6 +243,25 @@ class Coordinator:
             except (PrivatePolicyError,QueueError,KeyError,TypeError) as exc:
                 raise TransportError("Private upload completion rejected.") from exc
 
+        if action == "montage-pre-execution-check":
+            if "episode_assemble" not in capabilities:
+                raise TransportError("M53 requires the authorized montage worker.")
+            if set(request)!={"job_id","generation","payload"}:
+                raise TransportError("M53 requires exact lease and payload fields.")
+            if (not isinstance(request["job_id"],str) or
+                not ID.fullmatch(request["job_id"]) or
+                type(request["generation"]) is not int or
+                request["generation"]<1 or
+                not isinstance(request["payload"],dict)):
+                raise TransportError("Invalid M53 montage lease request.")
+            try:
+                return self.queue.pre_execute_montage(
+                    job_id=request["job_id"],worker_id=worker_id,
+                    generation=request["generation"],
+                    payload=request["payload"])
+            except QueueError as exc:
+                raise TransportError("M53 montage lease no longer valid.") from exc
+
         if action == "claim":
             job = self.queue.claim(worker_id=worker_id,
                                    capabilities=sorted(capabilities), lease_seconds=600)
@@ -423,6 +442,7 @@ def create_handler(coordinator: Coordinator):
                             "/v1/complete", "/v1/complete-media", "/v1/fail",
                             "/v1/pilot-readiness",
                             "/v1/pilot-voice-lease-check",
+                            "/v1/montage-pre-execution-check",
                             "/v1/request-private-upload",
                             "/v1/private-upload-lease-check",
                             "/v1/complete-private-upload"):
