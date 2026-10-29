@@ -306,6 +306,12 @@ class SceneWorkflowTests(unittest.TestCase):
                         generation=payload["generation"],
                         error_code=payload["error_code"],retryable=False)
                     return {"status":"FAILED"}
+                if action=="montage-pre-execution-check":
+                    return {"status":"M53_CURRENT_PRIVATE_MONTAGE_LEASE_NOT_EXECUTED",
+                            "job_id":payload["job_id"],
+                            "generation":payload["generation"],
+                            "payload":payload["payload"],
+                            "publication_approved":False,"render_started":False}
                 if action=="complete-media":
                     self.queue.complete(job_id=payload["job_id"],worker_id="mac",
                         generation=payload["generation"],result={
@@ -348,6 +354,12 @@ class SceneWorkflowTests(unittest.TestCase):
                 if action=="claim":
                     job=self.queue.claim(worker_id="mac",capabilities=["episode_assemble"])
                     return {"job":dict(job,payload=_json.loads(job["payload"])) if job else None}
+                if action=="montage-pre-execution-check":
+                    return {"status":"M53_CURRENT_PRIVATE_MONTAGE_LEASE_NOT_EXECUTED",
+                            "job_id":payload["job_id"],
+                            "generation":payload["generation"],
+                            "payload":payload["payload"],
+                            "publication_approved":False,"render_started":False}
                 if action=="complete-media":
                     self.queue.complete(job_id=payload["job_id"],worker_id="mac",
                         generation=payload["generation"],result={
