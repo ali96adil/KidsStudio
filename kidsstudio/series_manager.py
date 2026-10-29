@@ -24,6 +24,13 @@ class SeriesError(ValueError):
     """Rejected syllabus or unsafe production-state transition."""
 
 
+def scene_script_fingerprint(scenes: Any) -> str:
+    """Stable SHA of the ordered, immutable M13 scene identity set."""
+    data=[[row["scene"], row["script_sha256"]] for row in scenes]
+    return hashlib.sha256(json.dumps(data, ensure_ascii=False,
+        separators=(",",":"), allow_nan=False).encode("utf-8")).hexdigest()
+
+
 class SeriesManager:
     def __init__(self, queue: StudioQueue):
         self.queue = queue
@@ -372,15 +379,18 @@ class SeriesManager:
                 raise SeriesError("M14 multi-scene owner catalogue SHA256 is mandatory.")
             if not requires_frozen_catalogue and catalogue_sha256 is not None:
                 raise SeriesError("Catalogue SHA is only supported on M13 multi-scene recipes.")
-            # M50: the final M32 plan and (for deferred montage) the exact
-            # evidence/catalogue binding are checked INSIDE the same SQLite
-            # write transaction which creates the render job. An older status
-            # snapshot can never authorize a newer, changed scene plan.
+            # M51: a pinned M32 episode cannot use the older series-cli
+            # queue-render route. The exact recipe, catalogue policy and
+            # original scene IDs are checked atomically, not supplied by CLI.
+            has_m32=db.execute("""SELECT 1 FROM sqlite_master WHERE
+                type='table' AND name='studio_orchestrator_plans'""").fetchone()
+            pinned=(db.execute("""SELECT plan_sha256,script_sha256,
+                scene_plan_sha256 FROM studio_orchestrator_plans
+                WHERE series_id=? AND ordinal=?""",
+                (series_id,ordinal)).fetchone() if has_m32 else None)
+            if pinned and orchestrator_plan_sha256 is None:
+                raise SeriesError("M51 orchestrated episode must use studio-orchestrator tick.")
             if orchestrator_plan_sha256 is not None:
-                pinned=db.execute("""SELECT plan_sha256,script_sha256,
-                    scene_plan_sha256 FROM studio_orchestrator_plans
-                    WHERE series_id=? AND ordinal=?""",
-                    (series_id,ordinal)).fetchone()
                 active=db.execute("""SELECT state FROM studio_series
                     WHERE series_id=?""",(series_id,)).fetchone()
                 if (not requires_frozen_catalogue or not pinned or not scene_plan
@@ -390,6 +400,25 @@ class SeriesManager:
                     or pinned["scene_plan_sha256"]!=scene_plan["plan_sha256"]
                     or scene_plan["episode_script_sha256"]!=ep["source_sha256"]):
                     raise SeriesError("M50 pinned plan changed before atomic enqueue.")
+                contract=db.execute("""SELECT plan_sha256,recipe_id,
+                    catalogue_marker,scene_scripts_sha256
+                    FROM studio_orchestrator_render_contracts
+                    WHERE series_id=? AND ordinal=?""",
+                    (series_id,ordinal)).fetchone()
+                scenes=db.execute("""SELECT scene,script_sha256 FROM studio_scenes
+                    WHERE series_id=? AND ordinal=? ORDER BY scene""",
+                    (series_id,ordinal)).fetchall()
+                if (not contract or
+                    contract["plan_sha256"]!=orchestrator_plan_sha256 or
+                    contract["recipe_id"]!=recipe_id or
+                    not scenes or
+                    contract["scene_scripts_sha256"]!=scene_script_fingerprint(scenes)):
+                    raise SeriesError("M51 immutable render recipe/scene contract mismatch.")
+                deferred=contract["catalogue_marker"]=="AFTER_SCENE_QA"
+                if deferred!=require_orchestrator_binding:
+                    raise SeriesError("M51 catalogue binding policy mismatch.")
+                if not deferred and contract["catalogue_marker"]!=catalogue_sha256:
+                    raise SeriesError("M51 pre-pinned catalogue differs from M32 plan.")
                 if require_orchestrator_binding:
                     binding=db.execute("""SELECT plan_sha256,catalogue_sha256,
                         scene_set_sha256 FROM studio_orchestrator_assembly_bindings
