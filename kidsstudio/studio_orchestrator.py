@@ -16,7 +16,7 @@ import re
 import sys
 
 from .episode_assembly import digest, _ensure_private
-from .series_manager import SeriesManager, SeriesError
+from .series_manager import SeriesManager, SeriesError, scene_script_fingerprint
 from .studio_scenes import SceneLedger, SceneError, ID, SHA, RECIPE
 from .scene_repair import SceneRepair, RepairError
 from .studio_queue import StudioQueue, QueueError
@@ -109,6 +109,14 @@ class StudioOrchestrator:
                 FOREIGN KEY(series_id,ordinal)
                 REFERENCES studio_episodes(series_id,ordinal)
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS studio_orchestrator_render_contracts(
+                series_id TEXT NOT NULL, ordinal INTEGER NOT NULL,
+                plan_sha256 TEXT NOT NULL, recipe_id TEXT NOT NULL,
+                catalogue_marker TEXT NOT NULL,
+                scene_scripts_sha256 TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                PRIMARY KEY(series_id,ordinal)
+            )""")
 
     def pin(self,filename:str|Path)->dict:
         plan,plan_sha=read_plan(filename)
@@ -142,6 +150,11 @@ class StudioOrchestrator:
             db.execute("""INSERT INTO studio_orchestrator_plans VALUES
                 (?,?,?,?,?,?)""",(sid,num,plan_sha,plan["script_sha256"],
                  plan["scene_plan_sha256"],self.queue.clock()))
+            db.execute("""INSERT INTO studio_orchestrator_render_contracts VALUES
+                (?,?,?,?,?,?,?)""", (sid,num,plan_sha,
+                plan["assembly"]["recipe_id"],
+                plan["assembly"]["catalogue_sha256"],
+                scene_script_fingerprint(plan["scenes"]),self.queue.clock()))
         return {"status":"M32_PRIVATE_PLAN_PINNED_NO_JOBS_QUEUED",
                 "plan_sha256":plan_sha,
                 "public_release_authorized":False}
@@ -341,6 +354,14 @@ class StudioOrchestrator:
                 pinned["script_sha256"]!=plan["script_sha256"] or
                 pinned["scene_plan_sha256"]!=plan["scene_plan_sha256"]):
                 blockers.append("M32_PLAN_NOT_PINNED_OR_MODIFIED")
+            contract=(db.execute("""SELECT * FROM studio_orchestrator_render_contracts
+                WHERE series_id=? AND ordinal=?""",(sid,num)).fetchone()
+                if _has(db,"studio_orchestrator_render_contracts") else None)
+            if (not contract or contract["plan_sha256"]!=sha or
+                contract["recipe_id"]!=plan["assembly"]["recipe_id"] or
+                contract["catalogue_marker"]!=plan["assembly"]["catalogue_sha256"] or
+                contract["scene_scripts_sha256"]!=scene_script_fingerprint(plan["scenes"])):
+                blockers.append("M51_RENDER_CONTRACT_MISSING_OR_CHANGED")
             pause=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
             if not pause or pause["paused"]:
                 blockers.append("STUDIO_QUEUE_PAUSED")
@@ -445,6 +466,8 @@ class StudioOrchestrator:
                 next_action="PIN_CURRENT_PLAN"
             elif "STUDIO_QUEUE_PAUSED" in blockers:
                 next_action="PAUSED"
+            elif "M51_RENDER_CONTRACT_MISSING_OR_CHANGED" in blockers:
+                next_action="STOP_AND_RECONCILE"
             elif any(x in blockers for x in ("SOURCE_SCRIPT_CHANGED",
                                              "SCENE_PLAN_CHANGED",
                                              "ACTIVE_EPISODE_MISSING")):
