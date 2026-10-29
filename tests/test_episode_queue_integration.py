@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 
 from kidsstudio.coordinator_api import Coordinator, TransportError
@@ -158,6 +161,62 @@ class EpisodeRemoteTests(unittest.TestCase):
         job=self.queue.get(job_id)
         self.assertEqual(job["state"],"FAILED")
         self.assertEqual(job["error_code"],"M53_PRE_EXEC_PROVENANCE_REVOKED")
+
+    def test_m54_lease_loss_during_long_montage_never_acks_result(self):
+        self.script_approved_for_fixture()
+        job_id=self.series.queue_render("colors-ar",1,"red_ball_episode",
+                                        media_kind="episode_assemble")
+        running=threading.Event()
+        release=threading.Event()
+        revoked=threading.Event()
+        class SlowFake:
+            def __init__(self):
+                self.calls=0
+            def execute(self,kind,recipe_id,jid):
+                self.calls+=1
+                running.set()
+                self_ok=release.wait(4)
+                if not self_ok:
+                    raise RuntimeError("Synthetic render gate did not release.")
+                return {"result_status":"VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW",
+                        "artifact_sha256":"c"*64,"artifact_bytes":4096,
+                        "artifact_type":"mp4","publication_approved":False}
+        class PiWithRevocation(FakePi):
+            def __init__(self,server,revoked):
+                super().__init__(server)
+                self.revoked=revoked
+            def call(self,action,payload):
+                try:
+                    return super().call(action,payload)
+                except TransportError as exc:
+                    if action=="heartbeat":
+                        self.revoked.set()
+                    raise RemoteWorkerError("synthetic revoked lease") from exc
+        fake=SlowFake()
+        journal=MediaJournal(self.root/"long_montage_journal.sqlite")
+        worker=RemoteMediaWorker(
+            PiWithRevocation(self.server,revoked),
+            MediaRecipes(self.catalog),journal,executor=fake,
+            heartbeat_seconds=0.05)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            job=pool.submit(worker.run_once)
+            try:
+                self.assertTrue(running.wait(3),"Fake render never started")
+                self.queue.set_paused(True)
+                self.assertTrue(revoked.wait(3),"Heartbeat did not revoke lease")
+            finally:
+                release.set()
+            result=job.result(timeout=6)
+        self.assertEqual(result["status"],"BLOCKED_RECONCILIATION")
+        self.assertEqual(fake.calls,1)
+        self.assertEqual(self.queue.get(job_id)["state"],"FAILED")
+        self.assertEqual(self.queue.get(job_id)["error_code"],
+                         "M54_MONTAGE_LEASE_REVOKED")
+        with sqlite3.connect(journal.path) as db:
+            record=db.execute("SELECT state,result FROM attempts WHERE job_id=?",
+                              (job_id,)).fetchone()
+        self.assertEqual(record[0],"STARTED")
+        self.assertIsNone(record[1])
 
     def test_changed_recipe_fails_before_execution(self):
         self.script_approved_for_fixture()
