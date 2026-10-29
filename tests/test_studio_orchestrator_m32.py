@@ -634,6 +634,41 @@ class Orchestration32(unittest.TestCase):
         self.assertEqual(proof["status"],"M53_PRE_EXEC_DENIED_NO_RENDER")
         self.assertEqual(self.queue.get(job_id)["state"],"FAILED")
 
+    def test_m54_heartbeat_revokes_changed_catalogue_while_rendering(self):
+        job_id=self._m52_queue_deferred_montage()
+        lease=self.queue.claim(worker_id="mac-worker",
+                               capabilities=["episode_assemble"])
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_orchestrator_assembly_bindings
+                SET catalogue_sha256=? WHERE series_id='colors-ar'
+                AND ordinal=1""",("f"*64,))
+        response=self.queue.heartbeat(job_id=job_id,worker_id="mac-worker",
+            generation=lease["generation"],lease_seconds=600)
+        self.assertEqual(response["state"],"FAILED")
+        self.assertEqual(response["error_code"],"M54_MONTAGE_LEASE_REVOKED")
+        with self.queue._connection() as db:
+            e=db.execute("""SELECT info_json FROM events
+                WHERE job_id=? AND event_type='M54_MONTAGE_HEARTBEAT_REVOKED'
+                LIMIT 1""",(job_id,)).fetchone()
+        self.assertEqual(json.loads(e["info_json"])["reason"],
+                         "M52_ASSEMBLY_BINDING_CHANGED")
+
+    def test_m54_pausing_after_claim_revokes_heartbeat(self):
+        job_id=self._m52_queue_deferred_montage()
+        lease=self.queue.claim(worker_id="mac-worker",
+                               capabilities=["episode_assemble"])
+        self.queue.set_paused(True)
+        response=self.queue.heartbeat(job_id=job_id,worker_id="mac-worker",
+            generation=lease["generation"],lease_seconds=600)
+        self.assertEqual(response["state"],"FAILED")
+        self.assertEqual(response["error_code"],"M54_MONTAGE_LEASE_REVOKED")
+        with self.queue._connection() as db:
+            e=db.execute("""SELECT info_json FROM events WHERE job_id=?
+                AND event_type='M54_MONTAGE_HEARTBEAT_REVOKED' LIMIT 1""",
+                (job_id,)).fetchone()
+        self.assertEqual(json.loads(e["info_json"])["reason"],
+                         "M54_STUDIO_PAUSED")
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
