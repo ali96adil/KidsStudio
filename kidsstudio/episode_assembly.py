@@ -24,6 +24,7 @@ from typing import Any, Callable
 
 HEX = re.compile(r"^[a-f0-9]{64}$")
 NAME = re.compile(r"^[a-z][a-z0-9_-]{1,47}$")
+RUN_ID = re.compile(r"^(?:[a-z][a-z0-9_-]{1,47}|[a-f0-9]{32})$")
 MAX_CLIPS = 40
 MAX_CLIP_BYTES = 2_000_000_000
 MAX_RECIPE_BYTES = 120_000
@@ -287,7 +288,7 @@ class EpisodeAssembler:
 
     def _execute_reserved(self, *, run_id: str,
                           abort_event: threading.Event | None = None) -> dict[str, Any]:
-        if not isinstance(run_id,str) or not NAME.fullmatch(run_id):
+        if not isinstance(run_id,str) or not RUN_ID.fullmatch(run_id):
             raise EpisodeAssemblyError("Run id must be stable and safe.")
         evidence = self.preflight()
         run_dir = self.output_root / run_id
