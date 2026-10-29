@@ -318,7 +318,23 @@ class StudioQueue:
             raise QueueError("Lease seconds must be 10..3600.")
         now = self.clock()
         with self._connection(write=True) as db:
-            self._guard_current(db, job_id, worker_id, generation, now)
+            current=self._guard_current(db, job_id, worker_id, generation, now)
+            if current["kind"]=="episode_assemble":
+                # M54: every renewal is also a fresh M52 owner/scene/catalogue
+                # check. Revoke inside this write transaction, not afterwards.
+                from .render_claim_gate import m32_montage_claim_blocker
+                paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
+                reason=("M54_STUDIO_PAUSED" if not paused or paused["paused"]
+                        else m32_montage_claim_blocker(db,current))
+                if reason is not None:
+                    db.execute("""UPDATE jobs SET state='FAILED',
+                        error_code='M54_MONTAGE_LEASE_REVOKED',updated_at=?,
+                        worker_id=NULL,lease_expires=NULL
+                        WHERE job_id=? AND state='LEASED'""",(now,job_id))
+                    self._event(db,job_id,"M54_MONTAGE_HEARTBEAT_REVOKED",
+                                {"reason":reason})
+                    return dict(db.execute(
+                        "SELECT * FROM jobs WHERE job_id=?",(job_id,)).fetchone())
             db.execute(
                 "UPDATE jobs SET lease_expires=?,updated_at=? WHERE job_id=?",
                 (now + lease_seconds, now, job_id)
