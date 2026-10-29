@@ -296,9 +296,9 @@ class EpisodeAssembler:
             raise EpisodeAssemblyError("Run already exists: do not overwrite or retry blindly.")
         run_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
         record = {
-            "schema_version":1, "run_id":run_id, "status":"STARTED",
+            "schema_version":1, "run_id":run_id,
             "started_at":time.time(), "recipe_sha256":digest(self.recipe_path),
-            **evidence,
+            **evidence, "status":"STARTED",
         }
         manifest = run_dir / "qa_report.json"
         manifest.write_text(json.dumps(record,indent=2,ensure_ascii=False)+"\n",
