@@ -127,6 +127,100 @@ class M56RecoveryPlanTests(unittest.TestCase):
             payload=self.payload,proposal_id=self.proposal_id,
             prober=self.fake_prober,full_qa=self.tech_pass,**kwargs)
 
+    def _m58_freeze_m56_proposal(self):
+        result=freeze_private_montage_recovery(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertEqual(result["status"],
+                         "M56_PRIVATE_PROPOSAL_FROZEN_NO_JOB_QUEUED")
+
+    def test_m58_mac_hashes_all_sources_and_full_decodes_reused_candidate(self):
+        from kidsstudio.recovery_media_contract import verify_private_recovery_media
+        self._m58_freeze_m56_proposal()
+        self.qa_calls=[]
+        before=sha(self.journal.path)
+        result=verify_private_recovery_media(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertEqual(result["status"],
+                         "M58_MAC_MEDIA_BYTES_RECHECKED_NOT_RENDERED")
+        self.assertEqual(result["recovered_candidates"],1)
+        self.assertEqual(result["fallbacks"],1)
+        self.assertEqual([r[0] for r in self.qa_calls],
+                         ["001_normalized.mp4"])
+        self.assertIs(result["scenes"][0]["full_m7_decode_confirmed"],True)
+        self.assertIs(result["scenes"][1]["full_m7_decode_confirmed"],False)
+        self.assertEqual(result["scenes"][1]["selected_media_sha256"],
+                         sha(self.media[1]))
+        self.assertIs(result["pi_media_bytes_verified"],False)
+        self.assertIsNone(result["new_pi_job_id"])
+        self.assertIs(result["auto_execute_allowed"],False)
+        self.assertIs(result["public_release_authorized"],False)
+        self.assertEqual(sha(self.journal.path),before)
+
+    def test_m58_mac_contract_freezes_once_and_cannot_rebind_tampered_bytes(self):
+        from kidsstudio.recovery_media_contract import (
+            freeze_private_recovery_media_contract,RecoveryMediaError)
+        self._m58_freeze_m56_proposal()
+        data=freeze_private_recovery_media_contract(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertEqual(data["status"],
+            "M58_MAC_PRIVATE_MEDIA_CONTRACT_FROZEN_NO_RENDER")
+        file=self.root/"rendered"/"_recovery_media_contracts"/(
+            self.proposal_id+".json")
+        self.assertTrue(file.is_file())
+        self.assertEqual(data["contract_file_sha256"],sha(file))
+        contents=json.loads(file.read_text())
+        self.assertEqual(contents["contract_sha256"],
+            hashlib.sha256(json.dumps(contents["contract"],
+                ensure_ascii=False,sort_keys=True,
+                separators=(",",":"),allow_nan=False).encode()).hexdigest())
+        with self.assertRaises(RecoveryMediaError):
+            freeze_private_recovery_media_contract(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertFalse((self.root/"rendered"/self.proposal_id).exists())
+
+    def test_m58_failed_m7_or_changed_original_media_blocks_contract(self):
+        from kidsstudio.recovery_media_contract import (
+            verify_private_recovery_media,RecoveryMediaError)
+        self._m58_freeze_m56_proposal()
+        def bad_qa(file,sha256):
+            r=self.tech_pass(file,sha256)
+            r["checks"]["full_decode_success"]=False
+            return r
+        with self.assertRaises(RecoveryMediaError):
+            verify_private_recovery_media(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                prober=self.fake_prober,full_qa=bad_qa)
+        self.media[1].write_bytes(self.media[1].read_bytes()+b"tampered")
+        with self.assertRaises(RecoveryMediaError):
+            verify_private_recovery_media(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                prober=self.fake_prober,full_qa=self.tech_pass)
+
+    def test_m58_corrupt_proposal_snapshot_is_not_media_contract(self):
+        from kidsstudio.recovery_media_contract import (
+            verify_private_recovery_media,RecoveryMediaError)
+        self._m58_freeze_m56_proposal()
+        file=self.root/"rendered"/"_recovery_proposals"/(
+            self.proposal_id+".json")
+        body=json.loads(file.read_text())
+        body["proposal"]["scenes"][0]["candidate_sha256"]="f"*64
+        file.write_text(json.dumps(body))
+        with self.assertRaises(RecoveryMediaError):
+            verify_private_recovery_media(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                prober=self.fake_prober,full_qa=self.tech_pass)
+
     def test_m56_one_scene_reuse_other_scene_pinned_original(self):
         prior=sha(self.journal.path)
         p=self.make()
