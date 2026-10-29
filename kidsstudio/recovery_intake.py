@@ -271,6 +271,20 @@ class RecoveryIntake:
                 REFERENCES studio_episodes(series_id,ordinal)
             )""")
 
+            db.execute("""CREATE TABLE IF NOT EXISTS studio_recovery_media_contracts(
+                proposal_id TEXT PRIMARY KEY REFERENCES
+                    studio_recovery_intents(proposal_id),
+                contract_sha256 TEXT NOT NULL UNIQUE,
+                contract_file_sha256 TEXT NOT NULL,
+                scene_selection_sha256 TEXT NOT NULL,
+                source_catalogue_sha256 TEXT NOT NULL,
+                recovered_candidates INTEGER NOT NULL,
+                fallbacks INTEGER NOT NULL,
+                state TEXT NOT NULL CHECK(
+                    state='M58_MEDIA_BOUND_REQUIRES_FRESH_EXECUTION_CONTRACT'),
+                created_at REAL NOT NULL
+            )""")
+
     def pin(self,filename:str|Path,*,sha256:str)->dict[str,Any]:
         proposal,outer=_private_envelope(filename,sha256)
         with self.queue._connection(write=True) as db:
@@ -308,19 +322,179 @@ class RecoveryIntake:
                 "auto_execute_allowed":False,"public_release_authorized":False}
 
 
+    def bind_media_contract(self,proposal_file:str|Path, *,
+                            proposal_sha256:str,
+                            contract_file:str|Path,
+                            contract_file_sha256:str)->dict[str,Any]:
+        """Pin Mac-declared bytes to CURRENT Pi M32/M49 receipts. NO job.
+
+        The Pi cannot independently hash Mac media from transferred JSON.
+        That verification must be repeated by the Mac just before a
+        separately authorized future render (M59+).
+        """
+        proposal,original_envelope_sha=_private_envelope(
+            proposal_file,proposal_sha256)
+        path=Path(contract_file).expanduser()
+        if (not path.is_absolute() or path.is_symlink() or
+            not isinstance(contract_file_sha256,str) or
+            not SHA.fullmatch(contract_file_sha256)):
+            raise RecoveryIntakeError("M58 contract needs absolute private SHA-pinned JSON.")
+        file=path.resolve()
+        if (not file.is_file() or not 0<file.stat().st_size<=MAX_BYTES or
+            any((p/".git").exists() for p in (file.parent,*file.parents))):
+            raise RecoveryIntakeError("M58 contract missing or unsafe.")
+        raw=file.read_bytes()
+        if hashlib.sha256(raw).hexdigest()!=contract_file_sha256:
+            raise RecoveryIntakeError("M58 copied media contract SHA changed.")
+        try:
+            envelope=json.loads(raw)
+        except (ValueError,UnicodeError,OSError) as exc:
+            raise RecoveryIntakeError("M58 media contract unreadable.") from exc
+        if (not isinstance(envelope,dict) or
+            set(envelope)!={"schema_version","contract","contract_sha256"} or
+            envelope["schema_version"]!=1 or
+            not isinstance(envelope["contract"],dict) or
+            not isinstance(envelope["contract_sha256"],str) or
+            not SHA.fullmatch(envelope["contract_sha256"]) or
+            _sha_json(envelope["contract"])!=envelope["contract_sha256"]):
+            raise RecoveryIntakeError("M58 media contract canonical digest invalid.")
+        contract=envelope["contract"]
+        expected={
+            "schema_version","status","proposal_id","proposal_sha256",
+            "original_job_id","original_script_sha256",
+            "source_catalogue_sha256","scene_count","scenes",
+            "recovered_candidates","fallbacks","new_pi_job_id",
+            "pi_media_bytes_verified","requires_new_execution_contract",
+            "requires_fresh_mac_pre_execution_verification",
+            "requires_final_master_m7_and_private_owner_preview",
+            "auto_execute_allowed","public_release_authorized",
+        }
+        if (set(contract)!=expected or contract["schema_version"]!=1 or
+            contract["status"]!="M58_MAC_MEDIA_BYTES_RECHECKED_NOT_RENDERED" or
+            contract["proposal_id"]!=proposal["proposal_id"] or
+            contract["proposal_sha256"]!=_sha_json(proposal) or
+            contract["original_job_id"]!=proposal["original_job_id"] or
+            contract["original_script_sha256"]!=
+                proposal["original_script_sha256"] or
+            contract["source_catalogue_sha256"]!=
+                proposal["source_catalogue_sha256"] or
+            type(contract["scene_count"]) is not int or
+            contract["scene_count"]!=proposal["scene_count"] or
+            not isinstance(contract["scenes"],list) or
+            len(contract["scenes"])!=contract["scene_count"] or
+            type(contract["recovered_candidates"]) is not int or
+            type(contract["fallbacks"]) is not int or
+            contract["recovered_candidates"]!=
+                proposal["verified_normalized_candidates"] or
+            contract["fallbacks"]!=
+                proposal["original_scene_fallback_count"] or
+            contract["new_pi_job_id"] is not None or
+            contract["pi_media_bytes_verified"] is not False or
+            any(contract[k] is not True for k in (
+                "requires_new_execution_contract",
+                "requires_fresh_mac_pre_execution_verification",
+                "requires_final_master_m7_and_private_owner_preview")) or
+            contract["auto_execute_allowed"] is not False or
+            contract["public_release_authorized"] is not False):
+            raise RecoveryIntakeError("M58 recovery bind flags or lineage changed.")
+        selected=[]
+        for n,(stage,source) in enumerate(
+                zip(contract["scenes"],proposal["scenes"]),1):
+            if not isinstance(stage,dict) or set(stage)!={
+                    "scene","strategy","original_ltx_sha256",
+                    "selected_media_sha256","full_m7_decode_confirmed",
+                    "new_scene_provenance_required",
+                    "publication_approved"}:
+                raise RecoveryIntakeError("M58 unexpected scene claim.")
+            if (type(stage["scene"]) is not int or stage["scene"]!=n or
+                stage["strategy"]!=source["strategy"] or
+                stage["original_ltx_sha256"]!=source["source_sha256"] or
+                stage["selected_media_sha256"]!=source["candidate_sha256"] or
+                stage["new_scene_provenance_required"] is not True or
+                stage["publication_approved"] is not False or
+                stage["full_m7_decode_confirmed"] is not (
+                    stage["strategy"]==
+                    "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS")):
+                raise RecoveryIntakeError("M58 scene selection contradicts M56 plan.")
+            selected.append(stage)
+        with self.queue._connection(write=True) as db:
+            if (not _table(db,"studio_recovery_media_contracts") or
+                not _table(db,"studio_recovery_intents")):
+                raise RecoveryIntakeError("M58 schema must be initialized.")
+            current=_verify(db,proposal,original_envelope_sha)
+            intent=db.execute("""SELECT * FROM studio_recovery_intents
+                WHERE proposal_id=?""",(contract["proposal_id"],)).fetchone()
+            if (not intent or
+                intent["state"]!="M57_RECONCILIATION_REQUIRED_NO_QUEUE" or
+                intent["original_job_id"]!=contract["original_job_id"] or
+                intent["proposal_sha256"]!=contract["proposal_sha256"] or
+                intent["envelope_file_sha256"]!=original_envelope_sha or
+                intent["original_plan_sha256"]!=current["original_plan_sha256"] or
+                intent["scene_set_sha256"]!=current["scene_set_sha256"] or
+                intent["source_catalogue_sha256"]!=
+                    contract["source_catalogue_sha256"]):
+                raise RecoveryIntakeError("M58 Pi intent/source QA changed.")
+            if db.execute("""SELECT 1 FROM studio_recovery_media_contracts
+                WHERE proposal_id=?""",(contract["proposal_id"],)).fetchone():
+                raise RecoveryIntakeError("M58 media contract already bound.")
+            # Rehash the copied metadata files once more under DB write
+            # lock; neither hash implies the Pi has touched Mac media.
+            if (hashlib.sha256(Path(proposal_file).read_bytes()).hexdigest()
+                    !=original_envelope_sha or
+                hashlib.sha256(file.read_bytes()).hexdigest()
+                    !=contract_file_sha256):
+                raise RecoveryIntakeError("M58 copied files changed during bind.")
+            db.execute("""INSERT INTO studio_recovery_media_contracts
+                VALUES (?,?,?,?,?,?,?,?,?)""",(
+                contract["proposal_id"],envelope["contract_sha256"],
+                contract_file_sha256,_sha_json(selected),
+                contract["source_catalogue_sha256"],
+                contract["recovered_candidates"],contract["fallbacks"],
+                "M58_MEDIA_BOUND_REQUIRES_FRESH_EXECUTION_CONTRACT",
+                self.queue.clock()))
+            self.queue._event(db,contract["original_job_id"],
+                "M58_PRIVATE_MEDIA_CONTRACT_BOUND_NO_JOB",{
+                    "proposal_sha256":contract["proposal_sha256"],
+                    "media_contract_sha256":envelope["contract_sha256"],
+                    "recovered":contract["recovered_candidates"]})
+        return {
+            "status":"M58_PRIVATE_MEDIA_BOUND_NO_JOB_QUEUED",
+            "proposal_id":contract["proposal_id"],
+            "media_contract_sha256":envelope["contract_sha256"],
+            "recovered_candidates":contract["recovered_candidates"],
+            "fallbacks":contract["fallbacks"],
+            "new_pi_job_id":None,
+            "pi_media_bytes_verified":False,
+            "auto_execute_allowed":False,
+            "public_release_authorized":False,
+        }
+
+
 def main(argv:list[str]|None=None)->int:
     parser=argparse.ArgumentParser(prog="studio-recovery-intake")
     parser.add_argument("--db",required=True)
     parser.add_argument("--initialize",action="store_true")
     parser.add_argument("--proposal",type=Path)
     parser.add_argument("--sha256")
+    parser.add_argument("--bind-media",action="store_true")
+    parser.add_argument("--media-contract",type=Path)
+    parser.add_argument("--media-sha256")
     args=parser.parse_args(argv)
     try:
         intake=RecoveryIntake(StudioQueue(args.db))
         if args.initialize and args.proposal is None and args.sha256 is None:
             intake.initialize()
             out={"status":"M57_SCHEMA_INITIALIZED_NO_JOB_QUEUED"}
-        elif not args.initialize and args.proposal and args.sha256:
+        elif (not args.initialize and args.bind_media and
+              args.proposal and args.sha256 and
+              args.media_contract and args.media_sha256):
+            out=intake.bind_media_contract(
+                args.proposal,proposal_sha256=args.sha256,
+                contract_file=args.media_contract,
+                contract_file_sha256=args.media_sha256)
+        elif (not args.initialize and not args.bind_media and
+              args.proposal and args.sha256 and
+              args.media_contract is None and args.media_sha256 is None):
             out=intake.pin(args.proposal,sha256=args.sha256)
         else:
             raise RecoveryIntakeError("Initialize or pin exact copied proposal.")
