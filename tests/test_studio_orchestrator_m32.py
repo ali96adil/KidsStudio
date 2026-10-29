@@ -820,6 +820,126 @@ class Orchestration32(unittest.TestCase):
         with self.assertRaises(RecoveryIntakeError):
             intake.pin(path,sha256=digest)
 
+    def _m58_synthetic_pi_contract(self,proposal):
+        from kidsstudio.recovery_intake import _sha_json
+        contract={
+            "schema_version":1,
+            "status":"M58_MAC_MEDIA_BYTES_RECHECKED_NOT_RENDERED",
+            "proposal_id":proposal["proposal_id"],
+            "proposal_sha256":_sha_json(proposal),
+            "original_job_id":proposal["original_job_id"],
+            "original_script_sha256":proposal["original_script_sha256"],
+            "source_catalogue_sha256":proposal["source_catalogue_sha256"],
+            "scene_count":proposal["scene_count"],
+            "scenes":[{
+                "scene":s["scene"],
+                "strategy":s["strategy"],
+                "original_ltx_sha256":s["source_sha256"],
+                "selected_media_sha256":s["candidate_sha256"],
+                "full_m7_decode_confirmed":s["strategy"]==
+                    "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS",
+                "new_scene_provenance_required":True,
+                "publication_approved":False,
+            } for s in proposal["scenes"]],
+            "recovered_candidates":proposal["verified_normalized_candidates"],
+            "fallbacks":proposal["original_scene_fallback_count"],
+            "new_pi_job_id":None,"pi_media_bytes_verified":False,
+            "requires_new_execution_contract":True,
+            "requires_fresh_mac_pre_execution_verification":True,
+            "requires_final_master_m7_and_private_owner_preview":True,
+            "auto_execute_allowed":False,
+            "public_release_authorized":False,
+        }
+        path=self.root/"m58_copied_mac_media_contract.json"
+        path.write_text(json.dumps({
+            "schema_version":1,"contract":contract,
+            "contract_sha256":_sha_json(contract)}))
+        return path,sha(path)
+
+    def test_m58_pi_media_binding_is_one_time_and_does_not_queue_render(self):
+        from kidsstudio.recovery_intake import RecoveryIntakeError
+        original,proposal,intake=self._m57_failed_two_scene_montage()
+        source,source_sha=self._m57_write_proposal(proposal)
+        intake.pin(source,sha256=source_sha)
+        media,media_sha=self._m58_synthetic_pi_contract(proposal)
+        count=self.queue.status()["counts"].get("QUEUED",0)
+        result=intake.bind_media_contract(
+            source,proposal_sha256=source_sha,
+            contract_file=media,contract_file_sha256=media_sha)
+        self.assertEqual(result["status"],
+            "M58_PRIVATE_MEDIA_BOUND_NO_JOB_QUEUED")
+        self.assertEqual(result["recovered_candidates"],1)
+        self.assertEqual(result["fallbacks"],1)
+        self.assertIsNone(result["new_pi_job_id"])
+        self.assertIs(result["pi_media_bytes_verified"],False)
+        self.assertIs(result["auto_execute_allowed"],False)
+        self.assertIs(result["public_release_authorized"],False)
+        self.assertEqual(self.queue.status()["counts"].get("QUEUED",0),count)
+        with self.queue._connection() as db:
+            pinned=db.execute("""SELECT state,contract_file_sha256
+                FROM studio_recovery_media_contracts
+                WHERE proposal_id=?""",(proposal["proposal_id"],)).fetchone()
+        self.assertEqual(pinned["state"],
+            "M58_MEDIA_BOUND_REQUIRES_FRESH_EXECUTION_CONTRACT")
+        self.assertEqual(pinned["contract_file_sha256"],media_sha)
+        with self.assertRaises(RecoveryIntakeError):
+            intake.bind_media_contract(source,proposal_sha256=source_sha,
+                contract_file=media,contract_file_sha256=media_sha)
+
+    def test_m58_pi_binding_rejects_changed_bytes_and_forged_media_flags(self):
+        from kidsstudio.recovery_intake import RecoveryIntakeError,_sha_json
+        old,proposal,intake=self._m57_failed_two_scene_montage()
+        source,source_sha=self._m57_write_proposal(proposal)
+        intake.pin(source,sha256=source_sha)
+        media,media_sha=self._m58_synthetic_pi_contract(proposal)
+        with self.assertRaises(RecoveryIntakeError):
+            intake.bind_media_contract(source,proposal_sha256=source_sha,
+                contract_file=media,contract_file_sha256="f"*64)
+        for mutation in ("bad_source","claimed_pi_bytes","bad_decode",
+                         "wrong_selected_sha","public","wrong_count"):
+            value=json.loads(media.read_text())
+            contract=value["contract"]
+            if mutation=="bad_source":
+                contract["scenes"][1]["original_ltx_sha256"]="e"*64
+            elif mutation=="claimed_pi_bytes":
+                contract["pi_media_bytes_verified"]=True
+            elif mutation=="bad_decode":
+                contract["scenes"][0]["full_m7_decode_confirmed"]=False
+            elif mutation=="wrong_selected_sha":
+                contract["scenes"][0]["selected_media_sha256"]="e"*64
+            elif mutation=="public":
+                contract["public_release_authorized"]=True
+            else:
+                contract["recovered_candidates"]=2
+            value["contract_sha256"]=_sha_json(contract)
+            media.write_text(json.dumps(value))
+            with self.assertRaises(RecoveryIntakeError):
+                intake.bind_media_contract(
+                    source,proposal_sha256=source_sha,
+                    contract_file=media,contract_file_sha256=sha(media))
+            media,media_sha=self._m58_synthetic_pi_contract(proposal)
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM studio_recovery_media_contracts"
+            ).fetchone()[0],0)
+
+    def test_m58_pi_requires_m57_pinned_and_current_approved_scenes(self):
+        from kidsstudio.recovery_intake import RecoveryIntakeError
+        old,proposal,intake=self._m57_failed_two_scene_montage()
+        source,source_sha=self._m57_write_proposal(proposal)
+        media,media_sha=self._m58_synthetic_pi_contract(proposal)
+        with self.assertRaises(RecoveryIntakeError):
+            intake.bind_media_contract(source,proposal_sha256=source_sha,
+                contract_file=media,contract_file_sha256=media_sha)
+        intake.pin(source,sha256=source_sha)
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_stages SET state='PENDING_QA'
+                WHERE series_id='colors-ar' AND ordinal=1
+                AND scene=2 AND stage='ltx_animate'""")
+        with self.assertRaises(RecoveryIntakeError):
+            intake.bind_media_contract(source,proposal_sha256=source_sha,
+                contract_file=media,contract_file_sha256=media_sha)
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
