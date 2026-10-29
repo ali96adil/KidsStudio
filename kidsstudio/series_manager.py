@@ -400,6 +400,9 @@ class SeriesManager:
                     or pinned["scene_plan_sha256"]!=scene_plan["plan_sha256"]
                     or scene_plan["episode_script_sha256"]!=ep["source_sha256"]):
                     raise SeriesError("M50 pinned plan changed before atomic enqueue.")
+                if not db.execute("""SELECT 1 FROM sqlite_master WHERE
+                    type='table' AND name='studio_orchestrator_render_contracts'""").fetchone():
+                    raise SeriesError("M51 immutable render contract schema missing.")
                 contract=db.execute("""SELECT plan_sha256,recipe_id,
                     catalogue_marker,scene_scripts_sha256
                     FROM studio_orchestrator_render_contracts
