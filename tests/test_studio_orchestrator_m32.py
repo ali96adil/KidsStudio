@@ -402,6 +402,92 @@ class Orchestration32(unittest.TestCase):
                 WHERE series_id='colors-ar' AND ordinal=1""").fetchone()
         self.assertEqual(episode["state"],"SCRIPT_APPROVED")
 
+    def test_m51_manual_series_render_cannot_bypass_bound_plan(self):
+        """The older series queue-render CLI must not skip M32 binding."""
+        self._complete_deferred_scene_stages()
+        with self.assertRaisesRegex(SeriesError,"studio-orchestrator tick"):
+            self.manager.queue_render("colors-ar",1,"assembly_one",
+                media_kind="episode_assemble",catalogue_sha256="a"*64)
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+        evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
+        self.coord.bind_assembly(self.plan,evidence_file=evidence,
+            catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        with self.assertRaisesRegex(SeriesError,"studio-orchestrator tick"):
+            self.manager.queue_render("colors-ar",1,"assembly_one",
+                media_kind="episode_assemble",catalogue_sha256=sha(catalogue))
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+        self.assertEqual(self.coord.tick(self.plan)["action"],
+                         "ASSEMBLE_FINAL_EPISODE")
+
+    def test_m51_forged_recipe_or_pre_pinned_catalogue_never_queues(self):
+        """Even with an M32 SHA, caller cannot replace its montage recipe."""
+        self.coord.pin(self.plan)
+        # Complete scene stages on the legacy literal catalog route.
+        for scene in (1,2):
+            voice=self.coord.tick(self.plan)
+            wav=self.pass_job(voice["job_id"],"voice_synthesize")
+            self.approve(scene,"voice_synthesize",wav)
+            visual=self.coord.tick(self.plan)
+            mp4=self.pass_job(visual["job_id"],"ltx_animate")
+            self.approve(scene,"ltx_animate",mp4)
+        plan_sha=sha(self.plan)
+        for recipe,catalogue in (("forged_recipe","d"*64),
+                                  ("assembly_one","f"*64)):
+            with self.assertRaises(SeriesError):
+                self.manager.queue_render("colors-ar",1,recipe,
+                    media_kind="episode_assemble",catalogue_sha256=catalogue,
+                    orchestrator_plan_sha256=plan_sha)
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+        self.assertEqual(self.coord.tick(self.plan)["action"],
+                         "ASSEMBLE_FINAL_EPISODE")
+
+    def test_m51_missing_contract_fails_closed_without_repin(self):
+        """Pre-upgrade plans cannot dispatch until contract is reconciled."""
+        self._complete_deferred_scene_stages()
+        evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
+        self.coord.bind_assembly(self.plan,evidence_file=evidence,
+            catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        with self.queue._connection(write=True) as db:
+            db.execute("""DELETE FROM studio_orchestrator_render_contracts
+                WHERE series_id='colors-ar' AND ordinal=1""")
+        status=self.coord.status(self.plan)
+        self.assertIn("M51_RENDER_CONTRACT_MISSING_OR_CHANGED",status["blockers"])
+        self.assertEqual(status["next_action"],"STOP_AND_RECONCILE")
+        with self.assertRaises(SeriesError):
+            self.manager.queue_render("colors-ar",1,"assembly_one",
+                media_kind="episode_assemble",catalogue_sha256=sha(catalogue),
+                orchestrator_plan_sha256=sha(self.plan),
+                require_orchestrator_binding=True)
+        self.assertEqual(self.coord.tick(self.plan)["status"],
+                         "M32_BLOCKED_NO_JOB_QUEUED")
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+
+    def test_m51_changed_scene_identity_between_status_and_enqueue(self):
+        """The scene script identity cannot mutate after the green tick."""
+        self._complete_deferred_scene_stages()
+        evidence=self._deferred_evidence()
+        catalogue=self._deferred_catalogue(evidence)
+        self.coord.bind_assembly(self.plan,evidence_file=evidence,
+            catalogue_file=catalogue,catalogue_sha256=sha(catalogue))
+        self.assertEqual(self.coord.status(self.plan)["next_action"],
+                         "ASSEMBLE_FINAL_EPISODE")
+        original=self.coord.series.queue_render
+        def mutated(*args,**kwargs):
+            with self.queue._connection(write=True) as db:
+                db.execute("""UPDATE studio_scenes SET script_sha256=?
+                    WHERE series_id='colors-ar' AND ordinal=1 AND scene=2""",
+                    ("f"*64,))
+            return original(*args,**kwargs)
+        self.coord.series.queue_render=mutated
+        try:
+            with self.assertRaises((SeriesError,SceneError)):
+                self.coord.tick(self.plan)
+        finally:
+            self.coord.series.queue_render=original
+        self.assertEqual(self.queue.status()["counts"]["QUEUED"],0)
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
