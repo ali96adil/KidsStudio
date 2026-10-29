@@ -18,7 +18,7 @@ from typing import Any, Callable
 from .cycle import run_character_cycle
 from .workflow_audit import audit_character_workflow
 from .godot_render import render_godot_project
-from .episode_assembly import EpisodeAssembler, EpisodeAssemblyError
+from .episode_assembly import EpisodeAssembler, EpisodeAssemblyError, _run as montage_command
 from .voice_animation_stage import StagePlan, StageError
 from .resource_gate import cooperative_compute_lock
 from .remote_worker import RemoteClient, RemoteWorkerError
@@ -223,7 +223,10 @@ class MediaExecutor:
     def __init__(self, recipes: MediaRecipes):
         self.recipes = recipes
 
-    def execute(self, kind: str, recipe_id: str, job_id: str) -> dict[str, Any]:
+    def execute(self, kind: str, recipe_id: str, job_id: str, *,
+                abort_event: threading.Event | None = None) -> dict[str, Any]:
+        if abort_event is not None and abort_event.is_set():
+            raise MediaError("M54 render aborted before local source preflight.")
         recipe = self.recipes.resolve(kind, recipe_id)
         dest = Path(recipe["output_root"]).resolve() / job_id
         if dest.exists():
@@ -237,10 +240,16 @@ class MediaExecutor:
                 raise MediaError("Unexpected output file.")
             status = "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"
         elif kind == "episode_assemble":
-            assembler = EpisodeAssembler(recipe["inputs"]["episode_recipe"])
+            if abort_event is not None:
+                def checked_runner(args: list[str], *, timeout: int = 1200) -> None:
+                    montage_command(args,timeout=timeout,abort_event=abort_event)
+                assembler=EpisodeAssembler(recipe["inputs"]["episode_recipe"],
+                                           runner=checked_runner)
+            else:
+                assembler=EpisodeAssembler(recipe["inputs"]["episode_recipe"])
             if assembler.output_root != Path(recipe["output_root"]).resolve():
                 raise MediaError("Episode output root must match the approved media recipe.")
-            report = assembler.execute(run_id=job_id)
+            report = assembler.execute(run_id=job_id,abort_event=abort_event)
             artifact = Path(report["final_media_path"]).resolve()
             if artifact != (dest / "episode_qa_master.mp4").resolve():
                 raise MediaError("Unexpected episode output location.")
@@ -283,11 +292,16 @@ class MediaExecutor:
 
 class RemoteMediaWorker:
     def __init__(self, pi: RemoteClient, recipes: MediaRecipes,
-                 journal: MediaJournal, *, executor: Any | None = None):
+                 journal: MediaJournal, *, executor: Any | None = None,
+                 heartbeat_seconds: float = 10.0):
+        if (type(heartbeat_seconds) not in (float,int) or
+            not 0.05 <= heartbeat_seconds <= 60):
+            raise MediaError("M54 heartbeat interval must be bounded.")
         self.pi = pi
         self.recipes = recipes
         self.journal = journal
         self.executor = executor if executor is not None else MediaExecutor(recipes)
+        self.heartbeat_seconds = heartbeat_seconds
 
     def run_once(self) -> dict[str, Any]:
         job = self.pi.call("claim", {}).get("job")
@@ -410,16 +424,21 @@ class RemoteMediaWorker:
             return {"status": "BLOCKED_RECONCILIATION", "job_id": job_id}
 
         stop = threading.Event()
+        abort_render = threading.Event()
         errors: list[str] = []
 
         def heartbeat() -> None:
-            while not stop.wait(45):
+            interval=(self.heartbeat_seconds if kind=="episode_assemble" else 45)
+            while not stop.wait(interval):
                 try:
-                    self.pi.call("heartbeat", {
+                    proof=self.pi.call("heartbeat", {
                         "job_id": job_id, "generation": generation,
                     })
-                except RemoteWorkerError:
+                    if not isinstance(proof,dict) or proof.get("ok") is not True:
+                        raise RemoteWorkerError("Pi heartbeat was not acknowledged.")
+                except (RemoteWorkerError,OSError,ValueError,TypeError):
                     errors.append("LEASE_OR_NETWORK_LOST")
+                    abort_render.set()
                     return
 
         # Heartbeat only when an actual, potentially lengthy new render starts.
@@ -465,9 +484,20 @@ class RemoteMediaWorker:
                     proof.get("publication_approved") is not False or
                     proof.get("render_started") is not False):
                     raise MediaError("M53 Pi montage reauthorization refused.")
-            result = receipt if state == "DONE" else self.executor.execute(
-                kind, recipe_id, job_id
-            )
+            if abort_render.is_set():
+                raise MediaError("M54 Pi lease/network lost before execution.")
+            if state=="DONE":
+                result=receipt
+            elif kind=="episode_assemble" and isinstance(self.executor,MediaExecutor):
+                # Native FFmpeg/face runner observes abort_render every 250 ms.
+                result=self.executor.execute(kind,recipe_id,job_id,
+                                             abort_event=abort_render)
+            else:
+                # Injected fake executors have no process to terminate;
+                # still fence their receipt if lease loss occurs mid-call.
+                result=self.executor.execute(kind,recipe_id,job_id)
+            if abort_render.is_set():
+                raise MediaError("M54 lease lost during montage; do not acknowledge.")
             if state == "NEW":
                 self.journal.done(job_id, result)
         except Exception:
