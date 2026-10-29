@@ -45,6 +45,18 @@ def _sha_json(value:Any)->str:
         separators=(",",":"),allow_nan=False).encode("utf-8")).hexdigest()
 
 
+def _original_request_sha(payload:dict[str,Any])->str:
+    """Match the original M55 MediaJournal request digest byte-for-byte.
+
+    M6/M55 intentionally used json.dumps(sort_keys=True) with default
+    spaces; M56 stores that digest in the recovery proposal. Do not
+    substitute the compact canonical proposal SHA encoding here.
+    """
+    return hashlib.sha256(json.dumps(
+        {"kind":"episode_assemble","payload":payload},
+        sort_keys=True).encode("utf-8")).hexdigest()
+
+
 def _private_envelope(filename:str|Path, claimed_sha256:str)->tuple[dict,str]:
     src=Path(filename).expanduser()
     if (not src.is_absolute() or src.is_symlink() or
@@ -168,7 +180,7 @@ def _verify(db:sqlite3.Connection,p:dict,hash_of_file:str)->dict:
         old_payload!={"recipe_id":contract["recipe_id"],
                       "script_sha256":p["original_script_sha256"],
                       "catalogue_sha256":catalogue} or
-        _sha_json({"kind":"episode_assemble","payload":old_payload})!=
+        _original_request_sha(old_payload)!=
             p["original_request_sha256"] or
         old["request_key"]!=
             (f"series:{sid}:episode:{num}:"
