@@ -670,7 +670,7 @@ class Orchestration32(unittest.TestCase):
                          "M54_STUDIO_PAUSED")
 
     def _m57_failed_two_scene_montage(self):
-        from kidsstudio.recovery_intake import RecoveryIntake, _sha_json
+        from kidsstudio.recovery_intake import RecoveryIntake, _original_request_sha
         original=self._m52_queue_deferred_montage()
         lease=self.queue.claim(worker_id="mac-worker",
                                capabilities=["episode_assemble"])
@@ -692,8 +692,7 @@ class Orchestration32(unittest.TestCase):
             "status":"M56_FRESH_ATTEMPT_PROPOSED_NOT_QUEUED",
             "proposal_id":"a"*32,
             "original_job_id":original,
-            "original_request_sha256":_sha_json({
-                "kind":"episode_assemble","payload":old}),
+            "original_request_sha256":_original_request_sha(old),
             "frozen_inspection_sha256":"b"*64,
             "original_assembly_recipe_sha256":"c"*64,
             "original_script_sha256":old["script_sha256"],
