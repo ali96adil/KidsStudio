@@ -14,7 +14,10 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
+import tempfile
+import threading
 import sys
 import time
 from typing import Any, Callable
@@ -80,20 +83,78 @@ def _decode_duration(value: Any) -> float:
     return number
 
 
-def _run(args: list[str], *, timeout: int = 1200) -> None:
+def _run(args: list[str], *, timeout: int = 1200,
+         abort_event: threading.Event | None = None) -> None:
     if any(not isinstance(x, str) or "\0" in x for x in args):
         raise EpisodeAssemblyError("Invalid executable arguments.")
-    try:
-        response = subprocess.run(args, stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, timeout=timeout,
-                                  check=False)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise EpisodeAssemblyError("Local media command unavailable or timed out.") from exc
-    if response.returncode:
-        raise EpisodeAssemblyError(
-            "Local media command failed: " +
-            response.stderr.decode("utf-8", errors="replace")[-900:]
-        )
+    if abort_event is None:
+        # Preserve the standalone/legacy synchronous offline assembler.
+        try:
+            response = subprocess.run(args, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, timeout=timeout,
+                                      check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise EpisodeAssemblyError("Local media command unavailable or timed out.") from exc
+        if response.returncode:
+            raise EpisodeAssemblyError(
+                "Local media command failed: " +
+                response.stderr.decode("utf-8", errors="replace")[-900:]
+            )
+        return
+    if abort_event.is_set():
+        raise EpisodeAssemblyError("Montage lease lost before command start.")
+    # M54 monitored path: no unbounded stdout/stderr pipes, immediate
+    # child-process termination when the Pi heartbeat flags lease loss.
+    # Already-written files are kept in the private run directory for QA.
+    with tempfile.TemporaryFile() as stderr:
+        try:
+            process=subprocess.Popen(args, stdout=subprocess.DEVNULL,
+                                     stderr=stderr,
+                                     start_new_session=(os.name=="posix"))
+        except OSError as exc:
+            raise EpisodeAssemblyError("Local media command unavailable.") from exc
+        def stop_child() -> None:
+            if process.poll() is not None:
+                return
+            try:
+                if os.name=="posix":
+                    os.killpg(process.pid, signal.SIGTERM)
+                else:
+                    process.terminate()
+                process.wait(timeout=3)
+            except (OSError,subprocess.TimeoutExpired):
+                if process.poll() is None:
+                    try:
+                        if os.name=="posix":
+                            os.killpg(process.pid,signal.SIGKILL)
+                        else:
+                            process.kill()
+                    except ProcessLookupError:
+                        pass
+                    process.wait()
+        try:
+            deadline=time.monotonic()+timeout
+            while process.poll() is None:
+                if abort_event.is_set():
+                    raise EpisodeAssemblyError(
+                        "Montage lease lost; subprocess stopped and artifacts quarantined.")
+                remaining=deadline-time.monotonic()
+                if remaining<=0:
+                    raise EpisodeAssemblyError("Local montage process timed out.")
+                try:
+                    process.wait(timeout=min(0.25,remaining))
+                except subprocess.TimeoutExpired:
+                    continue
+            if abort_event.is_set():
+                raise EpisodeAssemblyError("Montage lease lost at subprocess completion.")
+            if process.returncode:
+                stderr.seek(0,os.SEEK_END)
+                stderr.seek(max(0,stderr.tell()-900))
+                raise EpisodeAssemblyError(
+                    "Local media command failed: " +
+                    stderr.read().decode("utf-8",errors="replace"))
+        finally:
+            stop_child()
 
 
 def probe_video(file: Path, probe_executable: str) -> dict[str, Any]:
@@ -218,12 +279,14 @@ class EpisodeAssembler:
             "external_inference":False, "publication_approved":False,
         }
 
-    def execute(self, *, run_id: str) -> dict[str, Any]:
+    def execute(self, *, run_id: str,
+                abort_event: threading.Event | None = None) -> dict[str, Any]:
         from .resource_gate import cooperative_compute_lock
         with cooperative_compute_lock(self.root):
-            return self._execute_reserved(run_id=run_id)
+            return self._execute_reserved(run_id=run_id,abort_event=abort_event)
 
-    def _execute_reserved(self, *, run_id: str) -> dict[str, Any]:
+    def _execute_reserved(self, *, run_id: str,
+                          abort_event: threading.Event | None = None) -> dict[str, Any]:
         if not isinstance(run_id,str) or not NAME.fullmatch(run_id):
             raise EpisodeAssemblyError("Run id must be stable and safe.")
         evidence = self.preflight()
@@ -240,8 +303,14 @@ class EpisodeAssembler:
         manifest.write_text(json.dumps(record,indent=2,ensure_ascii=False)+"\n",
                             encoding="utf-8")
         try:
+            def check_lease() -> None:
+                if abort_event is not None and abort_event.is_set():
+                    raise EpisodeAssemblyError(
+                        "Montage lease lost; preserving private partial artifacts.")
+            check_lease()
             normalized = []
             for index, clip in enumerate(self.clips,1):
+                check_lease()
                 base = clip["path"]
                 if clip["face_cleanup"] == "bunny_v07":
                     middle = run_dir / f"{index:03}_v06.mp4"
@@ -272,6 +341,7 @@ class EpisodeAssembler:
                 if abs(report["duration"] - evidence["clips"][index-1]["duration"]) > .60:
                     raise EpisodeAssemblyError("Normalized scene changed duration.")
                 normalized.append(staged)
+                check_lease()
             # Paths are local-only, already generated filenames controlled by this module.
             listing = run_dir / "concat.ffconcat"
             listing.write_text("ffconcat version 1.0\n" +
@@ -283,6 +353,7 @@ class EpisodeAssembler:
             # and M7 correctly rejects the purported 24fps final master.
             # Explicit final video fps normalization makes the delivered
             # master CFR; map and re-encode its audio track as well.
+            check_lease()
             self.runner([self.ffmpeg,"-hide_banner","-loglevel","error",
                          "-nostdin","-n","-safe","0","-f","concat",
                          "-i",str(listing),"-map","0:v:0","-map","0:a:0",
@@ -297,6 +368,7 @@ class EpisodeAssembler:
             if abs(final["duration"] - evidence["source_duration_seconds"]) > max(
                     0.75, .25*len(self.clips)):
                 raise EpisodeAssemblyError("Final running time differs from scene sum.")
+            check_lease()
             record.update({
                 "status":"RENDERED_PENDING_HUMAN_AV_QA",
                 "final_media_path":str(master),
