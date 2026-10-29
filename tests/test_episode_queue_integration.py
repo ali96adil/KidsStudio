@@ -10,6 +10,7 @@ import unittest
 
 from kidsstudio.coordinator_api import Coordinator, TransportError
 from kidsstudio.media_worker import MediaRecipes, MediaJournal, RemoteMediaWorker
+from kidsstudio.remote_worker import RemoteWorkerError
 from kidsstudio.series_manager import SeriesManager, SeriesError
 from kidsstudio.studio_queue import StudioQueue
 
@@ -119,6 +120,44 @@ class EpisodeRemoteTests(unittest.TestCase):
         self.series.complete_series("colors-ar")
         self.assertEqual(self.series.snapshot()["series"][0]["state"],
                          "COMPLETED")
+
+    def test_m53_live_pi_check_allows_unchanged_legacy_montage(self):
+        self.script_approved_for_fixture()
+        job_id=self.series.queue_render("colors-ar",1,"red_ball_episode",
+                                         media_kind="episode_assemble")
+        self.assertEqual(self.worker.run_once()["status"],"COMPLETED")
+        self.assertEqual(len(self.executor.calls),1)
+        with self.queue._connection() as db:
+            events=[r["event_type"] for r in db.execute(
+                "SELECT event_type FROM events WHERE job_id=?",(job_id,))]
+        self.assertNotIn("M53_RENDER_PRE_EXEC_REVOKED",events)
+
+    def test_m53_pause_after_claim_before_executor_fails_closed(self):
+        self.script_approved_for_fixture()
+        job_id=self.series.queue_render("colors-ar",1,"red_ball_episode",
+                                        media_kind="episode_assemble")
+        class PiThatPausesBeforeProof(FakePi):
+            def __init__(self,server,queue):
+                super().__init__(server)
+                self.queue=queue
+            def call(self,action,payload):
+                if action=="montage-pre-execution-check":
+                    self.queue.set_paused(True)
+                try:
+                    return super().call(action,payload)
+                except TransportError as exc:
+                    raise RemoteWorkerError("synthetic TLS denial") from exc
+        worker=RemoteMediaWorker(
+            PiThatPausesBeforeProof(self.server,self.queue),
+            MediaRecipes(self.catalog),
+            MediaJournal(self.root/"paused_journal.sqlite"),
+            executor=self.executor)
+        result=worker.run_once()
+        self.assertEqual(result["status"],"BLOCKED_RECONCILIATION")
+        self.assertEqual(self.executor.calls,[])
+        job=self.queue.get(job_id)
+        self.assertEqual(job["state"],"FAILED")
+        self.assertEqual(job["error_code"],"M53_PRE_EXEC_PROVENANCE_REVOKED")
 
     def test_changed_recipe_fails_before_execution(self):
         self.script_approved_for_fixture()
