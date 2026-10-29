@@ -232,6 +232,22 @@ class StudioQueue:
             """, (now, *kinds)).fetchone()
             if item is None:
                 return None
+            # M52: an M32 montage must still be valid at the moment the Mac
+            # worker requests a lease, not merely when the job was enqueued.
+            # Guard and lease share this BEGIN IMMEDIATE transaction.
+            if item["kind"] == "episode_assemble":
+                from .render_claim_gate import m32_montage_claim_blocker
+                blocker=m32_montage_claim_blocker(db,item)
+                if blocker is not None:
+                    db.execute("""UPDATE jobs SET state='FAILED',
+                        error_code='M52_CLAIM_PROVENANCE_REVOKED',updated_at=?,
+                        worker_id=NULL,lease_expires=NULL
+                        WHERE job_id=? AND state='QUEUED'""",
+                        (now,item["job_id"]))
+                    self._event(db,item["job_id"],
+                                "M52_RENDER_CLAIM_REVOKED",
+                                {"reason":blocker})
+                    return None
             db.execute("""
                 UPDATE jobs SET state='LEASED', worker_id=?, attempts=attempts+1,
                 generation=generation+1, lease_expires=?,updated_at=?
