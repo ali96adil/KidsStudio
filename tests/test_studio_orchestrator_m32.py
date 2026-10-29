@@ -669,6 +669,154 @@ class Orchestration32(unittest.TestCase):
         self.assertEqual(json.loads(e["info_json"])["reason"],
                          "M54_STUDIO_PAUSED")
 
+    def _m57_failed_two_scene_montage(self):
+        from kidsstudio.recovery_intake import RecoveryIntake, _sha_json
+        original=self._m52_queue_deferred_montage()
+        lease=self.queue.claim(worker_id="mac-worker",
+                               capabilities=["episode_assemble"])
+        self.assertEqual(lease["job_id"],original)
+        self.queue.fail(job_id=original,worker_id="mac-worker",
+            generation=lease["generation"],retryable=False,
+            error_code="MEDIA_RECONCILIATION_REQUIRED")
+        self.assertEqual(self.manager.reconcile(),1)
+        with self.queue._connection() as db:
+            ep=db.execute("""SELECT state,source_sha256 FROM
+                studio_episodes WHERE series_id='colors-ar' AND ordinal=1""").fetchone()
+            self.assertEqual(ep["state"],"BLOCKED")
+            from kidsstudio.studio_scenes import assert_scenes_ready
+            scene=assert_scenes_ready(db,"colors-ar",1,ep["source_sha256"])
+        old=json.loads(lease["payload"])
+        sid="colors-ar"
+        proposal={
+            "schema_version":1,
+            "status":"M56_FRESH_ATTEMPT_PROPOSED_NOT_QUEUED",
+            "proposal_id":"a"*32,
+            "original_job_id":original,
+            "original_request_sha256":_sha_json({
+                "kind":"episode_assemble","payload":old}),
+            "frozen_inspection_sha256":"b"*64,
+            "original_assembly_recipe_sha256":"c"*64,
+            "original_script_sha256":old["script_sha256"],
+            "series_id":sid,"episode_number":1,
+            "scene_count":2,
+            "scenes":[{
+                "scene":i,"strategy":(
+                    "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS"
+                    if i==1 else "USE_ORIGINAL_APPROVED_LTX_SOURCE"),
+                "source_sha256":item["ltx_sha256"],
+                "source_face_cleanup":"none",
+                "candidate_path":str(self.root/f"candidate_{i}.mp4"),
+                "candidate_sha256":("f"*64 if i==1
+                                    else item["ltx_sha256"]),
+                "candidate_technical_status":(
+                    "M7_TECH_PASS_NOT_FINAL_QA" if i==1 else "NOT_REUSED"),
+                "requires_new_scene_provenance_review":True,
+                "candidate_approved_for_publication":False,
+            } for i,item in enumerate(scene,1)],
+            "verified_normalized_candidates":1,
+            "original_scene_fallback_count":1,
+            "proposed_pi_job_id":None,
+            "source_catalogue_sha256":old["catalogue_sha256"],
+            "requires_new_catalogue_and_scene_provenance":True,
+            "requires_new_pi_authorized_job_and_lease":True,
+            "requires_new_final_m7_full_decode_and_quality_reviews":True,
+            "owner_private_preview_required":True,
+            "auto_retry_allowed":False,
+            "auto_execute_allowed":False,
+            "auto_reuse_allowed":False,
+            "public_release_authorized":False,
+        }
+        intake=RecoveryIntake(self.queue)
+        intake.initialize()
+        return original,proposal,intake
+
+    def _m57_write_proposal(self,proposal):
+        from kidsstudio.recovery_intake import _sha_json
+        body={"schema_version":1,"proposal":proposal,
+              "proposal_sha256":_sha_json(proposal)}
+        path=self.root/"m56_copied_pi_proposal.json"
+        path.write_text(json.dumps(body))
+        return path,sha(path)
+
+    def test_m57_pi_intake_pins_new_attempt_identity_without_queueing(self):
+        original,proposal,intake=self._m57_failed_two_scene_montage()
+        path,digest=self._m57_write_proposal(proposal)
+        before=self.queue.status()["counts"].get("QUEUED",0)
+        result=intake.pin(path,sha256=digest)
+        self.assertEqual(result["status"],
+            "M57_PRIVATE_RECOVERY_INTENT_PINNED_NO_JOB_QUEUED")
+        self.assertEqual(result["original_job_id"],original)
+        self.assertEqual(result["proposal_id"],"a"*32)
+        self.assertEqual(result["recovered_candidates"],1)
+        self.assertEqual(result["fallbacks"],1)
+        self.assertIsNone(result["new_pi_job_id"])
+        self.assertIs(result["mac_media_verified_by_pi"],False)
+        self.assertIs(result["auto_execute_allowed"],False)
+        self.assertIs(result["public_release_authorized"],False)
+        self.assertEqual(self.queue.status()["counts"].get("QUEUED",0),before)
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT state,proposal_sha256,original_job_id
+                FROM studio_recovery_intents WHERE proposal_id=?""",
+                ("a"*32,)).fetchone()
+        self.assertEqual(row["state"],"M57_RECONCILIATION_REQUIRED_NO_QUEUE")
+        self.assertEqual(row["original_job_id"],original)
+        from kidsstudio.recovery_intake import RecoveryIntakeError
+        with self.assertRaises(RecoveryIntakeError):
+            intake.pin(path,sha256=digest)
+
+    def test_m57_forged_scene_candidate_and_approval_metadata_fail_closed(self):
+        from kidsstudio.recovery_intake import RecoveryIntakeError
+        original,proposal,intake=self._m57_failed_two_scene_montage()
+        for change in ("wrong_ltx","auto_publish","false_m7","wrong_count"):
+            candidate=json.loads(json.dumps(proposal))
+            if change=="wrong_ltx":
+                candidate["scenes"][1]["source_sha256"]="e"*64
+            elif change=="auto_publish":
+                candidate["public_release_authorized"]=True
+            elif change=="false_m7":
+                candidate["scenes"][0]["candidate_technical_status"]="NOT_REUSED"
+            else:
+                candidate["verified_normalized_candidates"]=2
+            path,digest=self._m57_write_proposal(candidate)
+            with self.assertRaises(RecoveryIntakeError):
+                intake.pin(path,sha256=digest)
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM studio_recovery_intents").fetchone()[0],0)
+
+    def test_m57_forged_bytes_or_changed_failed_job_status_are_refused(self):
+        from kidsstudio.recovery_intake import RecoveryIntakeError
+        old,proposal,intake=self._m57_failed_two_scene_montage()
+        path,digest=self._m57_write_proposal(proposal)
+        with self.assertRaises(RecoveryIntakeError):
+            intake.pin(path,sha256="d"*64)
+        with self.queue._connection(write=True) as db:
+            db.execute("UPDATE jobs SET state='COMPLETED' WHERE job_id=?",
+                       (old,))
+        with self.assertRaises(RecoveryIntakeError):
+            intake.pin(path,sha256=digest)
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM studio_recovery_intents").fetchone()[0],0)
+
+    def test_m57_unreconciled_episode_or_unapproved_scene_rejected(self):
+        from kidsstudio.recovery_intake import RecoveryIntakeError
+        old,proposal,intake=self._m57_failed_two_scene_montage()
+        path,digest=self._m57_write_proposal(proposal)
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_episodes SET state='RENDER_QUEUED'
+                WHERE series_id='colors-ar' AND ordinal=1""")
+        with self.assertRaises(RecoveryIntakeError):
+            intake.pin(path,sha256=digest)
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_episodes SET state='BLOCKED'
+                WHERE series_id='colors-ar' AND ordinal=1""")
+            db.execute("""UPDATE studio_scene_stages SET state='PENDING_QA'
+                WHERE series_id='colors-ar' AND ordinal=1
+                AND scene=2 AND stage='ltx_animate'""")
+        with self.assertRaises(RecoveryIntakeError):
+            intake.pin(path,sha256=digest)
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
