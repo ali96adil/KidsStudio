@@ -221,6 +221,90 @@ class M56RecoveryPlanTests(unittest.TestCase):
                 payload=self.payload,proposal_id=self.proposal_id,
                 prober=self.fake_prober,full_qa=self.tech_pass)
 
+    def _m59_freeze_original_evidence(self):
+        from kidsstudio.recovery_media_contract import (
+            freeze_private_recovery_media_contract)
+        self._m58_freeze_m56_proposal()
+        saved=freeze_private_recovery_media_contract(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertEqual(saved["status"],
+                         "M58_MAC_PRIVATE_MEDIA_CONTRACT_FROZEN_NO_RENDER")
+
+    def test_m59_new_recipe_retains_source_pins_and_skips_recovered_face_stage(self):
+        from kidsstudio.recovery_execution_recipe import (
+            prepare_private_recovery_recipe)
+        self._m59_freeze_original_evidence()
+        old_sha=sha(self.journal.path)
+        derived,meta=prepare_private_recovery_recipe(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertEqual(meta["status"],
+                         "M59_PRIVATE_RECOVERY_RECIPE_STAGED_NOT_EXECUTABLE")
+        self.assertEqual(meta["scene_count"],2)
+        self.assertEqual(meta["recovered_candidates"],1)
+        self.assertEqual(meta["fallbacks"],1)
+        self.assertEqual(meta["new_recipe_id"],"recovery_"+self.proposal_id)
+        self.assertEqual(derived["clips"][0]["face_cleanup"],"none")
+        self.assertEqual(derived["clips"][0]["sha256"],
+                         sha(self.root/"rendered"/self.old_id/
+                            "001_normalized.mp4"))
+        self.assertEqual(derived["clips"][1]["video"],str(self.media[1]))
+        self.assertEqual(derived["clips"][1]["sha256"],sha(self.media[1]))
+        self.assertEqual(derived["script"],self.recipe["script"])
+        self.assertIsNone(meta["new_pi_job_id"])
+        self.assertIs(meta["auto_execute_allowed"],False)
+        self.assertIs(meta["public_release_authorized"],False)
+        self.assertEqual(sha(self.journal.path),old_sha)
+        self.assertFalse((self.root/"rendered"/
+                          "_recovery_recipes").exists())
+
+    def test_m59_freeze_once_produces_exact_hashes_not_executable_catalogue(self):
+        from kidsstudio.recovery_execution_recipe import (
+            freeze_private_recovery_recipe,RecoveryRecipeError)
+        self._m59_freeze_original_evidence()
+        report=freeze_private_recovery_recipe(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertEqual(report["status"],
+                         "M59_PRIVATE_RECOVERY_RECIPE_FROZEN_NO_JOB")
+        output=self.root/"rendered"
+        recipe_file=output/"_recovery_recipes"/(self.proposal_id+".json")
+        manifest_file=output/"_recovery_execution_manifests"/(
+            self.proposal_id+".json")
+        self.assertEqual(report["recipe_sha256"],sha(recipe_file))
+        self.assertEqual(report["execution_manifest_file_sha256"],
+                         sha(manifest_file))
+        m=json.loads(manifest_file.read_text())
+        self.assertEqual(m["schema_version"],2)
+        self.assertEqual(m["manifest_sha256"],hashlib.sha256(json.dumps(
+            m["manifest"],sort_keys=True,ensure_ascii=False,
+            separators=(",",":"),allow_nan=False).encode()).hexdigest())
+        self.assertEqual(m["manifest"]["derived_recipe_sha256"],
+                         sha(recipe_file))
+        with self.assertRaises(RecoveryRecipeError):
+            freeze_private_recovery_recipe(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertFalse((output/self.proposal_id).exists())
+        self.assertFalse((output/"_recovery_catalogues").exists())
+
+    def test_m59_rejects_modified_recovered_source_or_m58_snapshot(self):
+        from kidsstudio.recovery_execution_recipe import (
+            prepare_private_recovery_recipe,RecoveryRecipeError)
+        self._m59_freeze_original_evidence()
+        chosen=self.root/"rendered"/self.old_id/"001_normalized.mp4"
+        chosen.write_bytes(chosen.read_bytes()+b"tampered")
+        with self.assertRaises(RecoveryRecipeError):
+            prepare_private_recovery_recipe(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                prober=self.fake_prober,full_qa=self.tech_pass)
+
     def test_m56_one_scene_reuse_other_scene_pinned_original(self):
         prior=sha(self.journal.path)
         p=self.make()
