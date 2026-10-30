@@ -81,6 +81,15 @@ def pin_reviewed(root, approvals):
     inspection = inspect_media_jobs(jobs, root)
     if inspection["status"] != "MEDIA_STRUCTURALLY_READY_PENDING_QA":
         raise ProductionStageError("media structural validation blocked")
+    decoded = decode_check(jobs, root)
+    if decoded["status"] != "MEDIA_DECODED_PENDING_QA":
+        raise ProductionStageError("full media decode qualification blocked")
+    decoded_by_beat = {entry["beat"]: entry for entry in decoded["results"]}
+    for observed in inspection["results"]:
+        decoded_entry = decoded_by_beat.get(observed["beat"], {})
+        if (decoded_entry.get("visual_sha256") != observed.get("visual_sha256")
+                or decoded_entry.get("voice_sha256") != observed.get("voice_sha256")):
+            raise ProductionStageError("media changed between inspection and decoding")
     if approvals.get("episode_id") != jobs["episode_id"]:
         raise ProductionStageError("approval episode mismatch")
     provided = approvals.get("assets")
