@@ -1296,8 +1296,24 @@ class Orchestration32(unittest.TestCase):
             self.assertEqual(db.execute("""SELECT state FROM
                 studio_recovery_leases WHERE proposal_id=?""",
                 (proposal["proposal_id"],)).fetchone()[0],FAILED)
-        # Independently exercise changed scene receipts before claim.
-        other=self._m61_ready_pi_lease if False else None
+    def test_m61_revokes_lease_when_scene_qa_changes_mid_render(self):
+        from kidsstudio.recovery_lease import FAILED
+        old,proposal,admission,lease,pfile,psha=self._m61_ready_pi_lease()
+        claimed=lease.claim(worker_id="mac-a",capability="recovery_assemble",
+                            proposal_id=proposal["proposal_id"])
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_stages SET state='PENDING_QA'
+                WHERE series_id='colors-ar' AND ordinal=1
+                AND scene=2 AND stage='ltx_animate'""")
+        response=lease.check(job_id=claimed["job_id"],worker_id="mac-a",
+                             generation=1,renew=True)
+        self.assertEqual(response["status"],"M61_REVOKED_NO_EXECUTION")
+        with self.queue._connection() as db:
+            final=db.execute("""SELECT state FROM studio_recovery_leases
+                WHERE proposal_id=?""",(proposal["proposal_id"],)).fetchone()
+        self.assertEqual(final["state"],FAILED)
+        self.assertIsNone(lease.claim(worker_id="mac-a",
+            capability="recovery_assemble",proposal_id=proposal["proposal_id"]))
 
     def test_m61_tls_worker_capability_isolated_from_ordinary_claim(self):
         from kidsstudio.coordinator_api import Coordinator,TransportError
