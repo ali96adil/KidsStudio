@@ -87,7 +87,8 @@ def pin_reviewed(root, approvals):
     if decoded["status"] != "MEDIA_DECODED_PENDING_QA":
         raise ProductionStageError("full media decode qualification blocked")
     decoded_by_beat = {entry["beat"]: entry for entry in decoded["results"]}
-    if len(decoded_by_beat) != len(jobs["jobs"]):
+    expected_beats = {job["beat"] for job in jobs["jobs"]}
+    if set(decoded_by_beat) != expected_beats or len(decoded["results"]) != len(expected_beats):
         raise ProductionStageError("decode result count mismatch")
     for observed in inspection["results"]:
         decoded_entry = decoded_by_beat.get(observed["beat"], {})
@@ -99,8 +100,10 @@ def pin_reviewed(root, approvals):
     provided = approvals.get("assets")
     if not isinstance(provided, list) or len(provided) != len(jobs["jobs"]):
         raise ProductionStageError("one explicit approval per beat required")
+    if any(not isinstance(item, dict) for item in provided):
+        raise ProductionStageError("invalid beat approval record")
     indexed = {item.get("beat"): item for item in provided}
-    if len(indexed) != len(provided):
+    if set(indexed) != expected_beats or len(indexed) != len(provided):
         raise ProductionStageError("duplicate beat approval")
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     for asset, observed in zip(manifest["assets"], inspection["results"]):
