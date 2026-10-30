@@ -293,6 +293,9 @@ class RecoveryFinalQA:
             type(contains_synthetic_media) is not bool):
             raise RecoveryQualityError("M62 explicit exact upload audience/channel required.")
         with self.queue._connection(write=True) as db:
+            paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
+            if not paused or paused["paused"]:
+                raise RecoveryQualityError("M62 paused studio cannot stage a private upload.")
             lease,pins=self._source(db,proposal_id)
             qa=db.execute("""SELECT * FROM studio_recovery_final_qa
                 WHERE proposal_id=?""",(proposal_id,)).fetchone()
