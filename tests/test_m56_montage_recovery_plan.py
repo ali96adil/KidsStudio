@@ -345,6 +345,112 @@ class M56RecoveryPlanTests(unittest.TestCase):
                 payload=self.payload,proposal_id=self.proposal_id,
                 prober=self.fake_prober,full_qa=self.tech_pass)
 
+    def _m61_render_fixture(self):
+        from kidsstudio.recovery_execution_recipe import (
+            freeze_private_recovery_recipe)
+        from kidsstudio.recovery_render import proof_manifest_sha
+        self._m59_freeze_original_evidence()
+        freeze_private_recovery_recipe(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        manifest=json.loads((self.root/"rendered"/
+            "_recovery_execution_manifests"/(
+            self.proposal_id+".json")).read_text())["manifest"]
+        run_id="3"*32
+        def live():
+            return {"status":"M61_CURRENT_PRIVATE_RECOVERY_LEASE",
+                    "job_id":run_id,"generation":1,
+                    "proposal_id":self.proposal_id,
+                    "original_job_id":self.old_id,
+                    "recipe_sha256":manifest["derived_recipe_sha256"],
+                    "manifest_sha256":proof_manifest_sha(manifest),
+                    "media_contract_sha256":
+                        manifest["source_m58_contract_sha256"],
+                    "script_sha256":manifest["original_script_sha256"],
+                    "render_started":False,"public_release_authorized":False}
+        return run_id,live
+
+    def test_m61_reuses_normalized_clip_without_first_scene_ffmpeg(self):
+        from kidsstudio.recovery_render import render_private_recovery_master
+        run_id,live=self._m61_render_fixture()
+        calls=[]
+        event=threading.Event()
+        def fake_runner(args,*,timeout=1800,abort_event=None):
+            self.assertIs(abort_event,event)
+            calls.append(args)
+            Path(args[-1]).write_bytes(b"synthetic-render-frame"*64)
+        def fake_probe(path,exe):
+            data=self.fake_prober(path,exe)
+            if Path(path).name=="episode_qa_master.mp4":
+                data["duration"]=5.0
+            return data
+        previous_sha=sha(self.journal.path)
+        result=render_private_recovery_master(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            job_id=run_id,generation=1,lease_check=live,abort_event=event,
+            runner=fake_runner,prober=fake_probe,full_qa=self.tech_pass)
+        self.assertEqual(result["status"],
+                         "M61_RECOVERY_MASTER_TECH_PASS_PENDING_REVIEW")
+        self.assertIs(result["final_m7_full_decode_passed"],True)
+        self.assertIs(result["publication_approved"],False)
+        self.assertEqual(len(calls),2)
+        self.assertIn("002_normalized.mp4",calls[0][-1])
+        self.assertTrue(calls[1][-1].endswith("episode_qa_master.mp4"))
+        copied=self.root/"rendered"/run_id/"001_normalized.mp4"
+        source=self.root/"rendered"/self.old_id/"001_normalized.mp4"
+        self.assertEqual(sha(copied),sha(source))
+        self.assertEqual(sha(self.journal.path),previous_sha)
+        record=json.loads((self.root/"rendered"/run_id/
+                           "qa_report.json").read_text())
+        self.assertEqual(record["status"],
+                         "M61_RECOVERY_MASTER_TECH_PASS_PENDING_REVIEW")
+        self.assertFalse((self.root/"rendered"/self.proposal_id).exists())
+
+    def test_m61_lease_loss_during_ffmpeg_quarantines_not_publish(self):
+        from kidsstudio.recovery_render import (
+            render_private_recovery_master,RecoveryRenderError)
+        run_id,live=self._m61_render_fixture()
+        event=threading.Event()
+        calls=[]
+        def aborting_runner(args,*,timeout=1800,abort_event=None):
+            calls.append(args)
+            Path(args[-1]).write_bytes(b"synthetic-partial-data"*25)
+            abort_event.set()
+        with self.assertRaises(RecoveryRenderError):
+            render_private_recovery_master(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                job_id=run_id,generation=1,lease_check=live,
+                abort_event=event,runner=aborting_runner,
+                prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertEqual(len(calls),1)
+        self.assertTrue(event.is_set())
+        report=json.loads((self.root/"rendered"/run_id/
+                           "qa_report.json").read_text())
+        self.assertEqual(report["status"],
+                         "M61_FAILED_REQUIRES_MANUAL_RECONCILIATION")
+        self.assertFalse((self.root/"rendered"/run_id/
+                          "episode_qa_master.mp4").exists())
+
+    def test_m61_wrong_pi_proof_stops_before_file_creation(self):
+        from kidsstudio.recovery_render import (
+            render_private_recovery_master,RecoveryRenderError)
+        run_id,live=self._m61_render_fixture()
+        def wrong_proof():
+            p=live()
+            p["recipe_sha256"]="0"*64
+            return p
+        with self.assertRaises(RecoveryRenderError):
+            render_private_recovery_master(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                job_id=run_id,generation=1,lease_check=wrong_proof,
+                abort_event=threading.Event(),prober=self.fake_prober,
+                full_qa=self.tech_pass)
+        self.assertFalse((self.root/"rendered"/run_id).exists())
+
     def test_m56_one_scene_reuse_other_scene_pinned_original(self):
         prior=sha(self.journal.path)
         p=self.make()
