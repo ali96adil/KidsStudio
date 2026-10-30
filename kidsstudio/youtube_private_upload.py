@@ -309,7 +309,8 @@ class GoogleYouTubeTransport:
 def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
                    journal:UploadJournal,token:str, *,
                    transport:Any|None=None,
-                   before_network:Callable[[],None]|None=None)->dict:
+                   before_network:Callable[[],None]|None=None,
+                   token_provider:Callable[[],str]|None=None)->dict:
     """Never auto-retry. A pending/failed POST or PUT requires manual recovery."""
     safe=validate_plan(plan,media,readiness,readiness_sha)
     if not isinstance(token,str) or len(token)<30 or any(ch.isspace() for ch in token):
@@ -324,6 +325,11 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
         "containsSyntheticMedia":plan["contains_synthetic_media"],
     }}
     transport=transport if transport is not None else GoogleYouTubeTransport()
+    def current_token()->str:
+        fresh=token_provider() if token_provider else token
+        if not isinstance(fresh,str) or len(fresh)<30 or any(c.isspace() for c in fresh):
+            raise YouTubePrivateError("Pi fresh OAuth token unavailable during upload.")
+        return fresh
     plan_sha=hashlib.sha256(json.dumps(plan,sort_keys=True,
                 separators=(",",":"),ensure_ascii=False).encode()).hexdigest()
     # This is the LAST step before network: persist the single attempt.
@@ -331,7 +337,7 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
     try:
         if before_network is not None:
             before_network()
-        session=transport.start(token,metadata,safe["master_bytes"])
+        session=transport.start(current_token(),metadata,safe["master_bytes"])
         offset=0
         with Path(media).open("rb") as stream:
             while offset<safe["master_bytes"]:
@@ -340,7 +346,7 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
                 if not block:
                     raise YouTubePrivateError("Approved MP4 truncated during upload.")
                 status,next_position=transport.put_chunk(
-                    token,session,block,offset,safe["master_bytes"])
+                    current_token(),session,block,offset,safe["master_bytes"])
                 if status in (200,201):
                     video_id=next_position
                     if not isinstance(video_id,str) or not VIDEO.fullmatch(video_id):
@@ -348,7 +354,7 @@ def private_upload(plan:dict,media:Path,readiness:Path,readiness_sha:str,
                     if file_sha256(Path(media))!=safe["master_sha256"]:
                         raise YouTubePrivateError("MP4 modified during upload; manual reconciliation.")
                     journal.record_uploaded(plan["render_job_id"],video_id)
-                    result=transport.verify(token,video_id,plan["target_channel_id"])
+                    result=transport.verify(current_token(),video_id,plan["target_channel_id"])
                     if (result.get("video_id")!=video_id or
                         result.get("channel_id")!=plan["target_channel_id"] or
                         result.get("privacy_status")!="private" or
