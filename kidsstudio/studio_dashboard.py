@@ -113,6 +113,9 @@ def build_snapshot(queue: StudioQueue) -> dict:
                       "blocked":0,"awaiting_ai":0,
                       "ai_private_ready":0,"needs_fix":0,
                       "private_handoff":0,
+                      "private_upload_ready":0,"private_uploading":0,
+                      "private_processing":0,"private_owner_review":0,
+                      "private_approved":0,"private_revisions":0,
                       "public_release_authorized":False}
     preview_states={}
     preview_summary={"state":"NOT_CONFIGURED","pending_review":0,
@@ -240,6 +243,41 @@ def build_snapshot(queue: StudioQueue) -> dict:
                         recovery_summary["waiting_final_review"]-=1
                     recovery_states[key]["state"]=stage
                     recovery_states[key]["automatic_youtube_upload"]=False
+                    recovery_states[key]["owner_private_review_required"]=True
+        m63_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_recovery_uploads'""").fetchone())
+        if m63_installed:
+            decisions_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='studio_recovery_owner_decisions'""").fetchone())
+            recovery_summary["state"]="M63_PRIVATE_UPLOAD_AND_OWNER_REVIEW"
+            query=("""SELECT i.series_id,i.ordinal,u.state upload_state,
+                    d.state decision_state FROM studio_recovery_uploads u
+                    JOIN studio_recovery_intents i ON i.proposal_id=u.proposal_id
+                    LEFT JOIN studio_recovery_owner_decisions d
+                      ON d.proposal_id=u.proposal_id
+                    ORDER BY u.updated_at DESC"""
+                    if decisions_installed else
+                    """SELECT i.series_id,i.ordinal,u.state upload_state,
+                    NULL decision_state FROM studio_recovery_uploads u
+                    JOIN studio_recovery_intents i ON i.proposal_id=u.proposal_id
+                    ORDER BY u.updated_at DESC""")
+            for row in db.execute(query):
+                stage=row["decision_state"] or row["upload_state"]
+                key=(row["series_id"],row["ordinal"])
+                field={
+                    "M63_PRIVATE_UPLOAD_READY_ONE_SHOT":"private_upload_ready",
+                    "M63_PRIVATE_UPLOAD_LEASED":"private_uploading",
+                    "M63_YOUTUBE_PRIVATE_PROCESSING_PENDING":"private_processing",
+                    "M63_YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING":"private_owner_review",
+                    "APPROVED":"private_approved",
+                    "APPROVED_WITH_NOTES":"private_approved",
+                    "REVISION_REQUESTED":"private_revisions",
+                }.get(stage)
+                if field:recovery_summary[field]+=1
+                if key in recovery_states:
+                    recovery_states[key]["state"]=stage
+                    recovery_states[key]["automatic_youtube_upload"]=False
+                    recovery_states[key]["youtube_visibility_currently_guaranteed"]=False
                     recovery_states[key]["owner_private_review_required"]=True
         orchestration_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_orchestrator_plans'""").fetchone())
