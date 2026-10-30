@@ -99,13 +99,22 @@ def main(argv:list[str]|None=None)->int:
         brain=StudioQueue(args.db)
         if args.initialize:
             # No Google OAuth refresh credentials or HTTP at schema creation.
-            service=PiAllPrivateUploadService.__new__(
-                PiAllPrivateUploadService)
-            service.queue=brain
-            service.root=PiMediaInbox(brain,args.inbox_root).root
-            service.recovery_inbox=PiMediaInbox(brain,args.inbox_root)
-            service.ordinary_inbox=PiOrdinaryInbox(brain,args.inbox_root)
-            result=service.initialize()
+            trusted_root=PiMediaInbox(brain,args.inbox_root).root
+            trusted_root.mkdir(mode=0o700,parents=True,exist_ok=True)
+            os.chmod(trusted_root,0o700)
+            PiOrdinaryInbox(brain,trusted_root).initialize()
+            with brain._connection() as db:
+                has_recovery=bool(db.execute("""SELECT 1 FROM sqlite_master
+                    WHERE name='studio_recovery_private_handoffs'
+                    AND type='table'""").fetchone())
+            if has_recovery:
+                PiMediaInbox(brain,trusted_root).initialize()
+                RecoveryPrivateUploadGate(brain).initialize()
+            result={"status":"M65_PI_BOTH_PRIVATE_INBOXES_READY",
+                "ordinary_inbox_initialized":True,
+                "recovery_inbox_initialized":has_recovery,
+                "youtube_uploaded":False,
+                "mac_required_for_upload":False}
             print(json.dumps(result,sort_keys=True))
             return 0
         oauth=GoogleOAuthRefresh(
