@@ -15,6 +15,7 @@ import shutil
 from .studio_queue import StudioQueue
 from .pi_ordinary_inbox import PiOrdinaryInbox
 from .youtube_private_upload import file_sha256
+from .m67_pi_receipts_preflight import preflight
 
 
 class PiImportError(RuntimeError):
@@ -34,6 +35,11 @@ def import_transferred(queue, inbox_root, *, render_job_id, transferred_master,
         raise PiImportError("exact master SHA256 required")
     if file_sha256(source) != expected_sha256:
         raise PiImportError("transferred MP4 hash mismatch")
+    receipt_check = preflight(master=source, plan=plan, readiness=readiness,
+                              render_job_id=render_job_id,
+                              expected_sha256=expected_sha256)
+    if receipt_check["status"] != "M67_PI_RECEIPTS_CONSISTENT_NEEDS_M65_APPROVAL":
+        raise PiImportError("M65 upload plan or readiness receipt mismatch")
     inbox.prepare(render_job_id)
     video_target, plan_target, ready_target = inbox._files(render_job_id, True)
     for target in (video_target, plan_target, ready_target):
