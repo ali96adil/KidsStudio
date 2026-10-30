@@ -108,6 +108,28 @@ class M65PiOrdinaryUploadTests(unittest.TestCase):
                          "M65_PI_ORDINARY_UPLOAD_IDLE")
         self.assertEqual(fake.started,1)
 
+    def test_pi_get_only_processing_after_mac_power_off(self):
+        self.stage()
+        google=FakeYouTube(processing="processing")
+        service=PiOrdinaryUploadService(
+            self.queue,self.inbox,FakeOAuth(),
+            journal=self.journal,transport=google)
+        first=service.poll_once()
+        self.assertEqual(first["status"],"YOUTUBE_PRIVATE_PROCESSING_PENDING")
+        self.assertEqual(PreviewReview(self.queue).snapshot()["pending_review"],0)
+        self.assertEqual(google.started,1)
+        google.processing="succeeded"
+        second=service.poll_once()
+        self.assertEqual(second["status"],"M65_PI_PRIVATE_OWNER_REVIEW_READY")
+        self.assertEqual(second["uploader_device"],"RASPBERRY_PI")
+        self.assertEqual(PreviewReview(self.queue).snapshot()["pending_review"],1)
+        self.assertEqual(google.started,1)
+        self.assertEqual(self.journal.status(self.job)["state"],
+                         "PRIVATE_VERIFIED")
+        self.assertEqual(service.poll_once()["status"],
+                         "M65_PI_ORDINARY_UPLOAD_IDLE")
+        self.assertEqual(google.started,1)
+
     def test_mac_ordinary_rsync_only_sends_three_part_files(self):
         self.inbox.prepare(self.job)
         seen=[]
