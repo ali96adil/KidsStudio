@@ -56,8 +56,13 @@ def prepare_private_recovery_recipe(
     recipes:MediaRecipes,journal:RecoveryJournal, *,
     original_job_id:str,payload:dict[str,Any],proposal_id:str,
     prober=None,full_qa:Callable|None=None,
+    allow_existing_stage:bool=False,
 )->tuple[dict[str,Any],dict[str,Any]]:
-    """Read-only derivation: no output files, queue operations or inference."""
+    """Read-only derivation: no output files, queue operations or inference.
+
+    M60 may rederive against EXISTING frozen files; the caller must compare
+    those exact bytes afterward. Creation paths keep exclusive no-overwrite.
+    """
     if (not isinstance(original_job_id,str) or not JOB.fullmatch(original_job_id)
         or not isinstance(proposal_id,str) or not JOB.fullmatch(proposal_id)
         or proposal_id==original_job_id):
@@ -97,7 +102,8 @@ def prepare_private_recovery_recipe(
     for folder in names:
         if (output/folder).is_symlink():
             raise RecoveryRecipeError("M59 staging folder must not be a link.")
-        if ((output/folder/(proposal_id+".json")).exists() or
+        if not allow_existing_stage and (
+            (output/folder/(proposal_id+".json")).exists() or
             (output/folder/(proposal_id+".json")).is_symlink()):
             raise RecoveryRecipeError("M59 staged recipe/manifest already exists.")
     clips=[]
