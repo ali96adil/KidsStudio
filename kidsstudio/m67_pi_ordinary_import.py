@@ -30,7 +30,7 @@ def import_transferred(queue, inbox_root, *, render_job_id, transferred_master,
     plan = Path(plan_file)
     readiness = Path(readiness_file)
     for item in (source, plan, readiness):
-        if item.is_symlink() or not item.is_file():
+        if item.is_symlink() or not item.is_file() or item.stat().st_nlink != 1:
             raise PiImportError("regular existing source files required")
     if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
         raise PiImportError("exact master SHA256 required")
