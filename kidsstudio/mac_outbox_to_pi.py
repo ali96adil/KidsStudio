@@ -15,6 +15,7 @@ import sys
 import time
 
 from .mac_to_pi_transfer import transfer_master_to_pi,LANTransferError
+from .mac_ordinary_to_pi import transfer_ordinary_to_pi
 from .recovery_private_uploader import _plan,RecoveryPrivateUploaderError
 
 JOB=re.compile(r"^[a-f0-9]{32}$")
@@ -27,7 +28,8 @@ class OutboxError(ValueError):
 class MacToPiOutbox:
     def __init__(self,*,outbox:Path,renders:Path,
                  pi_host:str,pi_user:str,pi_inbox_root:str,
-                 ssh_key:Path,transfer=transfer_master_to_pi):
+                 ssh_key:Path,transfer=transfer_master_to_pi,
+                 ordinary_transfer=transfer_ordinary_to_pi):
         self.outbox=Path(outbox).expanduser()
         self.renders=Path(renders).expanduser()
         if (not self.outbox.is_absolute() or self.outbox.is_symlink() or
@@ -39,6 +41,7 @@ class MacToPiOutbox:
         self.pi_inbox_root=pi_inbox_root
         self.ssh_key=Path(ssh_key).expanduser()
         self.transfer=transfer
+        self.ordinary_transfer=ordinary_transfer
 
     def poll_once(self)->dict:
         # A .json file is a draft until the M62 AI/rights process commits
@@ -51,21 +54,40 @@ class MacToPiOutbox:
             if marker.exists() or marker.is_symlink():
                 continue
             try:
-                plan,_=_plan(file)
-                if not JOB.fullmatch(plan["recovery_job_id"]):
-                    continue
-                source=self.renders/plan["recovery_job_id"]/"episode_qa_master.mp4"
-                result=self.transfer(
-                    media=source,plan_file=file,
-                    pi_host=self.pi_host,pi_user=self.pi_user,
-                    pi_inbox_root=self.pi_inbox_root,ssh_key=self.ssh_key)
+                if file.name.endswith(".ordinary.ready.json"):
+                    plan=json.loads(file.read_bytes())
+                    if not isinstance(plan,dict) or not isinstance(
+                        plan.get("render_job_id"),str) or not JOB.fullmatch(
+                            plan["render_job_id"]):
+                        continue
+                    job=plan["render_job_id"]
+                    readiness=self.outbox/(job+".ordinary.m8.json")
+                    source=self.renders/job/"episode_qa_master.mp4"
+                    result=self.ordinary_transfer(
+                        media=source,plan_file=file,readiness_file=readiness,
+                        pi_host=self.pi_host,pi_user=self.pi_user,
+                        pi_inbox_root=self.pi_inbox_root,ssh_key=self.ssh_key)
+                    identifier=job
+                    expected_sha=plan["master_sha256"]
+                else:
+                    plan,_=_plan(file)
+                    if not JOB.fullmatch(plan["recovery_job_id"]):
+                        continue
+                    job=plan["recovery_job_id"]
+                    source=self.renders/job/"episode_qa_master.mp4"
+                    result=self.transfer(
+                        media=source,plan_file=file,
+                        pi_host=self.pi_host,pi_user=self.pi_user,
+                        pi_inbox_root=self.pi_inbox_root,ssh_key=self.ssh_key)
+                    identifier=job
+                    expected_sha=plan["master_sha256"]
                 # This only means rsync finished, NOT Pi media accepted.
                 fd=os.open(marker,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
                 with os.fdopen(fd,"w") as out:
                     out.write(json.dumps({
                         "status":"M64_SENT_PI_HASH_STILL_REQUIRED",
-                        "recovery_job_id":plan["recovery_job_id"],
-                        "master_sha256":plan["master_sha256"],
+                        "render_or_recovery_job_id":identifier,
+                        "master_sha256":expected_sha,
                     },sort_keys=True)+"\n")
                     out.flush();os.fsync(out.fileno())
                 return {**result,"outbox_recorded":True}
