@@ -172,7 +172,7 @@ class RecoveryUploader63Tests(unittest.TestCase):
                 "--media",str(self.media),
                 "--journal",str(self.root/"unused.sqlite")])
         self.assertEqual(result,0)
-        self.assertIn("M63_EXPLICIT_EXECUTE_REQUIRED_NO_NETWORK",
+        self.assertIn("M64_MAC_GOOGLE_UPLOAD_DISABLED_USE_PI",
                       out.getvalue())
         self.assertFalse((self.root/"unused.sqlite").exists())
 
