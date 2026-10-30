@@ -1735,7 +1735,7 @@ class Orchestration32(unittest.TestCase):
         self.assertEqual(claim["job"]["job_id"],
                          admitted["reserved_job_id"])
         check=transport.dispatch("recovery-private-check",{
-                "job_id":claimed if False else admitted["reserved_job_id"],
+                "job_id":admitted["reserved_job_id"],
                 "generation":1,
             },"mac-private",frozenset({"recovery_private_upload"}))
         self.assertEqual(check["status"],"M63_CURRENT_PRIVATE_UPLOAD_LEASE")
