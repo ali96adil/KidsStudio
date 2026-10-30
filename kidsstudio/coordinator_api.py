@@ -122,11 +122,13 @@ class Coordinator:
             gate=RecoveryLeaseGate(self.queue)
             try:
                 if action=="recovery-claim":
-                    if request:
-                        raise TransportError("M61 claim does not accept media paths.")
+                    if (set(request)!={"proposal_id"} or
+                        not isinstance(request["proposal_id"],str) or
+                        not ID.fullmatch(request["proposal_id"])):
+                        raise TransportError("M61 requires exact targeted proposal.")
                     return {"job":gate.claim(
                         worker_id=worker_id,capability="recovery_assemble",
-                        lease_seconds=120)}
+                        proposal_id=request["proposal_id"],lease_seconds=120)}
                 if action not in (
                     "recovery-pre-execution-check","recovery-heartbeat",
                     "recovery-complete","recovery-fail"):
