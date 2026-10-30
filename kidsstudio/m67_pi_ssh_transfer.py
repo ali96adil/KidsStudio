@@ -26,7 +26,7 @@ def transfer(root, manifest, *, host, user, remote_dir,
              runner=subprocess.run):
     if not _SAFE.fullmatch(host) or not _SAFE.fullmatch(user):
         raise TransferError("simple hostname and SSH username required")
-    if not remote_dir.startswith("/") or not all(
+    if not remote_dir.startswith("/") or "//" in remote_dir or any(\n        part in (".", "..") for part in remote_dir.split("/")\n    ) or not all(
             _SAFE.fullmatch(p) for p in remote_dir.split("/") if p):
         raise TransferError("remote directory must be an absolute safe path")
     verification = verify_inventory(root, manifest)
@@ -58,7 +58,7 @@ def transfer(root, manifest, *, host, user, remote_dir,
         final_hash = run(["ssh", *ssh_opts, target, "sha256sum", final])
         if final_hash.stdout.strip().split()[0] != digest:
             raise TransferError("final remote master SHA256 mismatch")
-    except (subprocess.SubprocessError, OSError) as exc:
+    except (subprocess.SubprocessError, OSError, IndexError) as exc:
         raise TransferError("SSH transfer failed; partial file may remain") from exc
     return {"status": "TRANSFERRED_TO_PI_HASH_VERIFIED",
             "episode_id": manifest["episode_id"],
