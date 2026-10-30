@@ -108,7 +108,10 @@ class RecoveryLeaseGate:
             worker_id=NULL,lease_expires=NULL,updated_at=?
             WHERE proposal_id=? AND state IN (?,?)""",
             (FAILED,self.queue.clock(),row["proposal_id"],READY,LEASED))
-        self.queue._event(db,row["reserved_job_id"],
+        source=db.execute("""SELECT original_job_id FROM
+            studio_recovery_reservations WHERE proposal_id=?""",
+            (row["proposal_id"],)).fetchone()
+        self.queue._event(db,source["original_job_id"] if source else None,
                           "M61_RECOVERY_REVOKED",{"reason":reason})
 
     def activate(self,proposal_file:str|Path,*,sha256:str)->dict:
@@ -145,7 +148,7 @@ class RecoveryLeaseGate:
                 VALUES(?,?,?,?,?,?,?)""",
                 (proposal["proposal_id"],res["reserved_job_id"],
                  str(p),digest,READY,now,now))
-            self.queue._event(db,res["reserved_job_id"],
+            self.queue._event(db,res["original_job_id"],
                 "M61_RECOVERY_ACTIVATED_PRIVATE_NO_QUEUE",
                 {"proposal_id":proposal["proposal_id"]})
         return {"status":READY,"job_id":res["reserved_job_id"],
@@ -182,7 +185,7 @@ class RecoveryLeaseGate:
                 lease_expires=?,updated_at=?
                 WHERE proposal_id=? AND state=?""",
                 (LEASED,worker_id,until,now,row["proposal_id"],READY))
-            self.queue._event(db,row["reserved_job_id"],
+            self.queue._event(db,attested["original_job_id"],
                 "M61_RECOVERY_LEASE_CLAIMED",
                 {"generation":row["generation"]+1})
             return {**attested,"kind":CAPABILITY,
@@ -261,7 +264,11 @@ class RecoveryLeaseGate:
                 worker_id=NULL,lease_expires=NULL,result_sha256=?,
                 updated_at=? WHERE proposal_id=?""",
                 (DONE,result["artifact_sha256"],now,row["proposal_id"]))
-            self.queue._event(db,job_id,"M61_MASTER_TECH_PENDING_FINAL_REVIEW",
+            original=db.execute("""SELECT original_job_id FROM
+                studio_recovery_reservations WHERE proposal_id=?""",
+                (row["proposal_id"],)).fetchone()
+            self.queue._event(db,original["original_job_id"],
+                "M61_MASTER_TECH_PENDING_FINAL_REVIEW",
                               {"artifact_sha256":result["artifact_sha256"]})
             return {"status":DONE,"job_id":job_id,
                     "owner_private_review_required":True,
