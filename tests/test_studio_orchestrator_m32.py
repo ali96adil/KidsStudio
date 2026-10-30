@@ -1465,6 +1465,11 @@ class Orchestration32(unittest.TestCase):
             max_uploads_24h=1,made_for_kids=True,
             contains_synthetic_media=True,
             owner_note="Private YouTube series approval only, no public release")
+        self.queue.set_paused(True)
+        with self.assertRaises(RecoveryQualityError):
+            gate.stage_private_handoff(pid,channel_id="UC"+"a"*22,
+                made_for_kids=True,contains_synthetic_media=True)
+        self.queue.set_paused(False)
         handoff=gate.stage_private_handoff(pid,
             channel_id="UC"+"a"*22,
             made_for_kids=True,contains_synthetic_media=True)
