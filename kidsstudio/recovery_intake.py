@@ -567,10 +567,11 @@ class RecoveryIntake:
             len(info["scenes"])!=info["scene_count"]):
             raise RecoveryIntakeError("M59 fresh recipe metadata not safe.")
 
-        template_keys={"schema_version","series_id","episode_number",
-                       "script","private_root","output_root","voice_rights",
-                       "tools","clips"}
-        if (set(recipe)!=template_keys or recipe["schema_version"]!=1 or
+        template_keys={"schema_version","recovery_stage","series_id",
+                       "episode_number","script","private_root","output_root",
+                       "voice_rights","tools","clips"}
+        if (set(recipe)!=template_keys or recipe["schema_version"]!=2 or
+            recipe["recovery_stage"]!="M59_STAGED_ONLY_NO_EXECUTION" or
             recipe["series_id"]!=proposal["series_id"] or
             recipe["episode_number"]!=proposal["episode_number"] or
             not isinstance(recipe["script"],dict) or
