@@ -144,8 +144,8 @@ class RemoteRecoveryWorker:
                     "job_id":job_id}
         try:
             ack=self.pi.call("recovery-complete",{**params,"result":result})
-            if ack.get("status")!=
-                "M61_RENDERED_PENDING_FINAL_M7_OWNER_REVIEW":
+            if (ack.get("status") !=
+                "M61_RENDERED_PENDING_FINAL_M7_OWNER_REVIEW"):
                 raise RemoteWorkerError("M61 Pi did not confirm private review status.")
             return {"status":"M61_COMPLETED_PRIVATE_REVIEW_REQUIRED",
                     "job_id":job_id,
