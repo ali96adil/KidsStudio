@@ -107,6 +107,10 @@ def build_snapshot(queue: StudioQueue) -> dict:
     scene_ai_states={}
     scene_visual_states={}
     orchestration_states={}
+    recovery_states={}
+    recovery_summary={"state":"NOT_CONFIGURED","reserved":0,
+                      "ready":0,"leased":0,"waiting_final_review":0,
+                      "blocked":0,"public_release_authorized":False}
     preview_states={}
     preview_summary={"state":"NOT_CONFIGURED","pending_review":0,
                      "revision_requests":0,"approved":0,"approved_with_notes":0}
@@ -159,6 +163,44 @@ def build_snapshot(queue: StudioQueue) -> dict:
                     "baseline":record["comparison_style"],
                     "state":record["status"]
                 })
+        recovery_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_recovery_reservations'""").fetchone())
+        recovery_leases_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_recovery_leases'""").fetchone())
+        if recovery_installed:
+            recovery_summary["state"]="PRIVATE_RECOVERY_METADATA_ONLY"
+            if recovery_leases_installed:
+                records=db.execute("""SELECT i.series_id,i.ordinal,
+                    r.state AS reservation_state,l.state AS lease_state
+                    FROM studio_recovery_reservations r
+                    JOIN studio_recovery_intents i ON i.proposal_id=r.proposal_id
+                    LEFT JOIN studio_recovery_leases l
+                      ON l.proposal_id=r.proposal_id
+                    ORDER BY r.created_at DESC""")
+            else:
+                records=db.execute("""SELECT i.series_id,i.ordinal,
+                    r.state AS reservation_state,NULL AS lease_state
+                    FROM studio_recovery_reservations r
+                    JOIN studio_recovery_intents i ON i.proposal_id=r.proposal_id
+                    ORDER BY r.created_at DESC""")
+            for r in records:
+                state=r["lease_state"] or r["reservation_state"]
+                bucket={
+                    "M60_RECOVERY_JOB_RESERVED_NOT_DISPATCHABLE":"reserved",
+                    "M61_READY_PRIVATE_RECOVERY":"ready",
+                    "M61_LEASED_PRIVATE_RECOVERY":"leased",
+                    "M61_RENDERED_PENDING_FINAL_M7_OWNER_REVIEW":"waiting_final_review",
+                    "M61_FAILED_REQUIRES_MANUAL_RECONCILIATION":"blocked",
+                }.get(state)
+                if bucket:
+                    recovery_summary[bucket]+=1
+                key=(r["series_id"],r["ordinal"])
+                if key not in recovery_states:
+                    recovery_states[key]={
+                        "state":state,
+                        "hardware_qualified":False,
+                        "automatically_public":False,
+                        "owner_private_review_required":True}
         orchestration_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_orchestrator_plans'""").fetchone())
         if orchestration_installed:
@@ -331,6 +373,8 @@ def build_snapshot(queue: StudioQueue) -> dict:
             "visual_av_review":scene_visual_states.get((ep["series_id"],ep["ordinal"]),{
                 "state":"NOT_STARTED","scenes_waiting_audio_video":0,
                 "lip_sync_verified":False,"public_release_authorized":False}),
+            "recovery":recovery_states.get((ep["series_id"],ep["ordinal"]),{
+                "state":"NO_RECOVERY_ATTEMPT","automatically_public":False}),
             "orchestrator":orchestration_states.get((ep["series_id"],ep["ordinal"]),{
                 "state":"NOT_PINNED",
                 "hardware_qualification_ready":False,
@@ -352,6 +396,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
     return {"version":1,"generated_at":datetime.now(timezone.utc).isoformat(),
             "overview":counts,"series":series,"episodes":episodes,"notes":notes,
             "learning":learning_summary,
+            "recovery":recovery_summary,
             "private_previews":preview_summary,
             "queue":{"paused":status["paused"],"counts":status["counts"]},
             "limits":{"media_execution":False,"publishing":False,
