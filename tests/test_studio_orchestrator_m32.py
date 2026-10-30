@@ -940,6 +940,167 @@ class Orchestration32(unittest.TestCase):
             intake.bind_media_contract(source,proposal_sha256=source_sha,
                 contract_file=media,contract_file_sha256=media_sha)
 
+    def _m59_staged_pi_inputs(self):
+        from kidsstudio.recovery_intake import _sha_json
+        old,proposal,intake=self._m57_failed_two_scene_montage()
+        pfile,psha=self._m57_write_proposal(proposal)
+        intake.pin(pfile,sha256=psha)
+        mfile,msha=self._m58_synthetic_pi_contract(proposal)
+        bound=intake.bind_media_contract(
+            pfile,proposal_sha256=psha,
+            contract_file=mfile,contract_file_sha256=msha)
+        self.assertEqual(bound["status"],
+                         "M58_PRIVATE_MEDIA_BOUND_NO_JOB_QUEUED")
+        media=json.loads(mfile.read_text())
+        derived={
+            "schema_version":1,"series_id":proposal["series_id"],
+            "episode_number":proposal["episode_number"],
+            "script":{"path":str(self.parent),
+                      "sha256":sha(self.parent)},
+            "private_root":str(self.root),
+            "output_root":str(self.root/"assembled"),
+            "voice_rights":"INTERNAL_TEST_ONLY",
+            "tools":{"ffmpeg":"/usr/bin/ffmpeg","ffprobe":"/usr/bin/ffprobe",
+                "face_python":"/usr/bin/python3",
+                "face_v06":str(self.root/"face_v06.py"),
+                "face_v06_sha256":"c"*64,
+                "face_v07":str(self.root/"face_v07.py"),
+                "face_v07_sha256":"d"*64},
+            "clips":[{
+                "video":scene["candidate_path"],
+                "sha256":scene["candidate_sha256"],
+                "face_cleanup":(
+                    "none" if scene["strategy"]==
+                    "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS"
+                    else scene["source_face_cleanup"]),
+            } for scene in proposal["scenes"]],
+        }
+        recipe_path=self.root/"m59_copied_recipe.json"
+        recipe_path.write_text(json.dumps(derived))
+        manifest={
+            "schema_version":2,
+            "status":"M59_PRIVATE_RECOVERY_RECIPE_STAGED_NOT_EXECUTABLE",
+            "proposal_id":proposal["proposal_id"],
+            "original_job_id":old,
+            "original_script_sha256":proposal["original_script_sha256"],
+            "source_catalogue_sha256":proposal["source_catalogue_sha256"],
+            "source_m58_contract_sha256":media["contract_sha256"],
+            "source_m58_file_sha256":sha(mfile),
+            "derived_recipe_sha256":sha(recipe_path),
+            "new_recipe_id":"recovery_"+proposal["proposal_id"],
+            "scene_count":proposal["scene_count"],
+            "scenes":[{
+                "scene":s["scene"],"strategy":s["strategy"],
+                "original_ltx_sha256":s["source_sha256"],
+                "selected_media_sha256":s["candidate_sha256"],
+                "applied_face_cleanup":(
+                    "none" if s["strategy"]==
+                    "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS"
+                    else s["source_face_cleanup"]),
+                "full_m7_decode_confirmed":s["strategy"]==
+                    "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS",
+                "requires_new_scene_provenance_review":True,
+                "publication_approved":False,
+            } for s in proposal["scenes"]],
+            "recovered_candidates":1,"fallbacks":1,
+            "new_pi_job_id":None,
+            "new_m14_m49_lineage_required":True,
+            "fresh_m53_m54_lease_required":True,
+            "new_final_m7_quality_and_owner_preview_required":True,
+            "auto_execute_allowed":False,"auto_retry_allowed":False,
+            "public_release_authorized":False,
+        }
+        manifest_path=self.root/"m59_copied_manifest.json"
+        manifest_path.write_text(json.dumps({
+            "schema_version":2,"manifest":manifest,
+            "manifest_sha256":_sha_json(manifest)}))
+        return (old,proposal,intake,pfile,psha,recipe_path,
+                manifest_path)
+
+    def test_m59_pi_binds_staged_recipe_only_and_never_queues(self):
+        (old,proposal,intake,pfile,psha,recipe,manifest)=(
+            self._m59_staged_pi_inputs())
+        before=self.queue.status()["counts"].get("QUEUED",0)
+        reply=intake.bind_execution_recipe(
+            pfile,proposal_sha256=psha,
+            recipe_file=recipe,recipe_sha256=sha(recipe),
+            manifest_file=manifest,manifest_sha256=sha(manifest))
+        self.assertEqual(reply["status"],
+                         "M59_PRIVATE_RECOVERY_RECIPE_BOUND_NO_JOB")
+        self.assertEqual(reply["derived_recipe_sha256"],sha(recipe))
+        self.assertIsNone(reply["new_pi_job_id"])
+        self.assertIs(reply["mac_bytes_verified_by_pi"],False)
+        self.assertIs(reply["auto_execute_allowed"],False)
+        self.assertEqual(self.queue.status()["counts"].get("QUEUED",0),
+                         before)
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT state,recipe_id FROM
+                studio_recovery_execution_recipes WHERE proposal_id=?""",
+                (proposal["proposal_id"],)).fetchone()
+        self.assertEqual(row["state"],"M59_NONEXECUTABLE_RECIPE_BOUND")
+        self.assertEqual(row["recipe_id"],"recovery_"+proposal["proposal_id"])
+        from kidsstudio.recovery_intake import RecoveryIntakeError
+        with self.assertRaises(RecoveryIntakeError):
+            intake.bind_execution_recipe(
+                pfile,proposal_sha256=psha,recipe_file=recipe,
+                recipe_sha256=sha(recipe),manifest_file=manifest,
+                manifest_sha256=sha(manifest))
+
+    def test_m59_pi_rejects_forged_scene_sha_flags_and_recipe_bytes(self):
+        from kidsstudio.recovery_intake import RecoveryIntakeError,_sha_json
+        (old,proposal,intake,pfile,psha,recipe,manifest)=(
+            self._m59_staged_pi_inputs())
+        original=json.loads(manifest.read_text())
+        original_recipe=json.loads(recipe.read_text())
+        with self.assertRaises(RecoveryIntakeError):
+            intake.bind_execution_recipe(
+                pfile,proposal_sha256=psha,recipe_file=recipe,
+                recipe_sha256="0"*64,manifest_file=manifest,
+                manifest_sha256=sha(manifest))
+        for mutation in ("recovered_sha","fake_decode","wrong_face",
+                         "allow_execution","wrong_old_job","forged_recipe"):
+            candidate=json.loads(json.dumps(original))
+            staged=json.loads(json.dumps(original_recipe))
+            m=candidate["manifest"]
+            if mutation=="recovered_sha":
+                m["scenes"][0]["selected_media_sha256"]="0"*64
+            elif mutation=="fake_decode":
+                m["scenes"][0]["full_m7_decode_confirmed"]=False
+            elif mutation=="wrong_face":
+                m["scenes"][0]["applied_face_cleanup"]="bunny_v07"
+                staged["clips"][0]["face_cleanup"]="bunny_v07"
+            elif mutation=="allow_execution":
+                m["auto_execute_allowed"]=True
+            elif mutation=="wrong_old_job":
+                m["original_job_id"]="0"*32
+            else:
+                staged["clips"][1]["sha256"]="e"*64
+            recipe.write_text(json.dumps(staged))
+            m["derived_recipe_sha256"]=sha(recipe)
+            candidate["manifest_sha256"]=_sha_json(m)
+            manifest.write_text(json.dumps(candidate))
+            with self.assertRaises(RecoveryIntakeError,msg=mutation):
+                intake.bind_execution_recipe(
+                    pfile,proposal_sha256=psha,recipe_file=recipe,
+                    recipe_sha256=sha(recipe),manifest_file=manifest,
+                    manifest_sha256=sha(manifest))
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute("""SELECT COUNT(*) FROM
+                studio_recovery_execution_recipes""").fetchone()[0],0)
+
+    def test_m59_pi_requires_still_failed_job_and_approved_scene_provenance(self):
+        from kidsstudio.recovery_intake import RecoveryIntakeError
+        (old,proposal,intake,pfile,psha,recipe,manifest)=(
+            self._m59_staged_pi_inputs())
+        with self.queue._connection(write=True) as db:
+            db.execute("UPDATE jobs SET state='COMPLETED' WHERE job_id=?",
+                       (old,))
+        with self.assertRaises(RecoveryIntakeError):
+            intake.bind_execution_recipe(
+                pfile,proposal_sha256=psha,recipe_file=recipe,
+                recipe_sha256=sha(recipe),manifest_file=manifest,
+                manifest_sha256=sha(manifest))
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
