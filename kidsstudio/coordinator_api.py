@@ -132,6 +132,15 @@ class Coordinator:
                         proposal_id=request["proposal_id"],
                         worker_id=worker_id,
                         capability="recovery_private_upload")}
+                if action=="recovery-private-reverify":
+                    if (set(request)!={"proposal_id","receipt"} or
+                        not isinstance(request["proposal_id"],str) or
+                        not ID.fullmatch(request["proposal_id"]) or
+                        not isinstance(request["receipt"],dict)):
+                        raise TransportError("M63 reverify exact existing video only.")
+                    return gate.reconcile_processing(
+                        proposal_id=request["proposal_id"],
+                        worker_id=worker_id,receipt=request["receipt"])
                 if action not in (
                     "recovery-private-check","recovery-private-heartbeat",
                     "recovery-private-complete","recovery-private-fail"):
@@ -553,7 +562,8 @@ def create_handler(coordinator: Coordinator):
                             "/v1/recovery-private-check",
                             "/v1/recovery-private-heartbeat",
                             "/v1/recovery-private-complete",
-                            "/v1/recovery-private-fail"):
+                            "/v1/recovery-private-fail",
+                            "/v1/recovery-private-reverify"):
                 self._reply(404, {"error": "NOT_FOUND"})
                 return
             length = self.headers.get("Content-Length")
