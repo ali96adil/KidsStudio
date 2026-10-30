@@ -1787,6 +1787,28 @@ class Orchestration32(unittest.TestCase):
             gate.reconcile_processing(proposal_id=pid,
                 worker_id="mac-private",receipt=receipt)
 
+    def test_m63_owner_budget_also_blocks_ordinary_m26_attempt(self):
+        from kidsstudio.private_upload_policy import (
+            PrivateUploadPolicy,PrivatePolicyError)
+        from unittest.mock import patch
+        proposal,admitted,gate,policy=self._m63_private_handoff_pi()
+        # Isolate *budget* from the intentionally BLOCKED original render,
+        # without issuing an ordinary upload job.
+        with patch.object(PrivateUploadPolicy,"_approved",
+                          staticmethod(lambda *args,**kwargs:None)):
+            with self.assertRaises(PrivatePolicyError):
+                policy.enqueue_private("colors-ar",1,
+                    render_job_id="9"*32,
+                    master_sha256="f"*64,
+                    plan_sha256="a"*64,
+                    readiness_sha256="b"*64,
+                    channel_id="UC"+"a"*22,
+                    made_for_kids=True,
+                    contains_synthetic_media=True)
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute("""SELECT COUNT(*) FROM jobs
+                WHERE kind='youtube_private_upload'""").fetchone()[0],0)
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
