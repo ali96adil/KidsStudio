@@ -113,9 +113,7 @@ def render_private_recovery_master(
             proof.get("generation")!=generation or
             proof.get("proposal_id")!=proposal_id or
             proof.get("original_job_id")!=original_job_id or
-            proof.get("recipe_sha256")!=checked["recipe_sha256"] or
-            proof.get("manifest_sha256")!=manifest["source_m58_contract_sha256"]
-                and False):
+            proof.get("recipe_sha256")!=checked["recipe_sha256"]):
             # the M61 manifest SHA is independently checked below; the
             # media contract is a DIFFERENT digest.
             abort_event.set()
