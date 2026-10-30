@@ -1809,6 +1809,72 @@ class Orchestration32(unittest.TestCase):
             self.assertEqual(db.execute("""SELECT COUNT(*) FROM jobs
                 WHERE kind='youtube_private_upload'""").fetchone()[0],0)
 
+    def test_m63_loopback_owner_review_routes_recovered_private_video(self):
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+        from kidsstudio.owner_review_ui import make_handler
+        from kidsstudio.private_preview_review import PreviewReview
+        from kidsstudio.recovery_owner_review import RecoveryOwnerReview
+        proposal,admitted,gate,policy=self._m63_private_handoff_pi()
+        claimed=gate.claim(proposal_id=proposal["proposal_id"],
+            worker_id="mac-private",capability="recovery_private_upload")
+        gate.complete(job_id=claimed["job_id"],worker_id="mac-private",
+            generation=1,receipt={
+                "status":"YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING",
+                "video_id":"abcdefghijk","channel_id":"UC"+"a"*22,
+                "video_sha256":"f"*64,"youtube_privacy":"private",
+                "processing_status":"succeeded",
+                "platform_privacy_verified":True,
+                "ready_for_owner_review":True,
+                "public_release_authorized":False})
+        legacy=PreviewReview(self.queue)
+        legacy.initialize()
+        token="v"*40
+        server=ThreadingHTTPServer(
+            ("127.0.0.1",0),make_handler(legacy,token))
+        thread=threading.Thread(target=server.serve_forever,daemon=True)
+        thread.start()
+        self.addCleanup(thread.join,2)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        port=server.server_port
+        headers={"Authorization":"Bearer "+token}
+        client=http.client.HTTPConnection("127.0.0.1",port,timeout=5)
+        try:
+            client.request("GET","/api/previews",headers=headers)
+            response=client.getresponse()
+            self.assertEqual(response.status,200)
+            items=json.loads(response.read())
+            self.assertEqual(items["recovery_video_reviews"],1)
+            self.assertEqual(items["pending_review"],1)
+            self.assertTrue(items["previews"][0]["recovery"])
+            action=dict(headers)
+            action.update({"Origin":"http://127.0.0.1:"+str(port),
+                           "X-KidsStudio-Owner-Action":"yes",
+                           "Content-Type":"application/json"})
+            note=json.dumps({
+                "video_id":"abcdefghijk","text":"ملاحظة دقيقة على صوت الممثل",
+                "category":"audio","second":42})
+            client.request("POST","/api/comment",body=note,headers=action)
+            r=client.getresponse()
+            self.assertEqual(r.status,200,r.read())
+            r.read()
+            decision=json.dumps({"video_id":"abcdefghijk",
+                "decision":"REQUEST_CHANGES",
+                "note":"رجاء تصحيح توقيت الصوت على المشهد الثاني"})
+            client.request("POST","/api/decision",
+                           body=decision,headers=action)
+            r=client.getresponse()
+            self.assertEqual(r.status,200,r.read())
+            r.read()
+            self.assertEqual(RecoveryOwnerReview(self.queue).snapshot()
+                ["previews"][0]["state"],"REVISION_REQUESTED")
+            self.assertEqual(self.queue.status()["counts"]
+                .get("QUEUED",0),0)
+        finally:
+            client.close()
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
