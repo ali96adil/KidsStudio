@@ -279,6 +279,11 @@ class M56RecoveryPlanTests(unittest.TestCase):
         manifest_file=output/"_recovery_execution_manifests"/(
             self.proposal_id+".json")
         self.assertEqual(report["recipe_sha256"],sha(recipe_file))
+        # The original schema-1 assembler MUST refuse the staged recipe:
+        # M59 cannot silently start rendering outside a fresh M60 gate.
+        from kidsstudio.episode_assembly import EpisodeAssembler
+        with self.assertRaises(EpisodeAssemblyError):
+            EpisodeAssembler(recipe_file)
         self.assertEqual(report["execution_manifest_file_sha256"],
                          sha(manifest_file))
         m=json.loads(manifest_file.read_text())
