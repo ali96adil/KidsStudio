@@ -13,6 +13,7 @@
     <string>--pi-user</string><string>kidsstudio</string>
     <string>--pi-inbox-root</string><string>/var/lib/kidsstudio/upload-inbox</string>
     <string>--ssh-key</string><string>REPLACE_WITH_DEDICATED_SSH_KEY_PATH</string>
+    <string>--ordinary-catalogue</string><string>REPLACE_WITH_M25_PRIVATE_MAC_CATALOGUE_JSON</string>
     <string>--loop</string><string>--execute</string>
   </array>
   <key>RunAtLoad</key><true/>
