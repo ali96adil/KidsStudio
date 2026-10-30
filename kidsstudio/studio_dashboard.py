@@ -108,6 +108,13 @@ def build_snapshot(queue: StudioQueue) -> dict:
     scene_visual_states={}
     orchestration_states={}
     recovery_states={}
+    pi_upload_summary={
+        "mode":"MAC_LOCAL_RENDER_PI_PRIVATE_UPLOAD",
+        "ordinary_media_verified":0,
+        "recovery_media_verified":0,
+        "pi_upload_configured":False,
+        "mac_google_upload_disabled":True,
+        "public_release_authorized":False}
     recovery_summary={"state":"NOT_CONFIGURED","reserved":0,
                       "ready":0,"leased":0,"waiting_final_review":0,
                       "blocked":0,"awaiting_ai":0,
@@ -126,6 +133,19 @@ def build_snapshot(queue: StudioQueue) -> dict:
     audio_tracking_installed=False
     stage_tracking_installed=False
     with queue._connection() as db:
+        installed={row["name"] for row in db.execute(
+            """SELECT name FROM sqlite_master WHERE type='table'
+            AND name IN ('studio_pi_ordinary_media',
+                         'studio_recovery_pi_media')""")}
+        if "studio_pi_ordinary_media" in installed:
+            pi_upload_summary["ordinary_media_verified"]=db.execute(
+                """SELECT COUNT(*) FROM studio_pi_ordinary_media
+                WHERE state='M65_PI_ORDINARY_MEDIA_VERIFIED_PRIVATE_ONLY'""").fetchone()[0]
+        if "studio_recovery_pi_media" in installed:
+            pi_upload_summary["recovery_media_verified"]=db.execute(
+                """SELECT COUNT(*) FROM studio_recovery_pi_media
+                WHERE state='M64_PI_MEDIA_VERIFIED_PRIVATE_ONLY'""").fetchone()[0]
+        pi_upload_summary["pi_upload_configured"]=bool(installed)
         has_previews=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_private_previews'""").fetchone())
         if has_previews:
@@ -481,6 +501,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
     return {"version":1,"generated_at":datetime.now(timezone.utc).isoformat(),
             "overview":counts,"series":series,"episodes":episodes,"notes":notes,
             "learning":learning_summary,
+            "pi_upload":pi_upload_summary,
             "recovery":recovery_summary,
             "private_previews":preview_summary,
             "queue":{"paused":status["paused"],"counts":status["counts"]},
