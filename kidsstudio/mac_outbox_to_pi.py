@@ -16,6 +16,10 @@ import time
 
 from .mac_to_pi_transfer import transfer_master_to_pi,LANTransferError
 from .mac_ordinary_to_pi import transfer_ordinary_to_pi
+from .mac_stage_ordinary_outbox import (
+    stage_approved_ordinary_outbox,OrdinaryOutboxError
+)
+from .private_upload_agent import PrivateCatalogue,PrivateAgentError
 from .recovery_private_uploader import _plan,RecoveryPrivateUploaderError
 
 JOB=re.compile(r"^[a-f0-9]{32}$")
@@ -29,7 +33,8 @@ class MacToPiOutbox:
     def __init__(self,*,outbox:Path,renders:Path,
                  pi_host:str,pi_user:str,pi_inbox_root:str,
                  ssh_key:Path,transfer=transfer_master_to_pi,
-                 ordinary_transfer=transfer_ordinary_to_pi):
+                 ordinary_transfer=transfer_ordinary_to_pi,
+                 ordinary_catalogue:Path|None=None):
         self.outbox=Path(outbox).expanduser()
         self.renders=Path(renders).expanduser()
         if (not self.outbox.is_absolute() or self.outbox.is_symlink() or
@@ -42,8 +47,26 @@ class MacToPiOutbox:
         self.ssh_key=Path(ssh_key).expanduser()
         self.transfer=transfer
         self.ordinary_transfer=ordinary_transfer
+        self.ordinary_catalogue=(Path(ordinary_catalogue).expanduser()
+                                if ordinary_catalogue else None)
+        self._catalogue_stamp=None
 
     def poll_once(self)->dict:
+        # Watch the approved M25 ordinary catalogue once per file revision;
+        # avoids repeatedly SHA-hashing multi-GB videos every 30 seconds.
+        if self.ordinary_catalogue is not None:
+            source=self.ordinary_catalogue
+            if not source.is_file() or source.is_symlink():
+                raise OutboxError("M65 ordinary approved catalogue missing.")
+            stamp=(source.stat().st_size,source.stat().st_mtime_ns)
+            if stamp!=self._catalogue_stamp:
+                try:
+                    stage_approved_ordinary_outbox(
+                        PrivateCatalogue(source),self.outbox)
+                except (OrdinaryOutboxError,PrivateAgentError,
+                        ValueError,OSError) as exc:
+                    raise OutboxError("M65 ordinary catalogue QA rejected.") from exc
+                self._catalogue_stamp=stamp
         # A .json file is a draft until the M62 AI/rights process commits
         # its final, validated proposal as a .ready.json. Pi remains the
         # authoritative gate and may reject stale/forged plans.
@@ -107,6 +130,7 @@ def main(argv:list[str]|None=None)->int:
     p.add_argument("--pi-user",required=True)
     p.add_argument("--pi-inbox-root",required=True)
     p.add_argument("--ssh-key",type=Path,required=True)
+    p.add_argument("--ordinary-catalogue",type=Path)
     p.add_argument("--poll-seconds",type=int,default=30)
     p.add_argument("--loop",action="store_true")
     p.add_argument("--execute",action="store_true")
@@ -121,7 +145,8 @@ def main(argv:list[str]|None=None)->int:
         runner=MacToPiOutbox(
             outbox=args.outbox,renders=args.renders,
             pi_host=args.pi_host,pi_user=args.pi_user,
-            pi_inbox_root=args.pi_inbox_root,ssh_key=args.ssh_key)
+            pi_inbox_root=args.pi_inbox_root,ssh_key=args.ssh_key,
+            ordinary_catalogue=args.ordinary_catalogue)
         while True:
             print(json.dumps(runner.poll_once(),sort_keys=True),flush=True)
             if not args.loop:break
