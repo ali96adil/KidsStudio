@@ -79,12 +79,16 @@ def pin_reviewed(root, approvals):
     root = Path(root)
     jobs = json.loads((root / "jobs.json").read_text(encoding="utf-8"))
     inspection = inspect_media_jobs(jobs, root)
+    if (root / "reviewed_manifest.json").exists() or (root / "reviewed_manifest.json").is_symlink():
+        raise ProductionStageError("reviewed manifest already exists")
     if inspection["status"] != "MEDIA_STRUCTURALLY_READY_PENDING_QA":
         raise ProductionStageError("media structural validation blocked")
     decoded = decode_check(jobs, root)
     if decoded["status"] != "MEDIA_DECODED_PENDING_QA":
         raise ProductionStageError("full media decode qualification blocked")
     decoded_by_beat = {entry["beat"]: entry for entry in decoded["results"]}
+    if len(decoded_by_beat) != len(jobs["jobs"]):
+        raise ProductionStageError("decode result count mismatch")
     for observed in inspection["results"]:
         decoded_entry = decoded_by_beat.get(observed["beat"], {})
         if (decoded_entry.get("visual_sha256") != observed.get("visual_sha256")
