@@ -155,10 +155,11 @@ class RecoveryLeaseGate:
                 "ordinary_queue_job":False,"public_release_authorized":False}
 
     def claim(self,*,worker_id:str,capability:str,
-              lease_seconds:int=120)->dict|None:
+              proposal_id:str,lease_seconds:int=120)->dict|None:
         if (not isinstance(worker_id,str) or not SAFE_KEY.fullmatch(worker_id)
             or capability!=CAPABILITY or type(lease_seconds) is not int or
-            not 10<=lease_seconds<=3600):
+            not 10<=lease_seconds<=3600 or
+            not isinstance(proposal_id,str) or not PID.fullmatch(proposal_id)):
             raise RecoveryLeaseError("Dedicated M61 capability and bounded lease required.")
         with self.queue._connection(write=True) as db:
             paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
@@ -171,8 +172,8 @@ class RecoveryLeaseGate:
                     WHERE state=? AND lease_expires<=?""",(LEASED,now)).fetchall():
                 self._revoke(db,row,"M61_LEASE_EXPIRED_NO_AUTO_RETRY")
             row=db.execute("""SELECT * FROM studio_recovery_leases
-                WHERE state=? ORDER BY created_at,proposal_id LIMIT 1""",
-                (READY,)).fetchone()
+                WHERE state=? AND proposal_id=? LIMIT 1""",
+                (READY,proposal_id)).fetchone()
             if row is None:return None
             try:
                 attested=self._guard(db,row)
