@@ -73,6 +73,17 @@
       row.append(make("span",null,statusAr[key]),make("strong",null,fmt(data.queue.counts[key]??0)));
       host.append(row);
     }
+    const rec=data.recovery||{};
+    if(rec.private_handoff || rec.ai_private_ready ||
+       rec.awaiting_ai || rec.needs_fix || rec.leased) {
+      host.append(make("p","small-explainer",
+        "استرداد خاص: "+fmt(rec.leased||0)+" قيد المعالجة"+
+        " · "+fmt(rec.awaiting_ai||0)+" تنتظر AI"+
+        " · "+fmt(rec.ai_private_ready||0)+" اجتازت AI"+
+        " · "+fmt(rec.needs_fix||0)+" تحتاج تصحيح"+
+        " · "+fmt(rec.private_handoff||0)+
+        " تسليم خاص غير مرفوع"));
+    }
   }
   function ensureStates(data) {
     const old=selectState.value;clear(selectState);
@@ -154,6 +165,33 @@
       "مدير إنتاج M32: "+
       (orchestrationArabic[orchestration.state]||"تحتاج تدقيقاً")+
       " · اختبار الأجهزة المتكامل غير مؤهل بعد"));
+    const recovery=episode.recovery||{state:"NO_RECOVERY_ATTEMPT"};
+    const recoveryArabic={
+      M60_RECOVERY_JOB_RESERVED_NOT_DISPATCHABLE:
+        "تم حجز هوية استرداد مستقلة، لكنها غير قابلة للتنفيذ بعد",
+      M61_READY_PRIVATE_RECOVERY:
+        "استرداد خاص جاهز للاستلام بصلاحية منفصلة",
+      M61_LEASED_PRIVATE_RECOVERY:
+        "استرداد خاص قيد المعالجة، مع مراقبة الصلاحية",
+      M61_RENDERED_PENDING_FINAL_M7_OWNER_REVIEW:
+        "الماستر المسترد منتج تقنياً، وبانتظار الفحص النهائي",
+      M61_FAILED_REQUIRES_MANUAL_RECONCILIATION:
+        "محاولة الاسترداد متوقفة وتحتاج مطابقة الملفات؛ لا إعادة تلقائية",
+      M62_TECH_PASSED_AWAITING_INDEPENDENT_AI:
+        "فحص الماستر M7 ناجح؛ بانتظار مراجعتين مستقلتين AI",
+      M62_AI_INTERNAL_READY_PRIVATE_ONLY_NOT_UPLOADED:
+        "المراجعتان الداخليتان جاهزتان؛ الفيديو لم يُرفع بعد",
+      M62_AI_INTERNAL_CHANGES_REQUIRED:
+        "AI طلب تصحيح المحتوى أو السلامة؛ ممنوع الرفع",
+      M62_PRIVATE_UPLOAD_HANDOFF_STAGED_NOT_QUEUED:
+        "تسليم رفع خاص مجهّز فقط؛ لا توجد مهمة رفع أو فيديو على YouTube"
+    };
+    if (recovery.state && recovery.state!=="NO_RECOVERY_ATTEMPT") {
+      host.append(make("p","small-explainer",
+        "استرداد المونتاج M55–M62: "+
+        (recoveryArabic[recovery.state]||"حالة الاسترداد غير مكتملة")+
+        " · قرار قبول الفيديو النهائي يبقى بعد الرفع PRIVATE"));
+    }
     const continuity=episode.audio_continuity||{state:"NOT_CONFIGURED"};
     const continuityText={
       NOT_CONFIGURED:"فحص الاستمرارية الصوتية غير مفعّل بعد",
