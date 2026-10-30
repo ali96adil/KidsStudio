@@ -1331,6 +1331,25 @@ class Orchestration32(unittest.TestCase):
                 {"job_id":got["job"]["job_id"],"generation":2},
                 "mac-recovery",frozenset({"recovery_assemble"}))
 
+    def test_m61_dashboard_exposes_private_recovery_without_media_paths(self):
+        from kidsstudio.studio_dashboard import build_snapshot
+        old,proposal,admission,lease,pfile,psha=self._m61_ready_pi_lease()
+        worker=lease.claim(worker_id="mac-a",capability="recovery_assemble",
+            proposal_id=proposal["proposal_id"])
+        snapshot=build_snapshot(self.queue)
+        recovery=snapshot["recovery"]
+        self.assertEqual(recovery["leased"],1)
+        self.assertEqual(recovery["reserved"],0)
+        self.assertIs(recovery["public_release_authorized"],False)
+        ep=next(e for e in snapshot["episodes"]
+                if e["series_id"]=="colors-ar" and e["ordinal"]==1)
+        self.assertEqual(ep["recovery"]["state"],
+                         "M61_LEASED_PRIVATE_RECOVERY")
+        self.assertIs(ep["recovery"]["automatically_public"],False)
+        self.assertNotIn(str(pfile),json.dumps(snapshot))
+        self.assertNotIn(str(self.root/"m59_copied_recipe.json"),
+                         json.dumps(snapshot))
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
