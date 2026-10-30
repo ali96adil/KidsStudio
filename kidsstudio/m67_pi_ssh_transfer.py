@@ -26,7 +26,9 @@ def transfer(root, manifest, *, host, user, remote_dir,
              runner=subprocess.run):
     if not _SAFE.fullmatch(host) or not _SAFE.fullmatch(user):
         raise TransferError("simple hostname and SSH username required")
-    if not remote_dir.startswith("/") or "//" in remote_dir or any(\n        part in (".", "..") for part in remote_dir.split("/")\n    ) or not all(
+    if not remote_dir.startswith("/") or "//" in remote_dir or any(
+        part in (".", "..") for part in remote_dir.split("/")
+    ) or not all(
             _SAFE.fullmatch(p) for p in remote_dir.split("/") if p):
         raise TransferError("remote directory must be an absolute safe path")
     verification = verify_inventory(root, manifest)
@@ -81,7 +83,8 @@ def main(argv=None):
     manifest = json.loads(args.inventory.read_text(encoding="utf-8"))
     result = transfer(args.root, manifest, host=args.host, user=args.user,
                       remote_dir=args.remote_dir)
-    args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    args.output.write_text(json.dumps(result, indent=2) + "
+", encoding="utf-8")
     print(json.dumps(result))
     return 0
 
