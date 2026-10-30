@@ -27,7 +27,7 @@ IDENT = re.compile(r"^[a-zA-Z0-9_./:-]{1,160}$")
 ALLOWED_KINDS = frozenset({
     "script_draft", "editorial_review", "character_generate", "godot_render",
     "episode_assemble", "voice_synthesize", "ltx_animate",
-    "youtube_private_upload"
+    "youtube_private_upload", "recovery_assemble"
 })
 MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble",
                          "voice_synthesize", "ltx_animate"})
@@ -113,6 +113,48 @@ class Coordinator:
 
     def dispatch(self, action: str, request: dict[str, Any],
                  worker_id: str, capabilities: frozenset[str]) -> dict[str, Any]:
+        # M61 has an ISOLATED lease namespace; never call the ordinary
+        # jobs queue's M52/53/54 methods for recovered scene bytes.
+        if action.startswith("recovery-"):
+            if "recovery_assemble" not in capabilities:
+                raise TransportError("Separate recovery capability required.")
+            from .recovery_lease import RecoveryLeaseGate,RecoveryLeaseError
+            gate=RecoveryLeaseGate(self.queue)
+            try:
+                if action=="recovery-claim":
+                    if request:
+                        raise TransportError("M61 claim does not accept media paths.")
+                    return {"job":gate.claim(
+                        worker_id=worker_id,capability="recovery_assemble",
+                        lease_seconds=120)}
+                if action not in (
+                    "recovery-pre-execution-check","recovery-heartbeat",
+                    "recovery-complete","recovery-fail"):
+                    raise TransportError("Unknown recovery action.")
+                expected={"job_id","generation"}
+                if action=="recovery-complete":
+                    expected.add("result")
+                if set(request)!=expected:
+                    raise TransportError("M61 accepts exact worker lease fields only.")
+                if (not isinstance(request["job_id"],str) or
+                    not ID.fullmatch(request["job_id"]) or
+                    type(request["generation"]) is not int or
+                    request["generation"]!=1):
+                    raise TransportError("M61 worker lease identity malformed.")
+                params=dict(job_id=request["job_id"],worker_id=worker_id,
+                            generation=request["generation"])
+                if action=="recovery-pre-execution-check":
+                    return gate.check(**params)
+                if action=="recovery-heartbeat":
+                    proof=gate.check(**params,renew=True)
+                    return {"ok":proof.get("status")==
+                        "M61_CURRENT_PRIVATE_RECOVERY_LEASE"}
+                if action=="recovery-complete":
+                    return gate.complete(**params,result=request["result"])
+                return gate.fail(**params)
+            except RecoveryLeaseError as exc:
+                raise TransportError("M61 dedicated recovery lease denied.") from exc
+
         if action == "pilot-readiness":
             # Explicit authenticated voice worker capability; read-only and
             # BEFORE the generic lease requirement. This never claims work.
@@ -263,8 +305,12 @@ class Coordinator:
                 raise TransportError("M53 montage lease no longer valid.") from exc
 
         if action == "claim":
-            job = self.queue.claim(worker_id=worker_id,
-                                   capabilities=sorted(capabilities), lease_seconds=600)
+            # A worker with only recovery_assemble must not be routed
+            # into the legacy generic claim/KINDS namespace.
+            ordinary=sorted(capabilities & ALLOWED_KINDS - {"recovery_assemble"})
+            job = (self.queue.claim(worker_id=worker_id,
+                                    capabilities=ordinary,lease_seconds=600)
+                   if ordinary else None)
             if job is None:
                 return {"job": None}
             return {"job": {
@@ -447,7 +493,12 @@ def create_handler(coordinator: Coordinator):
                             "/v1/montage-pre-execution-check",
                             "/v1/request-private-upload",
                             "/v1/private-upload-lease-check",
-                            "/v1/complete-private-upload"):
+                            "/v1/complete-private-upload",
+                            "/v1/recovery-claim",
+                            "/v1/recovery-pre-execution-check",
+                            "/v1/recovery-heartbeat",
+                            "/v1/recovery-complete",
+                            "/v1/recovery-fail"):
                 self._reply(404, {"error": "NOT_FOUND"})
                 return
             length = self.headers.get("Content-Length")
