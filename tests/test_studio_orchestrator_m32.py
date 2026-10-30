@@ -1566,6 +1566,154 @@ class Orchestration32(unittest.TestCase):
                 (pid,)).fetchone()[0],
                 "M62_TECH_PASSED_AWAITING_INDEPENDENT_AI")
 
+    def _m63_private_handoff_pi(self):
+        from kidsstudio.private_upload_policy import PrivateUploadPolicy
+        from kidsstudio.recovery_private_upload_gate import RecoveryPrivateUploadGate
+        proposal,admitted,qa,tech,evidence,rights,review=(
+            self._m62_completed_pi_and_evidence())
+        pid=proposal["proposal_id"]
+        qa.register_technical(pid,tech)
+        self.assertEqual(qa.register_ai(pid,review_bundle=review,
+            observed_media_evidence=evidence,rights_catalogue=rights)["status"],
+            "M62_AI_INTERNAL_READY_PRIVATE_ONLY_NOT_UPLOADED")
+        policy=PrivateUploadPolicy(self.queue)
+        policy.initialize()
+        policy.grant("colors-ar",channel_id="UC"+"a"*22,
+            max_uploads_24h=1,made_for_kids=True,
+            contains_synthetic_media=True,
+            owner_note="Strict PRIVATE YouTube only for original educational series")
+        qa.stage_private_handoff(pid,channel_id="UC"+"a"*22,
+            made_for_kids=True,contains_synthetic_media=True)
+        gate=RecoveryPrivateUploadGate(self.queue)
+        gate.initialize()
+        gate.activate(pid)
+        return proposal,admitted,gate,policy
+
+    def test_m63_recovery_upload_lease_private_receipt_owner_comment_and_decision(self):
+        from kidsstudio.recovery_private_upload_gate import VERIFIED
+        from kidsstudio.recovery_owner_review import (
+            RecoveryOwnerReview,RecoveryOwnerReviewError)
+        proposal,admitted,gate,policy=self._m63_private_handoff_pi()
+        pid=proposal["proposal_id"]
+        before=self.queue.status()["counts"].get("QUEUED",0)
+        self.assertIsNone(gate.claim(proposal_id="0"*32,
+            worker_id="mac-private",capability="recovery_private_upload"))
+        claimed=gate.claim(proposal_id=pid,worker_id="mac-private",
+            capability="recovery_private_upload")
+        self.assertEqual(claimed["kind"],"recovery_private_upload")
+        self.assertEqual(claimed["job_id"],admitted["reserved_job_id"])
+        self.assertEqual(claimed["generation"],1)
+        self.assertIsNone(gate.claim(proposal_id=pid,worker_id="other",
+            capability="recovery_private_upload"))
+        current=gate.check(job_id=claimed["job_id"],worker_id="mac-private",
+            generation=1,renew=True)
+        self.assertEqual(current["status"],"M63_CURRENT_PRIVATE_UPLOAD_LEASE")
+        self.assertIs(current["public_release_authorized"],False)
+        receipt={"status":"YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING",
+            "video_id":"abcdefghijk","channel_id":"UC"+"a"*22,
+            "video_sha256":"f"*64,"youtube_privacy":"private",
+            "processing_status":"succeeded","platform_privacy_verified":True,
+            "ready_for_owner_review":True,
+            "public_release_authorized":False}
+        completed=gate.complete(job_id=claimed["job_id"],
+            worker_id="mac-private",generation=1,receipt=receipt)
+        self.assertEqual(completed["status"],VERIFIED)
+        self.assertIs(completed["owner_review_available"],True)
+        self.assertEqual(self.queue.status()["counts"].get("QUEUED",0),before)
+        reviews=RecoveryOwnerReview(self.queue)
+        item=reviews.snapshot()["previews"][0]
+        self.assertEqual(item["video_id"],"abcdefghijk")
+        self.assertTrue(item["platform_privacy_verified"])
+        self.assertTrue(item["recovery"])
+        saved=reviews.add_comment("abcdefghijk",
+            text="ملاحظة على نطق اسم اللون في هذا المشهد",
+            category="education",second=42)
+        self.assertEqual(saved["status"],"OWNER_COMMENT_SAVED")
+        accepted=reviews.decide("abcdefghijk",
+            "APPROVE_WITH_NOTES",note="ملاحظة للمقاطع القادمة")
+        self.assertEqual(accepted["status"],"APPROVED_WITH_NOTES")
+        self.assertIs(accepted["youtube_visibility_changed"],False)
+        self.assertIs(accepted["public_release_authorized"],False)
+        with self.assertRaises(RecoveryOwnerReviewError):
+            reviews.decide("abcdefghijk","APPROVE")
+        view=reviews.snapshot()["previews"][0]
+        self.assertEqual(view["state"],"APPROVED_WITH_NOTES")
+        self.assertEqual(view["comments"][0]["second"],42)
+        with self.queue._connection() as db:
+            episode=db.execute("""SELECT state,render_job_id
+                FROM studio_episodes WHERE series_id='colors-ar'
+                AND ordinal=1""").fetchone()
+        self.assertEqual(episode["state"],"BLOCKED")
+        self.assertEqual(episode["render_job_id"],proposal["original_job_id"])
+
+    def test_m63_revoked_owner_policy_forbids_upload_and_no_retry(self):
+        from kidsstudio.recovery_private_upload_gate import (
+            FAILED,RecoveryUploadError)
+        proposal,admitted,gate,policy=self._m63_private_handoff_pi()
+        pid=proposal["proposal_id"]
+        claimed=gate.claim(proposal_id=pid,worker_id="mac-private",
+            capability="recovery_private_upload")
+        policy.pause("colors-ar")
+        status=gate.check(job_id=claimed["job_id"],
+            worker_id="mac-private",generation=1,renew=True)
+        self.assertEqual(status["status"],"M63_REVOKED_NO_UPLOAD")
+        self.assertIsNone(gate.claim(proposal_id=pid,worker_id="mac-private",
+            capability="recovery_private_upload"))
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT state FROM studio_recovery_uploads
+                WHERE proposal_id=?""",(pid,)).fetchone()
+        self.assertEqual(row["state"],FAILED)
+
+    def test_m63_processing_pending_cannot_be_reviewed_or_reuploaded(self):
+        from kidsstudio.recovery_private_upload_gate import PENDING
+        from kidsstudio.recovery_owner_review import RecoveryOwnerReview
+        proposal,admitted,gate,policy=self._m63_private_handoff_pi()
+        pid=proposal["proposal_id"]
+        c=gate.claim(proposal_id=pid,worker_id="mac-private",
+            capability="recovery_private_upload")
+        response=gate.complete(job_id=c["job_id"],worker_id="mac-private",
+            generation=1,receipt={
+                "status":"YOUTUBE_PRIVATE_PROCESSING_PENDING",
+                "video_id":"abcdefghijk","channel_id":"UC"+"a"*22,
+                "video_sha256":"f"*64,"youtube_privacy":"private",
+                "processing_status":"processing",
+                "platform_privacy_verified":True,
+                "ready_for_owner_review":False,
+                "public_release_authorized":False})
+        self.assertEqual(response["status"],PENDING)
+        self.assertIs(response["owner_review_available"],False)
+        self.assertFalse(RecoveryOwnerReview(self.queue).has_video("no_such_vid"))
+        self.assertEqual(RecoveryOwnerReview(self.queue).snapshot()["previews"],[])
+        self.assertIsNone(gate.claim(proposal_id=pid,worker_id="mac-private",
+            capability="recovery_private_upload"))
+
+    def test_m63_rejects_wrong_channel_media_or_fake_privacy(self):
+        from kidsstudio.recovery_private_upload_gate import RecoveryUploadError
+        proposal,admitted,gate,policy=self._m63_private_handoff_pi()
+        pid=proposal["proposal_id"]
+        claim=gate.claim(proposal_id=pid,worker_id="mac-private",
+            capability="recovery_private_upload")
+        receipt={"status":"YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING",
+            "video_id":"abcdefghijk","channel_id":"UC"+"a"*22,
+            "video_sha256":"f"*64,"youtube_privacy":"private",
+            "processing_status":"succeeded","platform_privacy_verified":True,
+            "ready_for_owner_review":True,"public_release_authorized":False}
+        for key,value in [("video_sha256","0"*64),
+                          ("channel_id","UC"+"b"*22),
+                          ("youtube_privacy","public"),
+                          ("platform_privacy_verified",False),
+                          ("ready_for_owner_review",False),
+                          ("public_release_authorized",True)]:
+            poisoned=dict(receipt)
+            poisoned[key]=value
+            with self.assertRaises(RecoveryUploadError,msg=key):
+                gate.complete(job_id=claim["job_id"],
+                    worker_id="mac-private",generation=1,receipt=poisoned)
+        with self.queue._connection() as db:
+            state=db.execute("""SELECT state FROM studio_recovery_uploads
+                WHERE proposal_id=?""",(pid,)).fetchone()[0]
+        self.assertEqual(state,"M63_PRIVATE_UPLOAD_LEASED")
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
