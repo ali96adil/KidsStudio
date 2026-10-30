@@ -13,7 +13,7 @@ WorkingDirectory=/opt/KidsStudio
 Environment=PYTHONUNBUFFERED=1
 # File owned root:root mode 0600, read by systemd into service environment.
 EnvironmentFile=/etc/kidsstudio/pi-youtube-oauth.env
-ExecStart=/usr/bin/python3 -m kidsstudio.pi_recovery_uploader --db /var/lib/kidsstudio/studio.sqlite --inbox-root /var/lib/kidsstudio/upload-inbox --journal /var/lib/kidsstudio/pi-upload.sqlite --loop --poll-seconds 30 --execute
+ExecStart=/usr/bin/python3 -m kidsstudio.pi_all_private_uploader --db /var/lib/kidsstudio/studio.sqlite --inbox-root /var/lib/kidsstudio/upload-inbox --journal /var/lib/kidsstudio/pi-upload.sqlite --loop --poll-seconds 30 --execute
 Restart=on-failure
 RestartSec=30
 UMask=0077
