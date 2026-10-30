@@ -332,3 +332,97 @@ class PrivateUploadPolicy:
                 "job_id":job_id,
                 "owner_review_queued":result["ready_for_owner_review"],
                 "public_release_authorized":False}
+
+    def reconcile_pi_processing(self,render_job_id:str,video_id:str,
+                                channel_id:str,master_sha256:str)->dict:
+        """M65 Pi-only GET-verified processing completion, NEVER new insert.
+
+        The caller must FIRST use authenticated YouTube videos.list to verify
+        the SAME existing private video/channel and succeeded processing.
+        Pi then transactionally promotes the prior M26 processing receipt
+        to the existing M24 owner-review queue, rechecking policy/QA.
+        """
+        if (not isinstance(render_job_id,str) or not JOB.fullmatch(render_job_id)
+            or not isinstance(video_id,str) or not VIDEO.fullmatch(video_id)
+            or not isinstance(channel_id,str) or not CHANNEL.fullmatch(channel_id)
+            or not isinstance(master_sha256,str) or
+            not DIGEST.fullmatch(master_sha256)):
+            raise PrivatePolicyError("M65 existing private processing identity invalid.")
+        with self.queue._connection(write=True) as db:
+            row=db.execute("""SELECT * FROM jobs
+                WHERE kind='youtube_private_upload' AND state='COMPLETED'
+                AND json_extract(payload,'$.render_job_id')=?
+                ORDER BY created_at DESC LIMIT 1""",
+                (render_job_id,)).fetchone()
+            if not row:
+                raise PrivatePolicyError("M65 no completed original processing upload.")
+            try:
+                payload=json.loads(row["payload"])
+                result=json.loads(row["result_json"] or "{}")
+            except (ValueError,TypeError) as exc:
+                raise PrivatePolicyError("M65 original upload receipt invalid.") from exc
+            if (result.get("status")!="YOUTUBE_PRIVATE_PROCESSING_PENDING" or
+                result.get("video_id")!=video_id or
+                result.get("channel_id")!=channel_id or
+                result.get("video_sha256")!=master_sha256 or
+                result.get("youtube_privacy")!="private" or
+                result.get("ready_for_owner_review") is not False or
+                result.get("public_release_authorized") is not False or
+                payload.get("master_sha256")!=master_sha256 or
+                payload.get("channel_id")!=channel_id):
+                raise PrivatePolicyError("M65 different video or already owner reviewed.")
+            paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
+            policy=db.execute("""SELECT * FROM studio_youtube_private_policies
+                WHERE series_id=?""",(payload["series_id"],)).fetchone()
+            if (not paused or paused["paused"] or not policy or
+                policy["state"]!="ENABLED" or
+                policy["revision"]!=payload["policy_revision"] or
+                policy["channel_id"]!=channel_id):
+                raise PrivatePolicyError("M65 owner standing private policy changed.")
+            self._approved(db,payload["series_id"],
+                payload["episode_number"],render_job_id,master_sha256)
+            if not db.execute("""SELECT 1 FROM sqlite_master WHERE
+                    type='table' AND name='studio_private_previews'""").fetchone():
+                raise PrivatePolicyError("M65 M24 owner review ledger missing.")
+            if db.execute("""SELECT 1 FROM sqlite_master WHERE
+                    type='table' AND name='studio_recovery_uploads'""").fetchone():
+                if db.execute("""SELECT 1 FROM studio_recovery_uploads
+                    WHERE video_id=?""",(video_id,)).fetchone():
+                    raise PrivatePolicyError("M65 recovery video ID already registered.")
+            existing=db.execute("""SELECT state,render_job_id,master_sha256
+                FROM studio_private_previews WHERE series_id=? AND ordinal=?
+                ORDER BY version DESC LIMIT 1""",
+                (payload["series_id"],payload["episode_number"])).fetchone()
+            if existing and (existing["state"]!="REVISION_REQUESTED" or
+                existing["render_job_id"]==render_job_id or
+                existing["master_sha256"]==master_sha256):
+                raise PrivatePolicyError("M65 owner already reviewing another master.")
+            version=db.execute("""SELECT COALESCE(MAX(version),0)+1 FROM
+                studio_private_previews WHERE series_id=? AND ordinal=?""",
+                (payload["series_id"],payload["episode_number"])).fetchone()[0]
+            now=self.queue.clock()
+            db.execute("""INSERT INTO studio_private_previews(
+                video_id,series_id,ordinal,render_job_id,master_sha256,
+                state,version,claimed_visibility,platform_privacy_verified,
+                recorded_at)
+                VALUES(?,?,?,?,?,'PRIVATE_AWAITING_OWNER_REVIEW',
+                    ?,'PRIVATE',1,?)""",
+                (video_id,payload["series_id"],payload["episode_number"],
+                 render_job_id,master_sha256,version,now))
+            result.update({
+                "status":"YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING",
+                "processing_status":"succeeded",
+                "platform_privacy_verified":True,
+                "ready_for_owner_review":True,
+                "public_release_authorized":False})
+            db.execute("""UPDATE jobs SET result_json=?,updated_at=?
+                WHERE job_id=? AND state='COMPLETED'""",
+                (_json_object(result,"private upload reconciliation"),
+                 now,row["job_id"]))
+            self.queue._event(db,row["job_id"],
+                "M65_EXISTING_PRIVATE_PROCESSING_VERIFIED_NO_NEW_UPLOAD",
+                {"video_id":video_id})
+        return {"status":"M65_PI_PRIVATE_OWNER_REVIEW_READY",
+                "video_id":video_id,
+                "new_youtube_upload_performed":False,
+                "public_release_authorized":False}
