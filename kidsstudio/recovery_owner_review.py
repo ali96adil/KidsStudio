@@ -114,6 +114,10 @@ class RecoveryOwnerReview:
             rows=db.execute("""SELECT u.proposal_id,u.video_id,u.recovery_job_id,
                 u.master_sha256,u.state AS upload_state,u.created_at,
                 i.series_id,i.ordinal,e.title,
+                (SELECT COUNT(*) FROM studio_recovery_uploads p
+                    JOIN studio_recovery_intents j ON j.proposal_id=p.proposal_id
+                    WHERE j.series_id=i.series_id AND j.ordinal=i.ordinal
+                    AND p.created_at<=u.created_at) AS episode_version,
                 d.state AS decision_state,d.reviewed_at
                 FROM studio_recovery_uploads u
                 JOIN studio_recovery_intents i ON i.proposal_id=u.proposal_id
@@ -135,7 +139,7 @@ class RecoveryOwnerReview:
                     "series_id":row["series_id"],
                     "episode_number":row["ordinal"],
                     "title":row["title"],
-                    "version":1,
+                    "version":row["episode_version"],
                     "state":row["decision_state"] or "PRIVATE_AWAITING_OWNER_REVIEW",
                     "claimed_visibility":"PRIVATE",
                     "platform_privacy_verified":True,
