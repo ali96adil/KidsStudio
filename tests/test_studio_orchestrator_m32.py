@@ -1103,6 +1103,108 @@ class Orchestration32(unittest.TestCase):
                 recipe_sha256=sha(recipe),manifest_file=manifest,
                 manifest_sha256=sha(manifest))
 
+    def _m60_ready_pi_reservation(self):
+        from kidsstudio.recovery_execution_admission import RecoveryAdmission
+        (old,proposal,intake,pfile,psha,recipe,manifest)=(
+            self._m59_staged_pi_inputs())
+        intake.bind_execution_recipe(
+            pfile,proposal_sha256=psha,
+            recipe_file=recipe,recipe_sha256=sha(recipe),
+            manifest_file=manifest,manifest_sha256=sha(manifest))
+        gate=RecoveryAdmission(self.queue)
+        gate.initialize()
+        return old,proposal,gate,pfile,psha,recipe,manifest
+
+    def test_m60_reserves_fresh_unclaimable_job_identity_one_time(self):
+        from kidsstudio.recovery_execution_admission import (
+            RecoveryAdmissionError,STATE)
+        old,proposal,gate,pfile,psha,recipe,manifest=(
+            self._m60_ready_pi_reservation())
+        count=self.queue.status()["counts"].get("QUEUED",0)
+        result=gate.reserve(
+            proposal_file=pfile,proposal_sha256=psha,
+            recipe_file=recipe,recipe_sha256=sha(recipe),
+            manifest_file=manifest,manifest_sha256=sha(manifest))
+        self.assertEqual(result["status"],STATE)
+        self.assertEqual(len(result["reserved_job_id"]),32)
+        self.assertNotEqual(result["reserved_job_id"],old)
+        self.assertIs(result["job_inserted_in_queue"],False)
+        self.assertIs(result["worker_claimable"],False)
+        self.assertIs(result["auto_execute_allowed"],False)
+        self.assertIs(result["public_release_authorized"],False)
+        self.assertEqual(self.queue.status()["counts"].get("QUEUED",0),count)
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT state,reserved_job_id FROM
+                studio_recovery_reservations WHERE proposal_id=?""",
+                (proposal["proposal_id"],)).fetchone()
+            queued=db.execute("SELECT 1 FROM jobs WHERE job_id=?",
+                              (result["reserved_job_id"],)).fetchone()
+        self.assertEqual(row["state"],STATE)
+        self.assertEqual(row["reserved_job_id"],result["reserved_job_id"])
+        self.assertIsNone(queued)
+        with self.assertRaises(RecoveryAdmissionError):
+            gate.reserve(
+                proposal_file=pfile,proposal_sha256=psha,
+                recipe_file=recipe,recipe_sha256=sha(recipe),
+                manifest_file=manifest,manifest_sha256=sha(manifest))
+
+    def test_m60_rejects_modified_m59_recipe_or_fake_publish_allowance(self):
+        from kidsstudio.recovery_execution_admission import RecoveryAdmissionError
+        old,proposal,gate,pfile,psha,recipe,manifest=(
+            self._m60_ready_pi_reservation())
+        staged=json.loads(recipe.read_text())
+        staged["clips"][0]["sha256"]="0"*64
+        recipe.write_text(json.dumps(staged))
+        with self.assertRaises(RecoveryAdmissionError):
+            gate.reserve(
+                proposal_file=pfile,proposal_sha256=psha,
+                recipe_file=recipe,recipe_sha256=sha(recipe),
+                manifest_file=manifest,manifest_sha256=sha(manifest))
+        # restore exact bound file and forge manifest negative flag.
+        staged["clips"][0]["sha256"]=proposal["scenes"][0]["candidate_sha256"]
+        recipe.write_text(json.dumps(staged))
+        envelope=json.loads(manifest.read_text())
+        envelope["manifest"]["auto_execute_allowed"]=True
+        from kidsstudio.recovery_intake import _sha_json
+        envelope["manifest_sha256"]=_sha_json(envelope["manifest"])
+        manifest.write_text(json.dumps(envelope))
+        with self.assertRaises(RecoveryAdmissionError):
+            gate.reserve(
+                proposal_file=pfile,proposal_sha256=psha,
+                recipe_file=recipe,recipe_sha256=sha(recipe),
+                manifest_file=manifest,manifest_sha256=sha(manifest))
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute("""SELECT COUNT(*) FROM
+                studio_recovery_reservations""").fetchone()[0],0)
+
+    def test_m60_rejects_revoked_scene_qa_or_nonterminal_old_job(self):
+        from kidsstudio.recovery_execution_admission import RecoveryAdmissionError
+        old,proposal,gate,pfile,psha,recipe,manifest=(
+            self._m60_ready_pi_reservation())
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_stages SET state='PENDING_QA'
+                WHERE series_id='colors-ar' AND ordinal=1
+                AND scene=2 AND stage='ltx_animate'""")
+        with self.assertRaises(RecoveryAdmissionError):
+            gate.reserve(
+                proposal_file=pfile,proposal_sha256=psha,
+                recipe_file=recipe,recipe_sha256=sha(recipe),
+                manifest_file=manifest,manifest_sha256=sha(manifest))
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_stages SET state='QA_APPROVED'
+                WHERE series_id='colors-ar' AND ordinal=1
+                AND scene=2 AND stage='ltx_animate'""")
+            db.execute("""UPDATE jobs SET state='COMPLETED'
+                WHERE job_id=?""",(old,))
+        with self.assertRaises(RecoveryAdmissionError):
+            gate.reserve(
+                proposal_file=pfile,proposal_sha256=psha,
+                recipe_file=recipe,recipe_sha256=sha(recipe),
+                manifest_file=manifest,manifest_sha256=sha(manifest))
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute("""SELECT COUNT(*) FROM
+                studio_recovery_reservations""").fetchone()[0],0)
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
