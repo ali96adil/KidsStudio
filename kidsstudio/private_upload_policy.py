@@ -174,12 +174,32 @@ class PrivateUploadPolicy:
                 kind='youtube_private_upload' AND created_at>=? AND
                 json_extract(payload,'$.series_id')=?""",
                 (now-86400,series_id)).fetchone()[0]
+            # M63 is a distinct recovery-only uploader, but it MUST
+            # share the SAME owner series/channel daily budget. Neither
+            # namespace may evade the other's in-flight attempt.
+            recovery_present=db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='studio_recovery_uploads'""").fetchone()
+            if recovery_present:
+                recent+=db.execute("""SELECT COUNT(*) FROM
+                    studio_recovery_uploads u
+                    JOIN studio_recovery_intents i
+                      ON i.proposal_id=u.proposal_id
+                    WHERE i.series_id=? AND u.created_at>=?""",
+                    (series_id,now-86400)).fetchone()[0]
             if recent>=policy["max_uploads_24h"]:
                 raise PrivatePolicyError("Owner 24-hour private upload budget reached.")
             active=db.execute("""SELECT COUNT(*) FROM jobs WHERE
                 kind='youtube_private_upload' AND state IN ('QUEUED','LEASED')
                 AND json_extract(payload,'$.series_id')=?""",
                 (series_id,)).fetchone()[0]
+            if recovery_present:
+                active+=db.execute("""SELECT COUNT(*) FROM
+                    studio_recovery_uploads u
+                    JOIN studio_recovery_intents i
+                      ON i.proposal_id=u.proposal_id
+                    WHERE i.series_id=? AND u.state IN (?,?)""",
+                    (series_id,"M63_PRIVATE_UPLOAD_READY_ONE_SHOT",
+                     "M63_PRIVATE_UPLOAD_LEASED")).fetchone()[0]
             if active:
                 raise PrivatePolicyError("Only one pending PRIVATE upload per series.")
             payload={"series_id":series_id,"episode_number":ordinal,
