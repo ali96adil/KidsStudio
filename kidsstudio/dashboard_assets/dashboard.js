@@ -73,6 +73,13 @@
       row.append(make("span",null,statusAr[key]),make("strong",null,fmt(data.queue.counts[key]??0)));
       host.append(row);
     }
+    const pi=data.pi_upload||{};
+    host.append(make("p","small-explainer",
+      "مسار النشر: إنتاج الفيديو على الماك → نقل محلي → الراسبيري باي يرفع Private"+
+      (pi.pi_upload_configured ?
+        " · فيديوهات اعتمد تخزينها على الـPi: "+fmt(pi.ordinary_media_verified||0)+
+        " اعتيادية، "+fmt(pi.recovery_media_verified||0)+" مستردّة" :
+        " · تخزين الـPi لم يُفعّل على هذا الجهاز بعد")));
     const rec=data.recovery||{};
     if(rec.private_handoff || rec.ai_private_ready ||
        rec.awaiting_ai || rec.needs_fix || rec.leased) {
