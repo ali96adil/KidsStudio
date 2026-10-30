@@ -144,6 +144,13 @@ class PreviewReview:
                 or not DIGEST.fullmatch(master_sha256)):
             raise PreviewReviewError("Exact job and video digest required.")
         with self.queue._connection(write=True) as db:
+            # M63 recovery uploads have an independent owner-review ledger.
+            # The same YouTube ID must never be assigned to both namespaces.
+            if db.execute("""SELECT 1 FROM sqlite_master WHERE
+                    type='table' AND name='studio_recovery_uploads'""").fetchone():
+                if db.execute("""SELECT 1 FROM studio_recovery_uploads
+                    WHERE video_id=?""",(video_id,)).fetchone():
+                    raise PreviewReviewError("This YouTube ID already belongs to M63 recovery.")
             expected_job,expected_sha=self._current_render(db,series_id,episode_number)
             if (render_job_id,master_sha256)!=(expected_job,expected_sha):
                 raise PreviewReviewError("YouTube upload is not bound to current approved master.")
