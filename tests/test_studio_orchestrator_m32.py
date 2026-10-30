@@ -953,7 +953,9 @@ class Orchestration32(unittest.TestCase):
                          "M58_PRIVATE_MEDIA_BOUND_NO_JOB_QUEUED")
         media=json.loads(mfile.read_text())
         derived={
-            "schema_version":1,"series_id":proposal["series_id"],
+            "schema_version":2,
+            "recovery_stage":"M59_STAGED_ONLY_NO_EXECUTION",
+            "series_id":proposal["series_id"],
             "episode_number":proposal["episode_number"],
             "script":{"path":str(self.parent),
                       "sha256":sha(self.parent)},
