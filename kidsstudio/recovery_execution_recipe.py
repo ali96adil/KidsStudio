@@ -97,7 +97,7 @@ def prepare_private_recovery_recipe(
     for folder in names:
         if (output/folder).is_symlink():
             raise RecoveryRecipeError("M59 staging folder must not be a link.")
-        if (output/folder/(proposal_id+".json")).exists() or
+        if ((output/folder/(proposal_id+".json")).exists() or
             (output/folder/(proposal_id+".json")).is_symlink()):
             raise RecoveryRecipeError("M59 staged recipe/manifest already exists.")
     clips=[]
