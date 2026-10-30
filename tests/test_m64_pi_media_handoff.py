@@ -130,6 +130,67 @@ class M64LocalPiTransferTests(unittest.TestCase):
         return patch.object(RecoveryPrivateUploadGate,"_source",
                             return_value=self.proof)
 
+    def test_mac_outbox_pushes_approved_plan_once_no_google(self):
+        from kidsstudio.mac_outbox_to_pi import MacToPiOutbox
+        outbox=self.root/"mac_outbox"
+        outbox.mkdir()
+        ready=outbox/(self.proposal+".ready.json")
+        shutil.copyfile(self.plan,ready)
+        seen=[]
+        def fake_transfer(**params):
+            seen.append(params["media"])
+            dest=self.inbox.root/self.job
+            shutil.copyfile(params["media"],
+                            dest/"episode_qa_master.mp4.part")
+            shutil.copyfile(params["plan_file"],
+                            dest/"private_upload_plan.json.part")
+            return {"status":"M64_MAC_LAN_TRANSFER_SENT_PI_SHA_NOT_YET_CONFIRMED",
+                    "recovery_job_id":self.job}
+        with self._patched():
+            self.inbox.prepare(self.proposal)
+            watcher=MacToPiOutbox(
+                outbox=outbox,renders=self.mac.parent,
+                pi_host="pi-kids.local",pi_user="kidsstudio",
+                pi_inbox_root=str(self.inbox.root),
+                ssh_key=self.key,transfer=fake_transfer)
+            sent=watcher.poll_once()
+            self.assertEqual(sent["status"],
+                "M64_MAC_LAN_TRANSFER_SENT_PI_SHA_NOT_YET_CONFIRMED")
+            self.assertEqual(seen,[self.master])
+            self.assertTrue((outbox/(ready.name+".sent")).exists())
+            self.assertEqual(watcher.poll_once()["status"],
+                             "M64_MAC_OUTBOX_IDLE_NO_LAN_TRANSFER")
+            self.assertEqual(self.inbox.accept(self.proposal)["status"],
+                             MEDIA_READY)
+
+    def test_pi_oauth_refresh_reuses_token_until_expiry(self):
+        class FakeResponse:
+            def __enter__(self):return self
+            def __exit__(self,*args):return False
+            def geturl(self):return "https://oauth2.googleapis.com/token"
+            def read(self,maxbytes):
+                return json.dumps({"access_token":"T"*48,
+                    "expires_in":3600,"token_type":"Bearer"}).encode()
+        class FakeOpener:
+            calls=0
+            def open(self,req,timeout):
+                self.calls+=1
+                self.last_url=req.full_url
+                return FakeResponse()
+        from kidsstudio.pi_recovery_uploader import GoogleOAuthRefresh
+        fake=FakeOpener()
+        now=[0.0]
+        provider=GoogleOAuthRefresh(
+            "client-id-12345","secret-12345678","refresh-12345678",
+            opener=fake,clock=lambda:now[0])
+        self.assertEqual(provider.token(),"T"*48)
+        self.assertEqual(provider.token(),"T"*48)
+        self.assertEqual(fake.calls,1)
+        self.assertEqual(fake.last_url,"https://oauth2.googleapis.com/token")
+        now[0]=3500.0
+        self.assertEqual(provider.token(),"T"*48)
+        self.assertEqual(fake.calls,2)
+
     def test_pi_full_sha_atomically_accepts_and_cannot_overwrite(self):
         with self._patched():
             target=self._stage()
