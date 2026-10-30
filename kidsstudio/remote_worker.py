@@ -60,7 +60,7 @@ class RemoteClient:
             "recovery-heartbeat","recovery-complete","recovery-fail",
             "recovery-private-claim","recovery-private-check",
             "recovery-private-heartbeat","recovery-private-complete",
-            "recovery-private-fail"):
+            "recovery-private-fail","recovery-private-reverify"):
             raise RemoteWorkerError("Unknown Pi operation.")
         data = json.dumps(body, ensure_ascii=False, allow_nan=False).encode("utf-8")
         if len(data) > MAX_MESSAGE:
