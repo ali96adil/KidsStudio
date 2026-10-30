@@ -39,7 +39,7 @@ def verify_staged_m60_recovery(
     if full_qa is not None:args["full_qa"]=full_qa
     try:
         expected_recipe,expected_manifest=prepare_private_recovery_recipe(
-            recipes,journal,**args)
+            recipes,journal,allow_existing_stage=True,**args)
         root=Path(expected_recipe["output_root"]).resolve()
         path=root/"_recovery_recipes"/(proposal_id+".json")
         outer=root/"_recovery_execution_manifests"/(proposal_id+".json")
