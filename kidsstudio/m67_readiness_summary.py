@@ -8,16 +8,24 @@ from pathlib import Path
 from .m67_episode_status import summarize
 
 
-REQUIRED_STAGES = ("jobs", "images", "voice", "structural",
-                   "decode", "review", "master", "transfer")
+EXPECTED = {
+    "jobs": {"PREPARED"},
+    "images": {"IMAGES_RENDERED_PENDING_QA"},
+    "voice": {"VOICES_RENDERED_PENDING_QA"},
+    "structural": {"MEDIA_STRUCTURALLY_READY_PENDING_QA"},
+    "decode": {"MEDIA_DECODED_PENDING_QA"},
+    "review": {"ASSETS_QA_READY_FOR_RENDER"},
+    "master": {"MASTER_INVENTORIED_NOT_TRANSFERRED"},
+    "transfer": {"TRANSFERRED_TO_PI_HASH_VERIFIED", "ALREADY_TRANSFERRED_HASH_VERIFIED"},
+}
+REQUIRED_STAGES = tuple(EXPECTED)
 
 
 def readiness(root):
     report = summarize(root)
     observed = {item["stage"]: item["status"] for item in report["steps"]}
     incomplete = [name for name in REQUIRED_STAGES
-                  if observed.get(name) in (None, "NOT_RECORDED", "UNREADABLE",
-                                             "BLOCKED", "INVALID", "UNKNOWN")]
+                  if observed.get(name) not in EXPECTED[name]]
     return {
         "status": "M67_EVIDENCE_INVENTORY_COMPLETE_NOT_HARDWARE_VERIFIED"
                   if not incomplete else "M67_EVIDENCE_INCOMPLETE",
