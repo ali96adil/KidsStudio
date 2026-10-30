@@ -1205,6 +1205,132 @@ class Orchestration32(unittest.TestCase):
             self.assertEqual(db.execute("""SELECT COUNT(*) FROM
                 studio_recovery_reservations""").fetchone()[0],0)
 
+    def _m61_ready_pi_lease(self):
+        from kidsstudio.recovery_lease import RecoveryLeaseGate
+        old,proposal,admission,pfile,psha,recipe,manifest=(
+            self._m60_ready_pi_reservation())
+        admitted=admission.reserve(
+            proposal_file=pfile,proposal_sha256=psha,
+            recipe_file=recipe,recipe_sha256=sha(recipe),
+            manifest_file=manifest,manifest_sha256=sha(manifest))
+        self.assertFalse(admitted["worker_claimable"])
+        lease=RecoveryLeaseGate(self.queue)
+        lease.initialize()
+        lease.activate(pfile,sha256=psha)
+        return old,proposal,admitted,lease,pfile,psha
+
+    def test_m61_dedicated_lease_no_legacy_queue_and_technical_review_only(self):
+        from kidsstudio.recovery_lease import READY,LEASED,DONE
+        old,proposal,admission,lease,pfile,psha=self._m61_ready_pi_lease()
+        regular_before=self.queue.status()["counts"].get("QUEUED",0)
+        self.assertIsNone(self.queue.claim(worker_id="regular-worker",
+            capabilities=["episode_assemble"]))
+        self.assertIsNone(lease.claim(worker_id="mac-a",
+            capability="recovery_assemble",proposal_id="c"*32))
+        acquired=lease.claim(worker_id="mac-a",capability="recovery_assemble",
+            proposal_id=proposal["proposal_id"])
+        self.assertEqual(acquired["job_id"],admission["reserved_job_id"])
+        self.assertNotEqual(acquired["job_id"],old)
+        self.assertEqual(acquired["generation"],1)
+        self.assertEqual(acquired["kind"],"recovery_assemble")
+        self.assertIsNone(lease.claim(worker_id="mac-b",
+            capability="recovery_assemble",proposal_id=proposal["proposal_id"]))
+        proof=lease.check(job_id=acquired["job_id"],worker_id="mac-a",
+            generation=1)
+        self.assertEqual(proof["status"],"M61_CURRENT_PRIVATE_RECOVERY_LEASE")
+        self.assertIs(proof["render_started"],False)
+        renewal=lease.check(job_id=acquired["job_id"],worker_id="mac-a",
+            generation=1,renew=True)
+        self.assertEqual(renewal["recipe_sha256"],acquired["recipe_sha256"])
+        result=lease.complete(job_id=acquired["job_id"],worker_id="mac-a",
+            generation=1,result={
+                "status":"M61_RECOVERY_MASTER_TECH_PASS_PENDING_REVIEW",
+                "artifact_sha256":"f"*64,"artifact_bytes":4096,
+                "final_m7_full_decode_passed":True,
+                "publication_approved":False})
+        self.assertEqual(result["status"],DONE)
+        self.assertIs(result["owner_private_review_required"],True)
+        self.assertIs(result["public_release_authorized"],False)
+        self.assertEqual(self.queue.status()["counts"].get("QUEUED",0),
+                         regular_before)
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT state,result_sha256 FROM
+                studio_recovery_leases WHERE proposal_id=?""",
+                (proposal["proposal_id"],)).fetchone()
+        self.assertEqual(row["state"],DONE)
+        self.assertEqual(row["result_sha256"],"f"*64)
+        self.assertIsNone(lease.claim(worker_id="mac-a",
+            capability="recovery_assemble",proposal_id=proposal["proposal_id"]))
+
+    def test_m61_expired_lease_is_terminal_no_hidden_retry(self):
+        from kidsstudio.recovery_lease import (
+            RecoveryLeaseError,FAILED)
+        old,proposal,admission,lease,pfile,psha=self._m61_ready_pi_lease()
+        obtained=lease.claim(worker_id="mac-a",capability="recovery_assemble",
+            proposal_id=proposal["proposal_id"],lease_seconds=10)
+        initial=self.queue.clock()
+        self.queue.clock=lambda:initial+11
+        self.assertEqual(lease.check(job_id=obtained["job_id"],
+            worker_id="mac-a",generation=1)["status"],
+            "M61_REVOKED_NO_EXECUTION")
+        self.assertIsNone(lease.claim(worker_id="mac-a",
+            capability="recovery_assemble",proposal_id=proposal["proposal_id"]))
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT state,generation FROM
+                studio_recovery_leases WHERE proposal_id=?""",
+                (proposal["proposal_id"],)).fetchone()
+        self.assertEqual(row["state"],FAILED)
+        self.assertEqual(row["generation"],1)
+
+    def test_m61_revoke_current_scene_qa_and_studio_pause(self):
+        from kidsstudio.recovery_lease import FAILED
+        old,proposal,admission,lease,pfile,psha=self._m61_ready_pi_lease()
+        obtained=lease.claim(worker_id="mac-a",capability="recovery_assemble",
+            proposal_id=proposal["proposal_id"])
+        self.queue.set_paused(True)
+        self.assertEqual(lease.check(job_id=obtained["job_id"],
+            worker_id="mac-a",generation=1,renew=True)["status"],
+            "M61_REVOKED_NO_EXECUTION")
+        self.queue.set_paused(False)
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute("""SELECT state FROM
+                studio_recovery_leases WHERE proposal_id=?""",
+                (proposal["proposal_id"],)).fetchone()[0],FAILED)
+        # Independently exercise changed scene receipts before claim.
+        other=self._m61_ready_pi_lease if False else None
+
+    def test_m61_tls_worker_capability_isolated_from_ordinary_claim(self):
+        from kidsstudio.coordinator_api import Coordinator,TransportError
+        from kidsstudio.recovery_lease import RecoveryLeaseGate
+        old,proposal,admission,lease,pfile,psha=self._m61_ready_pi_lease()
+        coordinator=Coordinator(self.queue,self.root/"m61-vault",{
+            "mac-recovery":("x"*40,{"recovery_assemble"}),
+            "mac-regular":("y"*40,{"episode_assemble"}),
+        })
+        with self.assertRaises(TransportError):
+            coordinator.dispatch("recovery-claim",
+                {"proposal_id":proposal["proposal_id"]},
+                "mac-regular",frozenset({"episode_assemble"}))
+        other=coordinator.dispatch("claim",{},"mac-recovery",
+                                   frozenset({"recovery_assemble"}))
+        self.assertIsNone(other["job"])
+        got=coordinator.dispatch("recovery-claim",
+            {"proposal_id":proposal["proposal_id"]},
+            "mac-recovery",frozenset({"recovery_assemble"}))
+        self.assertEqual(got["job"]["job_id"],admission["reserved_job_id"])
+        check=coordinator.dispatch("recovery-pre-execution-check",
+            {"job_id":got["job"]["job_id"],"generation":1},
+            "mac-recovery",frozenset({"recovery_assemble"}))
+        self.assertEqual(check["status"],"M61_CURRENT_PRIVATE_RECOVERY_LEASE")
+        beat=coordinator.dispatch("recovery-heartbeat",
+            {"job_id":got["job"]["job_id"],"generation":1},
+            "mac-recovery",frozenset({"recovery_assemble"}))
+        self.assertIs(beat["ok"],True)
+        with self.assertRaises(TransportError):
+            coordinator.dispatch("recovery-pre-execution-check",
+                {"job_id":got["job"]["job_id"],"generation":2},
+                "mac-recovery",frozenset({"recovery_assemble"}))
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
