@@ -38,7 +38,8 @@ def record(root, *, episode_id, video_id, decision, notes, reviewer="owner"):
         raise OwnerReviewError("unsafe review folder")
     history.mkdir(mode=0o700, exist_ok=True)
     count = 1
-    while (history / f"review_{count:04d}.json").exists():
+    while ((history / f"review_{count:04d}.json").exists() or
+           (history / f"review_{count:04d}.json").is_symlink()):
         count += 1
         if count > 10000:
             raise OwnerReviewError("review history full")
