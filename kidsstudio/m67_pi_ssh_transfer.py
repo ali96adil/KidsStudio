@@ -55,6 +55,9 @@ def transfer(root, manifest, *, host, user, remote_dir,
             raise TransferError("remote SHA256 mismatch")
         run(["ssh", *ssh_opts, target, "mv", "-n", temporary, final])
         run(["ssh", *ssh_opts, target, "test", "-f", final])
+        final_hash = run(["ssh", *ssh_opts, target, "sha256sum", final])
+        if final_hash.stdout.strip().split()[0] != digest:
+            raise TransferError("final remote master SHA256 mismatch")
     except (subprocess.SubprocessError, OSError) as exc:
         raise TransferError("SSH transfer failed; partial file may remain") from exc
     return {"status": "TRANSFERRED_TO_PI_HASH_VERIFIED",
