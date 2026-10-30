@@ -491,6 +491,11 @@ def main(argv:list[str]|None=None)->int:
         if not args.execute:
             print(json.dumps(report,ensure_ascii=False,indent=2))
             return 0
+        # M65: standalone legacy execution would put the OAuth token and
+        # Google network transfer back on Mac. Only Pi-owned services may
+        # invoke the tested private_upload() function with Pi-local bytes.
+        raise YouTubePrivateError(
+            "M65_STANDALONE_GOOGLE_UPLOAD_DISABLED_USE_PI_SERVICE")
         if args.journal is None or not ENV.fullmatch(args.token_env):
             raise YouTubePrivateError("Explicit private journal and allowed token env required.")
         if args.verify_existing:
