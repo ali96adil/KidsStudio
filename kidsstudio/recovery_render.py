@@ -177,7 +177,13 @@ def render_private_recovery_master(
                     # verified: copy immutable bytes, do NOT re-encode.
                     live()
                     with stage.open("xb") as target,src.open("rb") as original:
-                        shutil.copyfileobj(original,target,1024*1024)
+                        while True:
+                            chunk=original.read(1024*1024)
+                            if not chunk:break
+                            if abort_event.is_set():
+                                raise RecoveryRenderError(
+                                    "M61 lease revoked while copying recovered bytes.")
+                            target.write(chunk)
                         target.flush();os.fsync(target.fileno())
                     if digest(stage)!=clip["sha256"]:
                         raise RecoveryRenderError("M61 copied normalized source changed.")
@@ -233,8 +239,20 @@ def render_private_recovery_master(
                 raise RecoveryRenderError("M61 final master geometry/timing invalid.")
             final_sha=digest(master)
             if full_qa is None:
+                def monitored_full_decode(path:Path,binary:str)->bool:
+                    # M7 must be interruptible during lease/network loss;
+                    # do not call its default blocking subprocess.run.
+                    try:
+                        _run([binary,"-nostdin","-v","error","-xerror",
+                              "-i",str(path),"-map","0:v:0",
+                              "-map","0:a:0","-f","null","-"],
+                             timeout=1800,abort_event=abort_event)
+                    except EpisodeAssemblyError:
+                        return False
+                    return not abort_event.is_set()
                 result=inspect_video(master,final_sha,
-                    ffprobe=ffprobe,ffmpeg=ffmpeg)
+                    ffprobe=ffprobe,ffmpeg=ffmpeg,
+                    decode_fn=monitored_full_decode)
             else:
                 result=full_qa(master,final_sha)
             if not _m7_success(result,final_sha):
