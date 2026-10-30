@@ -83,8 +83,7 @@ def main(argv=None):
     manifest = json.loads(args.inventory.read_text(encoding="utf-8"))
     result = transfer(args.root, manifest, host=args.host, user=args.user,
                       remote_dir=args.remote_dir)
-    args.output.write_text(json.dumps(result, indent=2) + "
-", encoding="utf-8")
+    args.output.write_text(json.dumps(result, indent=2) + chr(10), encoding="utf-8")
     print(json.dumps(result))
     return 0
 
