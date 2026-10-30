@@ -81,8 +81,9 @@
         " · "+fmt(rec.awaiting_ai||0)+" تنتظر AI"+
         " · "+fmt(rec.ai_private_ready||0)+" اجتازت AI"+
         " · "+fmt(rec.needs_fix||0)+" تحتاج تصحيح"+
-        " · "+fmt(rec.private_handoff||0)+
-        " تسليم خاص غير مرفوع"));
+        " · "+fmt(rec.private_handoff||0)+" تسليم خاص غير مرفوع"+
+        " · "+fmt(rec.private_processing||0)+" تحت معالجة YouTube"+
+        " · "+fmt(rec.private_owner_review||0)+" تنتظر مراجعتك"));
     }
   }
   function ensureStates(data) {
@@ -184,7 +185,20 @@
       M62_AI_INTERNAL_CHANGES_REQUIRED:
         "AI طلب تصحيح المحتوى أو السلامة؛ ممنوع الرفع",
       M62_PRIVATE_UPLOAD_HANDOFF_STAGED_NOT_QUEUED:
-        "تسليم رفع خاص مجهّز فقط؛ لا توجد مهمة رفع أو فيديو على YouTube"
+        "تسليم رفع خاص مجهّز فقط؛ لا توجد مهمة رفع أو فيديو على YouTube",
+      M63_PRIVATE_UPLOAD_READY_ONE_SHOT:
+        "جاهز لمحاولة رفع Private واحدة ضمن السياسة المعتمدة",
+      M63_PRIVATE_UPLOAD_LEASED:
+        "رفع خاص على YouTube قيد التنفيذ؛ يمنع تكرار المحاولة",
+      M63_YOUTUBE_PRIVATE_PROCESSING_PENDING:
+        "تم العثور على الفيديو Private، لكن معالجة YouTube لم تكتمل بعد",
+      M63_YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING:
+        "تم التحقق عبر YouTube API من نسخة Private؛ بانتظار قرارك",
+      M63_PRIVATE_UPLOAD_RECONCILIATION_REQUIRED_NO_RETRY:
+        "نتيجة الرفع غير مؤكدة؛ يلزم تحقق يدوي ولا يعاد الرفع",
+      APPROVED:"نسخة الاسترداد مقبولة؛ لا يوجد إذن للنشر العام",
+      APPROVED_WITH_NOTES:"نسخة الاسترداد مقبولة مع ملاحظات",
+      REVISION_REQUESTED:"طلبت إعادة العمل على نسخة الاسترداد؛ تبقى Private"
     };
     if (recovery.state && recovery.state!=="NO_RECOVERY_ATTEMPT") {
       host.append(make("p","small-explainer",
