@@ -36,10 +36,12 @@ class RecoveryPrivateUploaderError(ValueError):
     pass
 
 
-def _plan(path:Path)->tuple[dict,str]:
+def _plan(path:Path,*,allow_partial:bool=False)->tuple[dict,str]:
     p=Path(path).expanduser()
     if (not p.is_absolute() or p.is_symlink() or
-        p.suffix.lower()!=".json" or not p.is_file() or
+        not (p.name.endswith(".json") or
+             allow_partial and p.name.endswith(".json.part")) or
+        not p.is_file() or
         not 0<p.stat().st_size<=15_000):
         raise RecoveryPrivateUploaderError("M63 private upload plan unavailable.")
     _ensure_private(p.parent)
