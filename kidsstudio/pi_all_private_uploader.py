@@ -46,9 +46,16 @@ class PiAllPrivateUploadService:
             journal=journal,transport=transport)
 
     def initialize(self)->dict:
-        self.recovery_inbox.initialize()
+        self.root.mkdir(mode=0o700,parents=True,exist_ok=True)
+        os.chmod(self.root,0o700)
         self.ordinary_inbox.initialize()
-        RecoveryPrivateUploadGate(self.queue).initialize()
+        with self.queue._connection() as db:
+            recovery_ready=bool(db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND
+                name='studio_recovery_private_handoffs'""").fetchone())
+        if recovery_ready:
+            self.recovery_inbox.initialize()
+            RecoveryPrivateUploadGate(self.queue).initialize()
         return {"status":"M65_PI_BOTH_PRIVATE_INBOXES_READY",
                 "youtube_uploaded":False,
                 "mac_required_for_upload":False}
@@ -57,7 +64,12 @@ class PiAllPrivateUploadService:
         # Fairness: if recovery has already processed a video, ordinary
         # resumes on the next pass. Neither branch can exceed M26's
         # shared per-series daily budget.
-        recovered=self.recovery.poll_once()
+        with self.queue._connection() as db:
+            recovery_ready=bool(db.execute("""SELECT 1 FROM sqlite_master
+                WHERE name='studio_recovery_private_handoffs'
+                AND type='table'""").fetchone())
+        recovered=(self.recovery.poll_once() if recovery_ready else
+                   {"status":"M64_PI_UPLOAD_IDLE_NO_ELIGIBLE_PRIVATE_MEDIA"})
         if recovered.get("status")!=(
             "M64_PI_UPLOAD_IDLE_NO_ELIGIBLE_PRIVATE_MEDIA"):
             return {**recovered,"pi_uploader_scope":"RECOVERY"}
@@ -87,12 +99,14 @@ def main(argv:list[str]|None=None)->int:
         brain=StudioQueue(args.db)
         if args.initialize:
             # No Google OAuth refresh credentials or HTTP at schema creation.
-            PiMediaInbox(brain,args.inbox_root).initialize()
-            PiOrdinaryInbox(brain,args.inbox_root).initialize()
-            RecoveryPrivateUploadGate(brain).initialize()
-            print(json.dumps({"status":"M65_PI_BOTH_PRIVATE_INBOXES_READY",
-                "youtube_uploaded":False,
-                "mac_required_for_upload":False},sort_keys=True))
+            service=PiAllPrivateUploadService.__new__(
+                PiAllPrivateUploadService)
+            service.queue=brain
+            service.root=PiMediaInbox(brain,args.inbox_root).root
+            service.recovery_inbox=PiMediaInbox(brain,args.inbox_root)
+            service.ordinary_inbox=PiOrdinaryInbox(brain,args.inbox_root)
+            result=service.initialize()
+            print(json.dumps(result,sort_keys=True))
             return 0
         oauth=GoogleOAuthRefresh(
             os.environ.get("KIDSSTUDIO_PI_YT_CLIENT_ID",""),
