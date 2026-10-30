@@ -86,15 +86,13 @@ def main(argv:list[str]|None=None)->int:
     try:
         brain=StudioQueue(args.db)
         if args.initialize:
-            # No OAuth, HTTP or Google token needed for schema creation.
-            service=PiAllPrivateUploadService(
-                brain,root=args.inbox_root,
-                journal=UploadJournal(args.journal),
-                oauth=GoogleOAuthRefresh(
-                    "UNUSED_INIT_CLIENT_ID","UNUSED_INIT_SECRET_ID",
-                    "UNUSED_INIT_REFRESH"),
-            )
-            print(json.dumps(service.initialize(),sort_keys=True))
+            # No Google OAuth refresh credentials or HTTP at schema creation.
+            PiMediaInbox(brain,args.inbox_root).initialize()
+            PiOrdinaryInbox(brain,args.inbox_root).initialize()
+            RecoveryPrivateUploadGate(brain).initialize()
+            print(json.dumps({"status":"M65_PI_BOTH_PRIVATE_INBOXES_READY",
+                "youtube_uploaded":False,
+                "mac_required_for_upload":False},sort_keys=True))
             return 0
         oauth=GoogleOAuthRefresh(
             os.environ.get("KIDSSTUDIO_PI_YT_CLIENT_ID",""),
