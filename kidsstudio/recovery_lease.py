@@ -283,3 +283,36 @@ class RecoveryLeaseGate:
             return {"status":FAILED,"retry_allowed":False}
 
 
+
+def main(argv:list[str]|None=None)->int:
+    """Local Pi control ONLY; worker TLS routes cannot activate jobs."""
+    import argparse
+    import json
+    import sys
+    p=argparse.ArgumentParser(prog="studio-recovery-lease")
+    p.add_argument("--db",required=True)
+    group=p.add_mutually_exclusive_group(required=True)
+    group.add_argument("--initialize",action="store_true")
+    group.add_argument("--activate",action="store_true")
+    p.add_argument("--proposal",type=Path)
+    p.add_argument("--sha256")
+    args=p.parse_args(argv)
+    try:
+        gate=RecoveryLeaseGate(StudioQueue(args.db))
+        if args.initialize and args.proposal is None and args.sha256 is None:
+            gate.initialize()
+            result={"status":"M61_RECOVERY_LEASE_SCHEMA_READY",
+                    "job_claimed":False}
+        elif args.activate and args.proposal and args.sha256:
+            result=gate.activate(args.proposal,sha256=args.sha256)
+        else:
+            raise RecoveryLeaseError("M61 exact local activation required.")
+        print(json.dumps(result,sort_keys=True))
+        return 0
+    except (RecoveryLeaseError,OSError,ValueError,sqlite3.Error):
+        print("M61_RECOVERY_LEASE_BLOCKED",file=sys.stderr)
+        return 2
+
+
+if __name__=="__main__":
+    raise SystemExit(main())
