@@ -1483,6 +1483,15 @@ class Orchestration32(unittest.TestCase):
             ep=db.execute("""SELECT state,render_job_id FROM studio_episodes
                 WHERE series_id='colors-ar' AND ordinal=1""").fetchone()
         self.assertEqual(row["state"],STAGED)
+        from kidsstudio.studio_dashboard import build_snapshot
+        dashboard=build_snapshot(self.queue)
+        self.assertEqual(dashboard["recovery"]["private_handoff"],1)
+        card=next(e for e in dashboard["episodes"]
+                  if e["series_id"]=="colors-ar" and e["ordinal"]==1)
+        self.assertEqual(card["recovery"]["state"],STAGED)
+        self.assertIs(card["recovery"]["automatic_youtube_upload"],False)
+        self.assertNotIn(str(self.root/"m62_rights.json"),
+                         json.dumps(dashboard))
         self.assertEqual(ep["state"],"BLOCKED")
         self.assertEqual(ep["render_job_id"],proposal["original_job_id"])
         with self.assertRaises(RecoveryQualityError):
@@ -1517,6 +1526,21 @@ class Orchestration32(unittest.TestCase):
         with self.assertRaises(RecoveryQualityError):
             gate.stage_private_handoff(pid,channel_id="UC"+"a"*22,
                 made_for_kids=True,contains_synthetic_media=True)
+
+    def test_m62_cli_defaults_to_no_ffmpeg_or_network(self):
+        from kidsstudio.recovery_quality_cli import main
+        import contextlib
+        import io
+        result=io.StringIO()
+        with contextlib.redirect_stdout(result):
+            code=main(["prepare-technical",
+                "--video",str(self.root/"missing.mp4"),
+                "--sha256","f"*64,
+                "--report",str(self.root/"not-created.json")])
+        self.assertEqual(code,0)
+        self.assertIn("M62_EXPLICIT_EXECUTE_REQUIRED_NO_FFMPEG",
+                      result.getvalue())
+        self.assertFalse((self.root/"not-created.json").exists())
 
     def test_m62_revoked_source_qa_blocks_even_valid_AI_or_handoff(self):
         from kidsstudio.recovery_final_qa import RecoveryQualityError
