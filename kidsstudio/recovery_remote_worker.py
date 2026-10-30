@@ -154,3 +154,51 @@ class RemoteRecoveryWorker:
             # No replay/rerender; requires explicit manual reconciliation.
             return {"status":"M61_PENDING_ACK_NO_AUTO_RETRY",
                     "job_id":job_id}
+
+def main(argv:list[str]|None=None)->int:
+    """M61 explicit one-shot CLI; default dry-run causes no Pi/network action."""
+    import argparse
+    import os
+    import sys
+    p=argparse.ArgumentParser(prog="studio-remote-recovery-worker")
+    p.add_argument("--pi-url",required=True)
+    p.add_argument("--worker-id",required=True)
+    p.add_argument("--ca-file")
+    p.add_argument("--recipes",required=True)
+    p.add_argument("--journal",required=True)
+    p.add_argument("--original-job-id",required=True)
+    p.add_argument("--proposal-id",required=True)
+    p.add_argument("--original-payload",type=Path,required=True)
+    p.add_argument("--execute",action="store_true",
+                   help="ONLY after Pi-local activation and device qualification")
+    args=p.parse_args(argv)
+    if not args.execute:
+        print(json.dumps({
+            "status":"M61_EXPLICIT_EXECUTE_REQUIRED_NO_NETWORK",
+            "pi_connected":False,"media_rendered":False,
+            "public_release_authorized":False},sort_keys=True))
+        return 0
+    try:
+        token=os.environ.get("KIDSSTUDIO_WORKER_TOKEN","")
+        remote=RemoteClient(args.pi_url,worker_id=args.worker_id,
+                            token=token,ca_file=args.ca_file)
+        recipes=MediaRecipes(args.recipes)
+        journal=MediaJournal(args.journal)
+        worker=RemoteRecoveryWorker(
+            remote,recipes,journal,
+            original_job_id=args.original_job_id,
+            proposal_id=args.proposal_id,
+            original_payload_file=args.original_payload)
+        result=worker.run_once()
+        print(json.dumps(result,sort_keys=True))
+        return 0 if result["status"] in (
+            "NO_ELIGIBLE_RECOVERY",
+            "M61_COMPLETED_PRIVATE_REVIEW_REQUIRED") else 2
+    except (RecoveryWorkerError,MediaError,RemoteWorkerError,
+            OSError,ValueError,TypeError):
+        print("M61_REMOTE_RECOVERY_WORKER_BLOCKED",file=sys.stderr)
+        return 2
+
+
+if __name__=="__main__":
+    raise SystemExit(main())
