@@ -26,7 +26,8 @@ readiness, and an ENABLED M26 standing policy with the same channel,
 audience/synthetic disclosure and policy revision. The same **per-series
 24h owner upload limit** counts ordinary YouTube jobs and recovery
 attempts together, and another active ordinary or recovery upload
-prevents activation.
+prevents activation. The *ordinary M26 enqueue gate* also counts M63
+recovery attempts, preventing a reverse-namespace budget bypass.
 
 A separately provisioned TLS worker with capability
 `recovery_private_upload` can claim exactly one proposal. It cannot
@@ -163,9 +164,10 @@ tokens, or media file bytes are transferred to Pi or stored in Git.
 ## Test qualification and known limits
 
 Synthetic tests cover two-scene Pi/source lineage, original queue
-isolation, owner policy revocation, exact private channel/master,
-no retry, pending processing, cross-ledger identity, saved timestamp
-comments and owner decisions; fake HTTPS/Google upload checks exact
+isolation, owner policy revocation and *two-way* shared daily budgets,
+exact private channel/master, no retry, pending processing, cross-ledger
+identity, owner loopback HTTP authentication, timestamp comments and
+owner decisions; fake HTTPS/Google upload checks exact
 `private` metadata, single videos.insert, and no second POST.
 
 **Not yet proven in owner environment:** OAuth token expiration during
