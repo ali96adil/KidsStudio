@@ -1,5 +1,6 @@
 """M67 Pi import staging tests, isolated from live Pi credentials."""
 import tempfile
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -30,8 +31,11 @@ class ImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             paths = [root / n for n in ("movie.mp4", "plan.json", "ready.json")]
-            for path in paths:
-                path.write_bytes(b"fixture")
+            paths[0].write_bytes(b"fixture")
+            paths[2].write_bytes(b"readiness")
+            paths[1].write_text(json.dumps({"render_job_id": "a" * 32,
+                "master_sha256": file_sha256(paths[0]),
+                "readiness_sha256": file_sha256(paths[2])}))
             with patch("kidsstudio.m67_pi_ordinary_import.PiOrdinaryInbox", InboxStub):
                 result = import_transferred(
                     object(), root / "inbox", render_job_id="a" * 32,
