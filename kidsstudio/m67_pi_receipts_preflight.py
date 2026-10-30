@@ -20,7 +20,8 @@ def preflight(*, master, plan, readiness, render_job_id, expected_sha256):
     checks = {}
     for name, path in (("master", master), ("plan", plan), ("readiness", readiness)):
         path = Path(path)
-        checks[name + "_file"] = path.is_file() and not path.is_symlink()
+        checks[name + "_file"] = (path.is_file() and not path.is_symlink()
+                                  and path.stat().st_nlink == 1)
     checks["job_id_format"] = isinstance(render_job_id, str) and bool(JOB.fullmatch(render_job_id))
     checks["master_hash_format"] = (isinstance(expected_sha256, str)
                                     and bool(HEX.fullmatch(expected_sha256)))
@@ -32,7 +33,7 @@ def preflight(*, master, plan, readiness, render_job_id, expected_sha256):
             checks["plan_master_match"] = document.get("master_sha256") == expected_sha256
             checks["readiness_hash_match"] = (
                 document.get("readiness_sha256") == file_sha256(readiness))
-        except (ValueError, OSError, AttributeError):
+        except (ValueError, OSError, AttributeError, TypeError):
             checks["plan_job_match"] = False
             checks["plan_master_match"] = False
             checks["readiness_hash_match"] = False
