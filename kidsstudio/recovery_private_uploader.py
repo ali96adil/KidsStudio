@@ -325,9 +325,14 @@ def main(argv:list[str]|None=None)->int:
                    help="Only GET existing video; never start another upload.")
     args=p.parse_args(argv)
     if not args.execute:
-        print(json.dumps({"status":"M63_EXPLICIT_EXECUTE_REQUIRED_NO_NETWORK",
+        print(json.dumps({"status":"M64_MAC_GOOGLE_UPLOAD_DISABLED_USE_PI",
             "youtube_uploaded":False,"public_release_authorized":False}))
         return 0
+    # M64 architecture change: this legacy Mac CLI may NOT send videos to
+    # Google. The Pi service invokes the same tested class using a Pi-local
+    # policy client and Pi-owned media/OAuth journal after LAN receipt.
+    print("M64_MAC_GOOGLE_UPLOAD_DISABLED_USE_PI",file=sys.stderr)
+    return 2
     try:
         pi=RemoteClient(args.pi_url,worker_id=args.worker_id,
             token=os.environ.get("KIDSSTUDIO_WORKER_TOKEN",""),
