@@ -109,9 +109,11 @@ one-shot journal behavior, uncertain completion acknowledgements never
 render twice and unexpected payload fields fail before claim.
 
 Injected synthetic fake media/FFmpeg/remote clients test control
-decisions. They are **not** a real Mac/Pi or actual audiovisual
-qualification. A separate real-FFmpeg integration test on CI remains
-important before hardware signoff.
+decisions. A separate real-FFmpeg integration test on CI generates
+synthetic color/audio clips, verifies that a normalized clip is not
+re-encoded individually, and runs full M7 master decode. That test
+intentionally mocks M55–M60 lineage checks to isolate the media
+engine and is **not** a real owner Mac/Pi hardware qualification.
 
 ## Offline operator commands (reference only)
 
