@@ -64,6 +64,56 @@ class M65PiOrdinaryUploadTests(unittest.TestCase):
         shutil.copyfile(self.ready,folder/"m8_readiness.json.part")
         return folder
 
+    def test_m65_mac_outbox_auto_transfers_ordinary_m8(self):
+        from kidsstudio.mac_outbox_to_pi import MacToPiOutbox
+        outbound=self.root/"mac-outbox"
+        outbound.mkdir()
+        ordinary_plan=outbound/(self.job+".ordinary.ready.json")
+        ordinary_ready=outbound/(self.job+".ordinary.m8.json")
+        shutil.copyfile(self.plan,ordinary_plan)
+        shutil.copyfile(self.ready,ordinary_ready)
+        seen=[]
+        self.inbox.prepare(self.job)
+        def fake_ordinary_transfer(**kwargs):
+            seen.append(kwargs)
+            folder=self.inbox.root/self.job
+            shutil.copyfile(kwargs["media"],
+                folder/"episode_qa_master.mp4.part")
+            shutil.copyfile(kwargs["plan_file"],
+                folder/"private_upload_plan.json.part")
+            shutil.copyfile(kwargs["readiness_file"],
+                folder/"m8_readiness.json.part")
+            return {"status":"M65_MAC_ORDINARY_LAN_SENT_PI_HASH_PENDING",
+                    "render_job_id":self.job}
+        watcher=MacToPiOutbox(outbox=outbound,
+            renders=self.mac.parent,
+            pi_host="pi-kids.local",pi_user="kidsstudio",
+            pi_inbox_root=str(self.inbox.root),
+            ssh_key=self.root/"unused-key",
+            ordinary_transfer=fake_ordinary_transfer)
+        first=watcher.poll_once()
+        self.assertEqual(first["status"],
+                         "M65_MAC_ORDINARY_LAN_SENT_PI_HASH_PENDING")
+        self.assertEqual(len(seen),1)
+        self.assertEqual(seen[0]["readiness_file"],ordinary_ready)
+        self.assertEqual(watcher.poll_once()["status"],
+                         "M64_MAC_OUTBOX_IDLE_NO_LAN_TRANSFER")
+        self.assertEqual(self.inbox.accept(self.job)["status"],READY)
+
+    def test_pi_combined_service_accepts_m26_only_no_recovery(self):
+        from kidsstudio.pi_all_private_uploader import PiAllPrivateUploadService
+        self.stage()
+        google=FakeYouTube()
+        service=PiAllPrivateUploadService(
+            self.queue,root=self.inbox.root,
+            journal=self.journal,oauth=FakeOAuth(),transport=google)
+        service.initialize()
+        outcome=service.poll_once()
+        self.assertEqual(outcome["status"],
+                         "YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING")
+        self.assertEqual(outcome["pi_uploader_scope"],"ORDINARY")
+        self.assertEqual(google.started,1)
+
     def test_pi_full_original_master_sha_m8_and_owner_gate(self):
         folder=self.stage()
         accepted=self.inbox.accept(self.job)
