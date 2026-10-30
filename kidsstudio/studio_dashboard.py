@@ -110,7 +110,10 @@ def build_snapshot(queue: StudioQueue) -> dict:
     recovery_states={}
     recovery_summary={"state":"NOT_CONFIGURED","reserved":0,
                       "ready":0,"leased":0,"waiting_final_review":0,
-                      "blocked":0,"public_release_authorized":False}
+                      "blocked":0,"awaiting_ai":0,
+                      "ai_private_ready":0,"needs_fix":0,
+                      "private_handoff":0,
+                      "public_release_authorized":False}
     preview_states={}
     preview_summary={"state":"NOT_CONFIGURED","pending_review":0,
                      "revision_requests":0,"approved":0,"approved_with_notes":0}
@@ -201,6 +204,43 @@ def build_snapshot(queue: StudioQueue) -> dict:
                         "hardware_qualified":False,
                         "automatically_public":False,
                         "owner_private_review_required":True}
+        recovery_qa_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='studio_recovery_final_qa'""").fetchone())
+        if recovery_qa_installed:
+            handoff_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='studio_recovery_private_handoffs'""").fetchone())
+            recovery_summary["state"]="PRIVATE_AI_QA_HANDOFF_NO_UPLOAD"
+            sql=("""SELECT i.series_id,i.ordinal,q.state AS qa_state,
+                h.state AS handoff_state
+                FROM studio_recovery_final_qa q
+                JOIN studio_recovery_intents i ON i.proposal_id=q.proposal_id
+                LEFT JOIN studio_recovery_private_handoffs h
+                  ON h.proposal_id=q.proposal_id
+                ORDER BY q.updated_at DESC"""
+                if handoff_installed else
+                """SELECT i.series_id,i.ordinal,q.state AS qa_state,
+                    NULL AS handoff_state
+                    FROM studio_recovery_final_qa q
+                    JOIN studio_recovery_intents i ON i.proposal_id=q.proposal_id
+                    ORDER BY q.updated_at DESC""")
+            for result in db.execute(sql):
+                stage=result["handoff_state"] or result["qa_state"]
+                bucket={
+                    "M62_TECH_PASSED_AWAITING_INDEPENDENT_AI":"awaiting_ai",
+                    "M62_AI_INTERNAL_READY_PRIVATE_ONLY_NOT_UPLOADED":"ai_private_ready",
+                    "M62_AI_INTERNAL_CHANGES_REQUIRED":"needs_fix",
+                    "M62_PRIVATE_UPLOAD_HANDOFF_STAGED_NOT_QUEUED":"private_handoff",
+                }.get(stage)
+                if bucket:recovery_summary[bucket]+=1
+                key=(result["series_id"],result["ordinal"])
+                if key in recovery_states:
+                    old=recovery_states[key]["state"]
+                    if (old=="M61_RENDERED_PENDING_FINAL_M7_OWNER_REVIEW"
+                        and recovery_summary["waiting_final_review"]>0):
+                        recovery_summary["waiting_final_review"]-=1
+                    recovery_states[key]["state"]=stage
+                    recovery_states[key]["automatic_youtube_upload"]=False
+                    recovery_states[key]["owner_private_review_required"]=True
         orchestration_installed=bool(db.execute("""SELECT 1 FROM sqlite_master
             WHERE type='table' AND name='studio_orchestrator_plans'""").fetchone())
         if orchestration_installed:
