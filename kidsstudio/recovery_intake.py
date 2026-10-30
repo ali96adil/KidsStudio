@@ -285,6 +285,19 @@ class RecoveryIntake:
                 created_at REAL NOT NULL
             )""")
 
+            db.execute("""CREATE TABLE IF NOT EXISTS studio_recovery_execution_recipes(
+                proposal_id TEXT PRIMARY KEY REFERENCES
+                    studio_recovery_intents(proposal_id),
+                derived_recipe_sha256 TEXT NOT NULL UNIQUE,
+                execution_manifest_sha256 TEXT NOT NULL UNIQUE,
+                manifest_file_sha256 TEXT NOT NULL,
+                source_media_contract_sha256 TEXT NOT NULL,
+                recipe_id TEXT NOT NULL UNIQUE,
+                state TEXT NOT NULL CHECK(
+                    state='M59_NONEXECUTABLE_RECIPE_BOUND'),
+                created_at REAL NOT NULL
+            )""")
+
     def pin(self,filename:str|Path,*,sha256:str)->dict[str,Any]:
         proposal,outer=_private_envelope(filename,sha256)
         with self.queue._connection(write=True) as db:
@@ -470,6 +483,216 @@ class RecoveryIntake:
         }
 
 
+    def bind_execution_recipe(
+        self,proposal_file:str|Path, *,proposal_sha256:str,
+        recipe_file:str|Path,recipe_sha256:str,
+        manifest_file:str|Path,manifest_sha256:str,
+    )->dict[str,Any]:
+        """Bind a fresh M4-shaped recipe as NONEXECUTABLE metadata only.
+
+        Even after success the ordinary worker cannot look up this recipe
+        (no MediaRecipes catalogue is created), and no job is queued.
+        """
+        proposal,original_envelope_sha=_private_envelope(
+            proposal_file,proposal_sha256)
+
+        def read_copy(source:str|Path,sha:str,max_size:int)->tuple[dict,str]:
+            candidate=Path(source).expanduser()
+            if (not candidate.is_absolute() or candidate.is_symlink() or
+                not isinstance(sha,str) or not SHA.fullmatch(sha)):
+                raise RecoveryIntakeError("M59 private copied file SHA required.")
+            path=candidate.resolve()
+            if (not path.is_file() or not 0<path.stat().st_size<=max_size or
+                any((parent/".git").exists() for parent in
+                    (path.parent,*path.parents))):
+                raise RecoveryIntakeError("M59 unsafe or oversized private file.")
+            body=path.read_bytes()
+            if hashlib.sha256(body).hexdigest()!=sha:
+                raise RecoveryIntakeError("M59 transferred file bytes changed.")
+            try:content=json.loads(body)
+            except (OSError,UnicodeError,ValueError) as exc:
+                raise RecoveryIntakeError("M59 transferred JSON invalid.") from exc
+            if not isinstance(content,dict):
+                raise RecoveryIntakeError("M59 JSON object required.")
+            return content,sha
+
+        recipe,_=read_copy(recipe_file,recipe_sha256,120_000)
+        envelope,outer_sha=read_copy(manifest_file,manifest_sha256,160_000)
+        if (set(envelope)!={"schema_version","manifest","manifest_sha256"}
+            or envelope["schema_version"]!=2 or
+            not isinstance(envelope["manifest"],dict) or
+            not isinstance(envelope["manifest_sha256"],str) or
+            not SHA.fullmatch(envelope["manifest_sha256"]) or
+            _sha_json(envelope["manifest"])!=envelope["manifest_sha256"]):
+            raise RecoveryIntakeError("M59 manifest digest or shape mismatch.")
+        info=envelope["manifest"]
+        expected={
+            "schema_version","status","proposal_id","original_job_id",
+            "original_script_sha256","source_catalogue_sha256",
+            "source_m58_contract_sha256","source_m58_file_sha256",
+            "derived_recipe_sha256","new_recipe_id","scene_count","scenes",
+            "recovered_candidates","fallbacks","new_pi_job_id",
+            "new_m14_m49_lineage_required","fresh_m53_m54_lease_required",
+            "new_final_m7_quality_and_owner_preview_required",
+            "auto_execute_allowed","auto_retry_allowed",
+            "public_release_authorized",
+        }
+        pid=proposal["proposal_id"]
+        if (set(info)!=expected or info["schema_version"]!=2 or
+            info["status"]!="M59_PRIVATE_RECOVERY_RECIPE_STAGED_NOT_EXECUTABLE" or
+            info["proposal_id"]!=pid or
+            info["original_job_id"]!=proposal["original_job_id"] or
+            info["original_script_sha256"]!=proposal["original_script_sha256"] or
+            info["source_catalogue_sha256"]!=proposal["source_catalogue_sha256"] or
+            not isinstance(info["source_m58_contract_sha256"],str) or
+            not SHA.fullmatch(info["source_m58_contract_sha256"]) or
+            not isinstance(info["source_m58_file_sha256"],str) or
+            not SHA.fullmatch(info["source_m58_file_sha256"]) or
+            info["derived_recipe_sha256"]!=recipe_sha256 or
+            info["new_recipe_id"]!="recovery_"+pid or
+            info["scene_count"]!=proposal["scene_count"] or
+            type(info["recovered_candidates"]) is not int or
+            type(info["fallbacks"]) is not int or
+            info["recovered_candidates"]!=
+                proposal["verified_normalized_candidates"] or
+            info["fallbacks"]!=proposal["original_scene_fallback_count"] or
+            info["new_pi_job_id"] is not None or
+            any(info[k] is not True for k in (
+                "new_m14_m49_lineage_required","fresh_m53_m54_lease_required",
+                "new_final_m7_quality_and_owner_preview_required")) or
+            any(info[k] is not False for k in (
+                "auto_execute_allowed","auto_retry_allowed",
+                "public_release_authorized")) or
+            not isinstance(info["scenes"],list) or
+            len(info["scenes"])!=info["scene_count"]):
+            raise RecoveryIntakeError("M59 fresh recipe metadata not safe.")
+
+        template_keys={"schema_version","series_id","episode_number",
+                       "script","private_root","output_root","voice_rights",
+                       "tools","clips"}
+        if (set(recipe)!=template_keys or recipe["schema_version"]!=1 or
+            recipe["series_id"]!=proposal["series_id"] or
+            recipe["episode_number"]!=proposal["episode_number"] or
+            not isinstance(recipe["script"],dict) or
+            set(recipe["script"])!={"path","sha256"} or
+            recipe["script"]["sha256"]!=info["original_script_sha256"] or
+            recipe["voice_rights"] not in (
+                "INTERNAL_TEST_ONLY","COMMERCIAL_LICENSE_VERIFIED") or
+            not isinstance(recipe["private_root"],str) or
+            not isinstance(recipe["output_root"],str) or
+            not recipe["private_root"].startswith("/") or
+            not recipe["output_root"].startswith("/") or
+            not isinstance(recipe["tools"],dict) or
+            set(recipe["tools"])!={
+                "ffmpeg","ffprobe","face_python","face_v06",
+                "face_v06_sha256","face_v07","face_v07_sha256"} or
+            not isinstance(recipe["clips"],list) or
+            len(recipe["clips"])!=info["scene_count"]):
+            raise RecoveryIntakeError("M59 staged recipe cannot represent source episode.")
+        for field in ("path",):
+            if (not isinstance(recipe["script"][field],str) or
+                not recipe["script"][field].startswith("/")):
+                raise RecoveryIntakeError("M59 recipe source path invalid.")
+        for key in ("ffmpeg","ffprobe","face_python","face_v06","face_v07"):
+            if (not isinstance(recipe["tools"][key],str) or
+                not recipe["tools"][key].startswith("/")):
+                raise RecoveryIntakeError("M59 tool reference invalid.")
+        for key in ("face_v06_sha256","face_v07_sha256"):
+            if (not isinstance(recipe["tools"][key],str) or
+                not SHA.fullmatch(recipe["tools"][key])):
+                raise RecoveryIntakeError("M59 face asset hash missing.")
+        selections=[]
+        count=0
+        for num,(scene,source,clip) in enumerate(zip(
+                info["scenes"],proposal["scenes"],recipe["clips"]),1):
+            if (not isinstance(scene,dict) or
+                set(scene)!={
+                    "scene","strategy","original_ltx_sha256",
+                    "selected_media_sha256","applied_face_cleanup",
+                    "full_m7_decode_confirmed",
+                    "requires_new_scene_provenance_review",
+                    "publication_approved"} or
+                type(scene["scene"]) is not int or scene["scene"]!=num or
+                scene["strategy"]!=source["strategy"] or
+                scene["original_ltx_sha256"]!=source["source_sha256"] or
+                scene["selected_media_sha256"]!=source["candidate_sha256"] or
+                scene["requires_new_scene_provenance_review"] is not True or
+                scene["publication_approved"] is not False or
+                not isinstance(clip,dict) or
+                set(clip)!={"video","sha256","face_cleanup"} or
+                clip["video"]!=source["candidate_path"] or
+                not isinstance(clip["video"],str) or
+                not clip["video"].startswith("/") or
+                clip["sha256"]!=source["candidate_sha256"] or
+                clip["face_cleanup"]!=scene["applied_face_cleanup"]):
+                raise RecoveryIntakeError("M59 scene selection/source hash changed.")
+            recovered=(scene["strategy"]==
+                "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS")
+            if scene["strategy"] not in (
+                    "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS",
+                    "USE_ORIGINAL_APPROVED_LTX_SOURCE") or
+                scene["full_m7_decode_confirmed"] is not recovered or
+                scene["applied_face_cleanup"]!=(
+                    "none" if recovered else source["source_face_cleanup"])):
+                raise RecoveryIntakeError("M59 recovered stage policy changed.")
+            count+=int(recovered)
+            selections.append({
+                "scene":num,"strategy":scene["strategy"],
+                "original_ltx_sha256":scene["original_ltx_sha256"],
+                "selected_media_sha256":scene["selected_media_sha256"],
+                "full_m7_decode_confirmed":recovered,
+                "new_scene_provenance_required":True,
+                "publication_approved":False,
+            })
+        if count!=info["recovered_candidates"]:
+            raise RecoveryIntakeError("M59 recovered count mismatch.")
+        with self.queue._connection(write=True) as db:
+            if not _table(db,"studio_recovery_execution_recipes"):
+                raise RecoveryIntakeError("M59 intake schema not initialized.")
+            current=_verify(db,proposal,original_envelope_sha)
+            intent=db.execute("""SELECT * FROM studio_recovery_intents
+                WHERE proposal_id=?""",(pid,)).fetchone()
+            media=db.execute("""SELECT * FROM studio_recovery_media_contracts
+                WHERE proposal_id=?""",(pid,)).fetchone()
+            if (not intent or not media or
+                intent["proposal_sha256"]!=current["proposal_sha256"] or
+                intent["original_job_id"]!=info["original_job_id"] or
+                intent["state"]!="M57_RECONCILIATION_REQUIRED_NO_QUEUE" or
+                media["state"]!="M58_MEDIA_BOUND_REQUIRES_FRESH_EXECUTION_CONTRACT" or
+                media["contract_sha256"]!=info["source_m58_contract_sha256"] or
+                media["contract_file_sha256"]!=info["source_m58_file_sha256"] or
+                media["scene_selection_sha256"]!=_sha_json(selections) or
+                media["source_catalogue_sha256"]!=
+                    info["source_catalogue_sha256"]):
+                raise RecoveryIntakeError("M59 Pi M57/M58 contract changed.")
+            if db.execute("""SELECT 1 FROM studio_recovery_execution_recipes
+                WHERE proposal_id=?""",(pid,)).fetchone():
+                raise RecoveryIntakeError("M59 staged recipe already bound.")
+            if (hashlib.sha256(Path(proposal_file).read_bytes()).hexdigest()
+                    !=original_envelope_sha or
+                hashlib.sha256(Path(recipe_file).read_bytes()).hexdigest()
+                    !=recipe_sha256 or
+                hashlib.sha256(Path(manifest_file).read_bytes()).hexdigest()
+                    !=outer_sha):
+                raise RecoveryIntakeError("M59 transferred metadata changed during pin.")
+            db.execute("""INSERT INTO studio_recovery_execution_recipes
+                VALUES(?,?,?,?,?,?,?,?)""",(
+                pid,recipe_sha256,envelope["manifest_sha256"],
+                outer_sha,media["contract_sha256"],
+                info["new_recipe_id"],
+                "M59_NONEXECUTABLE_RECIPE_BOUND",self.queue.clock()))
+            self.queue._event(db,info["original_job_id"],
+                "M59_FRESH_PRIVATE_RECIPE_STAGED_NO_JOB",{
+                "recipe_sha256":recipe_sha256,
+                "proposal_id":pid})
+        return {
+            "status":"M59_PRIVATE_RECOVERY_RECIPE_BOUND_NO_JOB",
+            "proposal_id":pid,"derived_recipe_sha256":recipe_sha256,
+            "new_pi_job_id":None,"mac_bytes_verified_by_pi":False,
+            "auto_execute_allowed":False,"public_release_authorized":False,
+        }
+
+
 def main(argv:list[str]|None=None)->int:
     parser=argparse.ArgumentParser(prog="studio-recovery-intake")
     parser.add_argument("--db",required=True)
@@ -479,13 +702,28 @@ def main(argv:list[str]|None=None)->int:
     parser.add_argument("--bind-media",action="store_true")
     parser.add_argument("--media-contract",type=Path)
     parser.add_argument("--media-sha256")
+    parser.add_argument("--bind-recipe",action="store_true")
+    parser.add_argument("--recipe-file",type=Path)
+    parser.add_argument("--recipe-sha256")
+    parser.add_argument("--execution-manifest",type=Path)
+    parser.add_argument("--execution-manifest-sha256")
     args=parser.parse_args(argv)
     try:
         intake=RecoveryIntake(StudioQueue(args.db))
         if args.initialize and args.proposal is None and args.sha256 is None:
             intake.initialize()
             out={"status":"M57_SCHEMA_INITIALIZED_NO_JOB_QUEUED"}
-        elif (not args.initialize and args.bind_media and
+        elif (not args.initialize and args.bind_recipe and not args.bind_media
+              and args.proposal and args.sha256 and
+              args.recipe_file and args.recipe_sha256 and
+              args.execution_manifest and args.execution_manifest_sha256
+              and args.media_contract is None and args.media_sha256 is None):
+            out=intake.bind_execution_recipe(
+                args.proposal,proposal_sha256=args.sha256,
+                recipe_file=args.recipe_file,recipe_sha256=args.recipe_sha256,
+                manifest_file=args.execution_manifest,
+                manifest_sha256=args.execution_manifest_sha256)
+        elif (not args.initialize and args.bind_media and not args.bind_recipe and
               args.proposal and args.sha256 and
               args.media_contract and args.media_sha256):
             out=intake.bind_media_contract(
@@ -493,8 +731,11 @@ def main(argv:list[str]|None=None)->int:
                 contract_file=args.media_contract,
                 contract_file_sha256=args.media_sha256)
         elif (not args.initialize and not args.bind_media and
-              args.proposal and args.sha256 and
-              args.media_contract is None and args.media_sha256 is None):
+              not args.bind_recipe and args.proposal and args.sha256 and
+              args.media_contract is None and args.media_sha256 is None and
+              args.recipe_file is None and args.recipe_sha256 is None and
+              args.execution_manifest is None and
+              args.execution_manifest_sha256 is None):
             out=intake.pin(args.proposal,sha256=args.sha256)
         else:
             raise RecoveryIntakeError("Initialize or pin exact copied proposal.")
