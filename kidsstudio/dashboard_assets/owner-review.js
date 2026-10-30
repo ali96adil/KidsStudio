@@ -106,7 +106,8 @@
       const title = node("div");
       title.append(node("h3",null,item.title),
         node("p","meta",item.series_id+" · الحلقة "+number(item.episode_number)+
-          " · النسخة "+number(item.version)));
+          " · النسخة "+number(item.version)+
+          (item.recovery===true ? " · مونتاج مسترد M63" : "")));
       const state = statusText[item.state] || ["حالة غير معروفة","changes"];
       head.append(title, node("span","status "+state[1],state[0]));
       card.append(head);
