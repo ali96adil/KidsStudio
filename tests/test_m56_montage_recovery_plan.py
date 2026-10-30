@@ -247,6 +247,9 @@ class M56RecoveryPlanTests(unittest.TestCase):
         self.assertEqual(meta["recovered_candidates"],1)
         self.assertEqual(meta["fallbacks"],1)
         self.assertEqual(meta["new_recipe_id"],"recovery_"+self.proposal_id)
+        self.assertEqual(derived["schema_version"],2)
+        self.assertEqual(derived["recovery_stage"],
+                         "M59_STAGED_ONLY_NO_EXECUTION")
         self.assertEqual(derived["clips"][0]["face_cleanup"],"none")
         self.assertEqual(derived["clips"][0]["sha256"],
                          sha(self.root/"rendered"/self.old_id/
