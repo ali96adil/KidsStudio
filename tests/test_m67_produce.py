@@ -4,6 +4,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 import wave
 
 from kidsstudio.m67_produce import prepare, generate, inspect, pin_reviewed, ProductionStageError
@@ -69,11 +70,17 @@ class ProductionCommandTests(unittest.TestCase):
                  "visual_qa": "PASS", "voice_qa": "PASS"}
                 for r in inspection["results"]]}
             approvals["assets"][0]["voice_sha256"] = "0" * 64
-            with self.assertRaises(ProductionStageError):
-                pin_reviewed(root, approvals)
+            decoded = {"status": "MEDIA_DECODED_PENDING_QA", "results": [
+                {"beat": r["beat"], "visual_sha256": r["visual_sha256"],
+                 "voice_sha256": r["voice_sha256"]}
+                for r in inspection["results"]]}
+            with patch("kidsstudio.m67_produce.decode_check", return_value=decoded):
+                with self.assertRaises(ProductionStageError):
+                    pin_reviewed(root, approvals)
             self.assertFalse((root / "reviewed_manifest.json").exists())
             approvals["assets"][0]["voice_sha256"] = inspection["results"][0]["voice_sha256"]
-            result = pin_reviewed(root, approvals)
+            with patch("kidsstudio.m67_produce.decode_check", return_value=decoded):
+                result = pin_reviewed(root, approvals)
             self.assertEqual(result["status"], "ASSETS_QA_READY_FOR_RENDER")
             self.assertFalse(result["public_release_authorized"])
 
