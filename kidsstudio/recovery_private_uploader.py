@@ -15,7 +15,7 @@ from pathlib import Path
 import re
 import sys
 import threading
-from typing import Any
+from typing import Any,Callable
 
 from .episode_assembly import _ensure_private
 from .remote_worker import RemoteClient,RemoteWorkerError
@@ -76,7 +76,8 @@ def _plan(path:Path,*,allow_partial:bool=False)->tuple[dict,str]:
 class RecoveryPrivateUploader:
     def __init__(self,pi:Any, *,plan_file:Path,media_file:Path,
                  journal:UploadJournal,token:str,transport:Any|None=None,
-                 heartbeat_seconds:float=15.0):
+                 heartbeat_seconds:float=15.0,
+                 token_provider:Callable[[],str]|None=None):
         self.plan,self.plan_sha=_plan(plan_file)
         path=Path(media_file).expanduser()
         if (not path.is_absolute() or path.is_symlink() or
@@ -99,8 +100,25 @@ class RecoveryPrivateUploader:
         self.media=path
         self.journal=journal
         self.token=token
+        self.token_provider=token_provider
+        self.original_stat=(path.stat().st_size,path.stat().st_mtime_ns,
+                            path.stat().st_ino)
         self.transport=transport or GoogleYouTubeTransport()
         self.heartbeat_seconds=heartbeat_seconds
+
+    def _oauth(self)->str:
+        value=self.token_provider() if self.token_provider else self.token
+        if (not isinstance(value,str) or len(value)<30 or
+            any(ch.isspace() for ch in value)):
+            raise RecoveryPrivateUploaderError("M64 Pi OAuth token unavailable.")
+        return value
+
+    def _media_unchanged(self,*,full_sha:bool=False)->None:
+        current=(self.media.stat().st_size,self.media.stat().st_mtime_ns,
+                 self.media.stat().st_ino)
+        if (current!=self.original_stat or self.media.is_symlink() or
+            (full_sha and file_sha256(self.media)!=self.plan["master_sha256"])):
+            raise RecoveryPrivateUploaderError("M64 approved Pi media changed.")
 
     def _proof(self,result:dict,job:str,generation:int)->None:
         p=self.plan
@@ -150,16 +168,17 @@ class RecoveryPrivateUploader:
                     if result.get("ok") is not True:raise RecoveryPrivateUploaderError("lease lost")
                 except Exception:
                     aborted.set();return
-        def check():
-            if aborted.is_set():raise RecoveryPrivateUploaderError("M63 lease lost.")
+        def check(*,full_sha:bool=False):
+            if aborted.is_set():raise RecoveryPrivateUploaderError("M64 Pi lease lost.")
             proof=self.pi.call("recovery-private-check",params)
             self._proof(proof,job,generation)
-            if file_sha256(self.media)!=p["master_sha256"]:
-                raise RecoveryPrivateUploaderError("M63 local MP4 bytes changed before upload.")
+            # M64: avoid re-hashing multi-GB media on EVERY 8MiB chunk.
+            # Rehash at the trust boundaries and use stat guards during upload.
+            self._media_unchanged(full_sha=full_sha)
         try:
             # Pre-reservation local proof: cannot call Google unless Pi is
             # current and the existing Mac upload journal has no attempt.
-            check()
+            check(full_sha=True)
             self.journal.reserve(job,p["master_sha256"],self.plan_sha)
         except (RecoveryPrivateUploaderError,YouTubePrivateError,
                 RemoteWorkerError,OSError,ValueError):
@@ -171,7 +190,7 @@ class RecoveryPrivateUploader:
         try:
             # Critical: the second Pi check occurs AFTER durable STARTED and
             # IMMEDIATELY BEFORE the first network videos.insert operation.
-            check()
+            check(full_sha=True)
             meta={"snippet":{
                     "title":p["title"].strip(),
                     "description":p["description"],
@@ -182,7 +201,7 @@ class RecoveryPrivateUploader:
                     "containsSyntheticMedia":p["contains_synthetic_media"],
                  }}
             size=self.media.stat().st_size
-            session=self.transport.start(self.token,meta,size)
+            session=self.transport.start(self._oauth(),meta,size)
             offset=0
             video=None
             with self.media.open("rb") as source:
@@ -192,7 +211,7 @@ class RecoveryPrivateUploader:
                     chunk=source.read(min(CHUNK,size-offset))
                     if not chunk:raise RecoveryPrivateUploaderError("M63 media truncated.")
                     status,next_pos=self.transport.put_chunk(
-                        self.token,session,chunk,offset,size)
+                        self._oauth(),session,chunk,offset,size)
                     if status in (200,201):
                         if (not isinstance(next_pos,str) or
                             not VIDEO.fullmatch(next_pos)):
@@ -203,10 +222,9 @@ class RecoveryPrivateUploader:
                         raise RecoveryPrivateUploaderError("M63 upload range uncertain.")
                     offset=next_pos
             if not video:raise RecoveryPrivateUploaderError("M63 no YouTube video id.")
-            if file_sha256(self.media)!=p["master_sha256"]:
-                raise RecoveryPrivateUploaderError("M63 local bytes changed during upload.")
+            self._media_unchanged(full_sha=True)
             self.journal.record_uploaded(job,video)
-            verified=self.transport.verify(self.token,video,p["target_channel_id"])
+            verified=self.transport.verify(self._oauth(),video,p["target_channel_id"])
             if (verified.get("video_id")!=video or
                 verified.get("channel_id")!=p["target_channel_id"] or
                 verified.get("privacy_status")!="private" or
@@ -259,7 +277,7 @@ class RecoveryPrivateUploader:
             raise RecoveryPrivateUploaderError(
                 "M63 existing private upload needs immutable local journal.")
         proof=self.transport.verify(
-            self.token,row["video_id"],p["target_channel_id"])
+            self._oauth(),row["video_id"],p["target_channel_id"])
         if (proof.get("video_id")!=row["video_id"] or
             proof.get("channel_id")!=p["target_channel_id"] or
             proof.get("privacy_status")!="private" or
