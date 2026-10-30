@@ -49,6 +49,8 @@ class FakePi:
             return {"status":"M63_YOUTUBE_PRIVATE_PROCESSING_PENDING"}
         if action=="recovery-private-fail":
             return {"status":"M63_PRIVATE_UPLOAD_RECONCILIATION_REQUIRED_NO_RETRY"}
+        if action=="recovery-private-reverify":
+            return {"status":"M63_YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING"}
         if action=="recovery-private-heartbeat":
             return {"ok":self.policy_current}
         raise AssertionError("unexpected route "+action)
