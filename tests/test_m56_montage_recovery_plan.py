@@ -313,6 +313,38 @@ class M56RecoveryPlanTests(unittest.TestCase):
                 payload=self.payload,proposal_id=self.proposal_id,
                 prober=self.fake_prober,full_qa=self.tech_pass)
 
+    def test_m60_mac_rechecks_exact_staged_bytes_and_rejects_tamper(self):
+        from kidsstudio.recovery_execution_recipe import (
+            freeze_private_recovery_recipe)
+        from kidsstudio.recovery_local_gate import (
+            verify_staged_m60_recovery, RecoveryLocalGateError)
+        self._m59_freeze_original_evidence()
+        freeze_private_recovery_recipe(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        before=sha(self.journal.path)
+        gate=verify_staged_m60_recovery(
+            self.recipes,self.locator,original_job_id=self.old_id,
+            payload=self.payload,proposal_id=self.proposal_id,
+            prober=self.fake_prober,full_qa=self.tech_pass)
+        self.assertEqual(gate["status"],
+            "M60_MAC_STAGED_MEDIA_RECHECKED_NOT_EXECUTED")
+        self.assertEqual(gate["recovered_candidates"],1)
+        self.assertEqual(gate["fallbacks"],1)
+        self.assertIs(gate["media_rendered"],False)
+        self.assertIs(gate["auto_execute_allowed"],False)
+        self.assertIs(gate["public_release_authorized"],False)
+        self.assertEqual(sha(self.journal.path),before)
+        staged=self.root/"rendered"/"_recovery_recipes"/(
+            self.proposal_id+".json")
+        staged.write_bytes(staged.read_bytes()+b" ")
+        with self.assertRaises(RecoveryLocalGateError):
+            verify_staged_m60_recovery(
+                self.recipes,self.locator,original_job_id=self.old_id,
+                payload=self.payload,proposal_id=self.proposal_id,
+                prober=self.fake_prober,full_qa=self.tech_pass)
+
     def test_m56_one_scene_reuse_other_scene_pinned_original(self):
         prior=sha(self.journal.path)
         p=self.make()
