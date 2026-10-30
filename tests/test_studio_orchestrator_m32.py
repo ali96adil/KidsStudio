@@ -1366,6 +1366,177 @@ class Orchestration32(unittest.TestCase):
         self.assertNotIn(str(self.root/"m59_copied_recipe.json"),
                          json.dumps(snapshot))
 
+    def _m62_completed_pi_and_evidence(self):
+        from kidsstudio.recovery_final_qa import RecoveryFinalQA
+        from kidsstudio.episode_quality import CHECKS
+        old,proposal,admitted,lease,pfile,psha=self._m61_ready_pi_lease()
+        claim=lease.claim(worker_id="mac-a",capability="recovery_assemble",
+            proposal_id=proposal["proposal_id"])
+        result=lease.complete(
+            job_id=claim["job_id"],worker_id="mac-a",generation=1,
+            result={"status":"M61_RECOVERY_MASTER_TECH_PASS_PENDING_REVIEW",
+                    "artifact_sha256":"f"*64,"artifact_bytes":4096,
+                    "final_m7_full_decode_passed":True,
+                    "publication_approved":False})
+        self.assertEqual(result["status"],
+                         "M61_RENDERED_PENDING_FINAL_M7_OWNER_REVIEW")
+        gate=RecoveryFinalQA(self.queue)
+        gate.initialize()
+        technical=self.root/"m62_technical.json"
+        tech={
+            "schema_version":1,"status":"TECH_PASS_OWNER_REVIEW_PENDING",
+            "media_sha256":"f"*64,"expected_media_sha256":"f"*64,
+            "file_bytes":4096,"duration_seconds":14.0,
+            "checks":{k:True for k in CHECKS},
+            "subjective_checks_performed":False,
+            "rights_verified":False,"publishing_approved":False}
+        technical.write_text(json.dumps(tech))
+        evidence=self.root/"m62_observations.json"
+        evidence.write_text(json.dumps({
+            "schema_version":1,"media_sha256":"f"*64,
+            "script_sha256":sha(self.parent),
+            "transcript_sha256":"1"*64,
+            "frames_manifest_sha256":"2"*64,
+            "audio_analysis_sha256":"3"*64,
+            "sampling_complete":True,
+            "subjective_quality_verified":False,
+            "publishing_approved":False}))
+        rights=self.root/"m62_rights.json"
+        rights.write_text(json.dumps({
+            "schema_version":1,"media_sha256":"f"*64,
+            "assets":[{"asset_sha256":"4"*64,
+                "provenance_kind":"original_created",
+                "proof_sha256":"5"*64,
+                "use_scope":"commercial_youtube_kids",
+                "rights_status":"DOCUMENTED_NOT_LEGALLY_ADJUDICATED"}],
+            "all_assets_accounted_for":True,
+            "publishing_approved":False}))
+        review_file=self.root/"m62_review.json"
+        from kidsstudio.agent_final_qa import ROLE_CRITERIA
+        review={
+            "schema_version":1,
+            "series_id":"colors-ar","episode_number":1,
+            "render_job_id":admitted["reserved_job_id"],
+            "media_sha256":"f"*64,"script_sha256":sha(self.parent),
+            "observed_evidence_sha256":sha(evidence),
+            "rights_catalogue_sha256":sha(rights),
+            "reviewers":[{
+                "role":role,"provider_id":provider,
+                "model_id":"synthetic-"+provider,
+                "evidence_sha256":sha(evidence),
+                "criteria":{k:{
+                    "decision":"PASS",
+                    "evidence":"Synthetic evidence bounded to this fake video and scene "+k,
+                } for k in sorted(fields)},
+                "summary":"Synthetic independent educational and safety quality check",
+                "release_approved":False,
+            } for role,provider,fields in (
+                ("pedagogy_language","pedagogy_provider",ROLE_CRITERIA["pedagogy_language"]),
+                ("visual_child_safety","visual_provider",ROLE_CRITERIA["visual_child_safety"])
+            )],
+            "publishing_approved":False,
+        }
+        review_file.write_text(json.dumps(review))
+        return proposal,admitted,gate,technical,evidence,rights,review_file
+
+    def test_m62_independent_qa_ready_and_private_policy_handoff_no_upload(self):
+        from kidsstudio.recovery_final_qa import TECH,READY,STAGED,RecoveryQualityError
+        from kidsstudio.private_upload_policy import PrivateUploadPolicy
+        proposal,admitted,gate,tech,evidence,rights,review=(
+            self._m62_completed_pi_and_evidence())
+        pid=proposal["proposal_id"]
+        before=self.queue.status()["counts"].get("QUEUED",0)
+        registered=gate.register_technical(pid,tech)
+        self.assertEqual(registered["status"],TECH)
+        self.assertIs(registered["pi_verified_mac_video_bytes"],False)
+        with self.assertRaises(RecoveryQualityError):
+            gate.register_technical(pid,tech)
+        ai=gate.register_ai(pid,review_bundle=review,
+            observed_media_evidence=evidence,rights_catalogue=rights)
+        self.assertEqual(ai["status"],READY)
+        self.assertEqual(ai["independent_provider_count"],2)
+        self.assertIs(ai["rights_legal_certainty_proven"],False)
+        with self.assertRaises(RecoveryQualityError):
+            gate.stage_private_handoff(pid,channel_id="UC"+"a"*22,
+                made_for_kids=True,contains_synthetic_media=True)
+        policy=PrivateUploadPolicy(self.queue)
+        policy.initialize()
+        policy.grant("colors-ar",channel_id="UC"+"a"*22,
+            max_uploads_24h=1,made_for_kids=True,
+            contains_synthetic_media=True,
+            owner_note="Private YouTube series approval only, no public release")
+        handoff=gate.stage_private_handoff(pid,
+            channel_id="UC"+"a"*22,
+            made_for_kids=True,contains_synthetic_media=True)
+        self.assertEqual(handoff["status"],STAGED)
+        self.assertEqual(handoff["master_sha256"],"f"*64)
+        self.assertEqual(handoff["recovery_job_id"],
+                         admitted["reserved_job_id"])
+        self.assertIs(handoff["youtube_upload_job_created"],False)
+        self.assertIs(handoff["network_used"],False)
+        self.assertIs(handoff["oauth_used"],False)
+        self.assertIs(handoff["public_release_authorized"],False)
+        self.assertEqual(self.queue.status()["counts"].get("QUEUED",0),before)
+        with self.queue._connection() as db:
+            row=db.execute("""SELECT state FROM studio_recovery_private_handoffs
+                WHERE proposal_id=?""",(pid,)).fetchone()
+            ep=db.execute("""SELECT state,render_job_id FROM studio_episodes
+                WHERE series_id='colors-ar' AND ordinal=1""").fetchone()
+        self.assertEqual(row["state"],STAGED)
+        self.assertEqual(ep["state"],"BLOCKED")
+        self.assertEqual(ep["render_job_id"],proposal["original_job_id"])
+        with self.assertRaises(RecoveryQualityError):
+            gate.stage_private_handoff(pid,channel_id="UC"+"a"*22,
+                made_for_kids=True,contains_synthetic_media=True)
+
+    def test_m62_rejects_wrong_video_technical_report_and_same_provider(self):
+        from kidsstudio.recovery_final_qa import RecoveryQualityError
+        proposal,admitted,gate,tech,evidence,rights,review=(
+            self._m62_completed_pi_and_evidence())
+        pid=proposal["proposal_id"]
+        data=json.loads(tech.read_text())
+        data["media_sha256"]="b"*64
+        tech.write_text(json.dumps(data))
+        with self.assertRaises(RecoveryQualityError):
+            gate.register_technical(pid,tech)
+        data["media_sha256"]="f"*64
+        tech.write_text(json.dumps(data))
+        gate.register_technical(pid,tech)
+        values=json.loads(review.read_text())
+        values["reviewers"][1]["provider_id"]=values["reviewers"][0]["provider_id"]
+        review.write_text(json.dumps(values))
+        with self.assertRaises(RecoveryQualityError):
+            gate.register_ai(pid,review_bundle=review,
+                observed_media_evidence=evidence,rights_catalogue=rights)
+        values["reviewers"][1]["provider_id"]="visual_provider"
+        values["reviewers"][1]["criteria"]["child_safety"]["decision"]="UNSURE"
+        review.write_text(json.dumps(values))
+        result=gate.register_ai(pid,review_bundle=review,
+            observed_media_evidence=evidence,rights_catalogue=rights)
+        self.assertEqual(result["status"],"M62_AI_INTERNAL_CHANGES_REQUIRED")
+        with self.assertRaises(RecoveryQualityError):
+            gate.stage_private_handoff(pid,channel_id="UC"+"a"*22,
+                made_for_kids=True,contains_synthetic_media=True)
+
+    def test_m62_revoked_source_qa_blocks_even_valid_AI_or_handoff(self):
+        from kidsstudio.recovery_final_qa import RecoveryQualityError
+        proposal,admitted,gate,tech,evidence,rights,review=(
+            self._m62_completed_pi_and_evidence())
+        pid=proposal["proposal_id"]
+        gate.register_technical(pid,tech)
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_scene_stages SET state='PENDING_QA'
+                WHERE series_id='colors-ar' AND ordinal=1
+                AND scene=2 AND stage='ltx_animate'""")
+        with self.assertRaises(RecoveryQualityError):
+            gate.register_ai(pid,review_bundle=review,
+                observed_media_evidence=evidence,rights_catalogue=rights)
+        with self.queue._connection() as db:
+            self.assertEqual(db.execute("""SELECT state FROM
+                studio_recovery_final_qa WHERE proposal_id=?""",
+                (pid,)).fetchone()[0],
+                "M62_TECH_PASSED_AWAITING_INDEPENDENT_AI")
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
