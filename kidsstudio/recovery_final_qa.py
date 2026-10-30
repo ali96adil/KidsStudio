@@ -32,25 +32,6 @@ class RecoveryQualityError(ValueError):
     """Recovered master lacks current Pi receipts or independent AI QA."""
 
 
-def _source(db:sqlite3.Connection,proposal_id:str)->tuple[sqlite3.Row,dict]:
-    if not isinstance(proposal_id,str) or not PID.fullmatch(proposal_id):
-        raise RecoveryQualityError("Exact M56 proposal ID required.")
-    row=db.execute("""SELECT * FROM studio_recovery_leases
-        WHERE proposal_id=?""",(proposal_id,)).fetchone()
-    if not row or row["state"]!=DONE or not row["result_sha256"]:
-        raise RecoveryQualityError("Only M61 completed private technical master is eligible.")
-    try:
-        pins=RecoveryLeaseGate._guard(RecoveryLeaseGate.__new__(
-            RecoveryLeaseGate),db,row)
-    except Exception as exc:
-        # _guard references no other mutable state, except the proposal
-        # and current Pi ledger; use a separately configured guard below.
-        raise RecoveryQualityError("M61 provenance check refused.") from exc
-    if pins["job_id"]!=row["reserved_job_id"]:
-        raise RecoveryQualityError("M61 reserved job identity changed.")
-    return row,pins
-
-
 def _load_json(file:str|Path,*,max_bytes:int)->tuple[dict,str]:
     _,raw,sha=_file(file,suffix=".json",max_bytes=max_bytes)
     return _obj(raw),sha
@@ -207,7 +188,8 @@ class RecoveryFinalQA:
         if not row or row["state"]!=DONE or not row["result_sha256"]:
             raise RecoveryQualityError("M62 requires a completed M61 private master.")
         try:pins=RecoveryLeaseGate(self.queue)._guard(db,row)
-        except (RecoveryLeaseError,sqlite3.Error,OSError,ValueError) as exc:
+        except (RecoveryLeaseError,sqlite3.Error,OSError,ValueError,
+                KeyError,TypeError) as exc:
             raise RecoveryQualityError("M62 original Pi source/scene lineage revoked.") from exc
         return row,pins
 
