@@ -629,7 +629,7 @@ class RecoveryIntake:
                 raise RecoveryIntakeError("M59 scene selection/source hash changed.")
             recovered=(scene["strategy"]==
                 "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS")
-            if scene["strategy"] not in (
+            if (scene["strategy"] not in (
                     "REUSE_RECOVERED_NORMALIZED_WITH_FRESH_M7_TECH_PASS",
                     "USE_ORIGINAL_APPROVED_LTX_SOURCE") or
                 scene["full_m7_decode_confirmed"] is not recovered or
