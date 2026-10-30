@@ -74,7 +74,8 @@ def _session(url: str) -> None:
 
 
 def validate_plan(plan: dict, media: str | Path, readiness: str | Path,
-                  expected_readiness_sha256: str) -> dict:
+                  expected_readiness_sha256: str, *,
+                  allow_partial:bool=False) -> dict:
     required={"schema_version","series_id","episode_number",
               "render_job_id","master_sha256","target_channel_id",
               "title","description","category_id","made_for_kids",
@@ -105,8 +106,12 @@ def validate_plan(plan: dict, media: str | Path, readiness: str | Path,
         raise YouTubePrivateError("Exact SHA of current M8 readiness report required.")
     path=Path(media).expanduser()
     gate=Path(readiness).expanduser()
-    if (not path.is_absolute() or path.is_symlink() or path.suffix.lower()!=".mp4"
-        or not gate.is_absolute() or gate.is_symlink() or gate.suffix.lower()!=".json"):
+    if (not path.is_absolute() or path.is_symlink() or
+        not (path.suffix.lower()==".mp4" or
+            allow_partial and path.name.endswith(".mp4.part"))
+        or not gate.is_absolute() or gate.is_symlink() or
+        not (gate.suffix.lower()==".json" or
+            allow_partial and gate.name.endswith(".json.part"))):
         raise YouTubePrivateError("Private absolute non-symlink MP4 and M8 report required.")
     path=path.resolve();gate=gate.resolve()
     _ensure_private(path.parent);_ensure_private(gate.parent)
