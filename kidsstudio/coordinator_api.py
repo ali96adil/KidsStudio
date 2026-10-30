@@ -27,7 +27,8 @@ IDENT = re.compile(r"^[a-zA-Z0-9_./:-]{1,160}$")
 ALLOWED_KINDS = frozenset({
     "script_draft", "editorial_review", "character_generate", "godot_render",
     "episode_assemble", "voice_synthesize", "ltx_animate",
-    "youtube_private_upload", "recovery_assemble"
+    "youtube_private_upload", "recovery_assemble",
+    "recovery_private_upload"
 })
 MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble",
                          "voice_synthesize", "ltx_animate"})
@@ -113,6 +114,52 @@ class Coordinator:
 
     def dispatch(self, action: str, request: dict[str, Any],
                  worker_id: str, capabilities: frozenset[str]) -> dict[str, Any]:
+        # M63 private uploader uses its OWN capability, not M26 ordinary
+        # jobs or M61 montage. No activation over worker TLS.
+        if action.startswith("recovery-private-"):
+            if "recovery_private_upload" not in capabilities:
+                raise TransportError("M63 dedicated private uploader permission required.")
+            from .recovery_private_upload_gate import (
+                RecoveryPrivateUploadGate, RecoveryUploadError)
+            gate=RecoveryPrivateUploadGate(self.queue)
+            try:
+                if action=="recovery-private-claim":
+                    if (set(request)!={"proposal_id"} or
+                        not isinstance(request["proposal_id"],str) or
+                        not ID.fullmatch(request["proposal_id"])):
+                        raise TransportError("M63 exact target proposal required.")
+                    return {"job":gate.claim(
+                        proposal_id=request["proposal_id"],
+                        worker_id=worker_id,
+                        capability="recovery_private_upload")}
+                if action not in (
+                    "recovery-private-check","recovery-private-heartbeat",
+                    "recovery-private-complete","recovery-private-fail"):
+                    raise TransportError("Unknown M63 private upload action.")
+                expected={"job_id","generation"}
+                if action=="recovery-private-complete":
+                    expected.add("receipt")
+                if set(request)!=expected or (
+                    not isinstance(request["job_id"],str) or
+                    not ID.fullmatch(request["job_id"]) or
+                    type(request["generation"]) is not int or
+                    request["generation"]!=1):
+                    raise TransportError("M63 malformed lease fields.")
+                params={"job_id":request["job_id"],
+                        "worker_id":worker_id,
+                        "generation":request["generation"]}
+                if action=="recovery-private-check":
+                    return gate.check(**params)
+                if action=="recovery-private-heartbeat":
+                    result=gate.check(**params,renew=True)
+                    return {"ok":result.get("status")==
+                        "M63_CURRENT_PRIVATE_UPLOAD_LEASE"}
+                if action=="recovery-private-complete":
+                    return gate.complete(**params,receipt=request["receipt"])
+                return gate.fail(**params)
+            except RecoveryUploadError as exc:
+                raise TransportError("M63 private upload permission revoked.") from exc
+
         # M61 has an ISOLATED lease namespace; never call the ordinary
         # jobs queue's M52/53/54 methods for recovered scene bytes.
         if action.startswith("recovery-"):
@@ -309,7 +356,8 @@ class Coordinator:
         if action == "claim":
             # A worker with only recovery_assemble must not be routed
             # into the legacy generic claim/KINDS namespace.
-            ordinary=sorted(capabilities & ALLOWED_KINDS - {"recovery_assemble"})
+            ordinary=sorted(capabilities & ALLOWED_KINDS -
+                            {"recovery_assemble","recovery_private_upload"})
             job = (self.queue.claim(worker_id=worker_id,
                                     capabilities=ordinary,lease_seconds=600)
                    if ordinary else None)
@@ -500,7 +548,12 @@ def create_handler(coordinator: Coordinator):
                             "/v1/recovery-pre-execution-check",
                             "/v1/recovery-heartbeat",
                             "/v1/recovery-complete",
-                            "/v1/recovery-fail"):
+                            "/v1/recovery-fail",
+                            "/v1/recovery-private-claim",
+                            "/v1/recovery-private-check",
+                            "/v1/recovery-private-heartbeat",
+                            "/v1/recovery-private-complete",
+                            "/v1/recovery-private-fail"):
                 self._reply(404, {"error": "NOT_FOUND"})
                 return
             length = self.headers.get("Content-Length")
