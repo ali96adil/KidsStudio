@@ -274,6 +274,13 @@ def build_snapshot(queue: StudioQueue) -> dict:
                     "REVISION_REQUESTED":"private_revisions",
                 }.get(stage)
                 if field:recovery_summary[field]+=1
+                # The M62 handoff has become an actual M63 upload state.
+                # Do not double-count it as still waiting to be dispatched.
+                if (key in recovery_states and
+                    recovery_states[key]["state"]==
+                        "M62_PRIVATE_UPLOAD_HANDOFF_STAGED_NOT_QUEUED" and
+                    recovery_summary["private_handoff"]>0):
+                    recovery_summary["private_handoff"]-=1
                 if key in recovery_states:
                     recovery_states[key]["state"]=stage
                     recovery_states[key]["automatic_youtube_upload"]=False
