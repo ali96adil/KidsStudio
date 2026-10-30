@@ -34,9 +34,10 @@ def audit(*, db, inbox_root, journal, render_job_id):
         checks["m65_inbox_schema"] = False
         checks["owner_policy_schema"] = False
     state = inspect_journal(Path(journal), render_job_id)
-    checks["no_ambiguous_upload_attempt"] = state["status"] not in (
-        "NEEDS_RECONCILIATION", "INVALID_JOURNAL", "UNKNOWN_STATE",
-        "UNREADABLE_JOURNAL")
+    checks["no_ambiguous_upload_attempt"] = state["status"] in (
+        "NO_ATTEMPT", "EXISTING_VIDEO_GET_ONLY", "PRIVATE_ALREADY_VERIFIED")
+    checks["journal_readable"] = state["status"] not in (
+        "MISSING_JOURNAL", "INVALID_JOB", "UNREADABLE_JOURNAL")
     return {"status": "PI_READONLY_READY" if all(checks.values())
             else "PI_READONLY_BLOCKED",
             "checks": checks, "journal": state,
