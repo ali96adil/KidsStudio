@@ -172,8 +172,9 @@ class PiOrdinaryInbox:
             with os.fdopen(fd,"w") as stream:
                 stream.write(json.dumps(document,sort_keys=True)+"\n")
                 stream.flush();os.fsync(stream.fileno())
-            with os.fdopen(os.open(root,os.O_RDONLY|os.O_DIRECTORY)) as dfd:
-                os.fsync(dfd.fileno())
+            dfd=os.open(str(root),os.O_RDONLY|os.O_DIRECTORY)
+            try:os.fsync(dfd)
+            finally:os.close(dfd)
             db.execute("""INSERT INTO studio_pi_ordinary_media
                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(
                 job_id,original["series_id"],original["ordinal"],
