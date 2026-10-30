@@ -64,7 +64,7 @@ def verify_staged_m60_recovery(
             evidence["manifest_sha256"]!=hashlib.sha256(
                 _canonical(expected_manifest)).hexdigest()):
             raise RecoveryLocalGateError("M60 staged M59 metadata no longer current.")
-        if (root/proposal_id).exists() or
+        if ((root/proposal_id).exists() or
             (root/proposal_id).is_symlink()):
             raise RecoveryLocalGateError("M60 future run ID already exists.")
         return {
