@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>local.kidsstudio.mac-to-pi</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>-m</string>
+    <string>kidsstudio.mac_outbox_to_pi</string>
+    <string>--outbox</string><string>REPLACE_WITH_PRIVATE_MAC_OUTBOX</string>
+    <string>--renders</string><string>REPLACE_WITH_PRIVATE_MAC_RENDERS</string>
+    <string>--pi-host</string><string>REPLACE_WITH_PI_LOCAL_HOSTNAME</string>
+    <string>--pi-user</string><string>kidsstudio</string>
+    <string>--pi-inbox-root</string><string>/var/lib/kidsstudio/upload-inbox</string>
+    <string>--ssh-key</string><string>REPLACE_WITH_DEDICATED_SSH_KEY_PATH</string>
+    <string>--loop</string><string>--execute</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>REPLACE_WITH_PRIVATE_MAC_LOG_PATH</string>
+  <key>StandardErrorPath</key><string>REPLACE_WITH_PRIVATE_MAC_ERROR_LOG_PATH</string>
+</dict></plist>
