@@ -320,3 +320,41 @@ class RecoveryPrivateUploadGate:
             self._audit(db,proposal_id,"M63_PRIVATE_EXISTING_VIDEO_VERIFIED")
             return {"status":VERIFIED,"video_id":row["video_id"],
                     "public_release_authorized":False}
+
+    def fail(self,*,job_id:str,worker_id:str,generation:int)->dict:
+        with self.queue._connection(write=True) as db:
+            row=self._current(db,job_id,worker_id,generation)
+            if row is not None:self._revoke(
+                db,row,"M63_YOUTUBE_UNCERTAIN_RESULT_NO_AUTO_RETRY")
+            return {"status":FAILED,"retry_allowed":False,
+                    "public_release_authorized":False}
+
+
+def main(argv:list[str]|None=None)->int:
+    """Pi-local schema/activation only. Remote workers cannot activate."""
+    import argparse,json,sys
+    p=argparse.ArgumentParser(prog="studio-recovery-private-upload")
+    p.add_argument("--db",required=True)
+    grp=p.add_mutually_exclusive_group(required=True)
+    grp.add_argument("--initialize",action="store_true")
+    grp.add_argument("--activate",action="store_true")
+    p.add_argument("--proposal-id")
+    args=p.parse_args(argv)
+    try:
+        gate=RecoveryPrivateUploadGate(StudioQueue(args.db))
+        if args.initialize and args.proposal_id is None:
+            gate.initialize()
+            result={"status":"M63_PRIVATE_UPLOAD_SCHEMA_READY_NO_PERMISSION"}
+        elif args.activate and args.proposal_id:
+            result=gate.activate(args.proposal_id)
+        else:
+            raise RecoveryUploadError("Pi-local explicit activation required.")
+        print(json.dumps(result,sort_keys=True))
+        return 0
+    except (RecoveryUploadError,sqlite3.Error,OSError,ValueError):
+        print("M63_PRIVATE_UPLOAD_BLOCKED",file=sys.stderr)
+        return 2
+
+
+if __name__=="__main__":
+    raise SystemExit(main())
