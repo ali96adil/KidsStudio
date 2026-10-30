@@ -59,6 +59,7 @@ class M61RealFFmpegIntegration(unittest.TestCase):
             source_sha=sha(recovered)
             manifest={
                 "proposal_id":proposal,"original_job_id":old,
+                "derived_recipe_sha256":"c"*64,
                 "original_script_sha256":"a"*64,
                 "source_m58_contract_sha256":"b"*64,
                 "recovered_candidates":1,"fallbacks":1,
