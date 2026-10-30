@@ -122,7 +122,7 @@ class PiMediaInbox:
                 raise InboxError("Pi existing finalized file: manual reconciliation.")
             self._validate_file(source,1000,MAX_BYTES)
             self._validate_file(metadata,20,15_000)
-            plan,plan_sha=_plan(metadata)
+            plan,plan_sha=_plan(metadata,allow_partial=True)
             if (plan["proposal_id"]!=proposal_id or
                 plan["recovery_job_id"]!=proof["job_id"] or
                 plan["series_id"]!=proof["series_id"] or
