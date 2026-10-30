@@ -283,10 +283,18 @@ class RecoveryPrivateUploadGate:
                  and receipt["processing_status"]!="succeeded")):
                 raise RecoveryUploadError("M63 video/channel/processing is not current.")
             stage=(VERIFIED if receipt["ready_for_owner_review"] else PENDING)
+            # Forbid a recovery video ID already belonging to another
+            # ordinary owner preview; cross-namespace duplicates are unsafe.
+            if db.execute("""SELECT 1 FROM sqlite_master WHERE
+                    type='table' AND name='studio_private_previews'""").fetchone():
+                if db.execute("""SELECT 1 FROM studio_private_previews
+                    WHERE video_id=?""",(receipt["video_id"],)).fetchone():
+                    raise RecoveryUploadError("M63 YouTube video ID already in ordinary review.")
             db.execute("""UPDATE studio_recovery_uploads SET
-                state=?,worker_id=NULL,lease_expires=NULL,video_id=?,updated_at=?
+                state=?,worker_id=?,lease_expires=NULL,video_id=?,updated_at=?
                 WHERE proposal_id=?""",(
-                stage,receipt["video_id"],self.queue.clock(),row["proposal_id"]))
+                stage,worker_id if stage==PENDING else None,
+                receipt["video_id"],self.queue.clock(),row["proposal_id"]))
             self._audit(db,row["proposal_id"],
                 "M63_YOUTUBE_PRIVATE_VERIFIED" if stage==VERIFIED
                 else "M63_PRIVATE_PROCESSING_PENDING")
@@ -294,13 +302,17 @@ class RecoveryPrivateUploadGate:
                     "owner_review_available":stage==VERIFIED,
                     "public_release_authorized":False}
 
-    def reconcile_processing(self,*,proposal_id:str,receipt:dict)->dict:
+    def reconcile_processing(self,*,proposal_id:str,worker_id:str,
+                             receipt:dict)->dict:
         """One existing YouTube ID, no new videos.insert; local owner action."""
         with self.queue._connection(write=True) as db:
             row=db.execute("""SELECT * FROM studio_recovery_uploads WHERE
                 proposal_id=?""",(proposal_id,)).fetchone()
             proof=self._source(db,proposal_id)
             if (not row or row["state"]!=PENDING or
+                not isinstance(worker_id,str) or
+                not SAFE_KEY.fullmatch(worker_id) or
+                row["worker_id"]!=worker_id or
                 not isinstance(receipt,dict) or
                 set(receipt)!={"video_id","channel_id","video_sha256",
                              "youtube_privacy","processing_status",
@@ -315,7 +327,7 @@ class RecoveryPrivateUploadGate:
                 receipt["public_release_authorized"] is not False):
                 raise RecoveryUploadError("M63 existing processing upload not verified.")
             db.execute("""UPDATE studio_recovery_uploads SET
-                state=?,updated_at=? WHERE proposal_id=?""",
+                state=?,worker_id=NULL,updated_at=? WHERE proposal_id=?""",
                 (VERIFIED,self.queue.clock(),proposal_id))
             self._audit(db,proposal_id,"M63_PRIVATE_EXISTING_VIDEO_VERIFIED")
             return {"status":VERIFIED,"video_id":row["video_id"],
