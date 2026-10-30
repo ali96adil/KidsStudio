@@ -22,7 +22,7 @@ from typing import Any,Callable
 from .pi_media_inbox import PiMediaInbox,InboxError,READY as MEDIA_READY
 from .recovery_private_upload_gate import (
     RecoveryPrivateUploadGate,RecoveryUploadError,
-    READY as UPLOAD_READY, CAPABILITY
+    READY as UPLOAD_READY, PENDING as YOUTUBE_PROCESSING, CAPABILITY
 )
 from .recovery_private_uploader import (
     RecoveryPrivateUploader,RecoveryPrivateUploaderError
@@ -155,6 +155,9 @@ class PiPrivateUploadService:
         """One bounded polling cycle; only accepted Pi media can upload."""
         with self.queue._connection() as db:
             if not db.execute("""SELECT 1 FROM sqlite_master WHERE
+                type='table' AND name='studio_recovery_uploads'""").fetchone():
+                raise PiUploaderError("M63 owner private upload schema absent.")
+            if not db.execute("""SELECT 1 FROM sqlite_master WHERE
                 type='table' AND name='studio_recovery_private_handoffs'""").fetchone():
                 raise PiUploaderError("M62 private handoff schema absent.")
             available=db.execute("""SELECT proposal_id FROM
@@ -168,6 +171,56 @@ class PiPrivateUploadService:
                         studio_recovery_uploads WHERE proposal_id=?""",
                         (pid,)).fetchone()
                 if current:
+                    if current["state"]==YOUTUBE_PROCESSING:
+                        # Google videos.list GET only, same ID. Nothing on Mac
+                        # and NEVER another POST/videos.insert request.
+                        trusted=self.inbox.verify(pid,full_sha=True)
+                        video=self.journal.status(
+                            trusted["video"].parent.name)
+                        if (not video or
+                            video["state"] not in (
+                                "UPLOADED_UNVERIFIED","PRIVATE_VERIFIED") or
+                            video["master_sha256"]!=trusted["master_sha256"] or
+                            not video["video_id"]):
+                            continue
+                        with self.queue._connection() as db:
+                            row=db.execute("""SELECT worker_id,video_id
+                                FROM studio_recovery_uploads WHERE
+                                proposal_id=?""",(pid,)).fetchone()
+                        if (not row or row["worker_id"]!="pi-private-uploader" or
+                            row["video_id"]!=video["video_id"]):
+                            continue
+                        result=self.transport.verify(
+                            self.oauth.token(),video["video_id"],
+                            trusted["channel_id"])
+                        if (result.get("video_id")!=video["video_id"] or
+                            result.get("channel_id")!=trusted["channel_id"] or
+                            result.get("privacy_status")!="private" or
+                            result.get("verified_using_authenticated_youtube_api")
+                                is not True):
+                            raise PiUploaderError(
+                                "M64 existing video fails Google privacy proof.")
+                        if result.get("processing_status")!="succeeded":
+                            continue
+                        receipt={
+                            "video_id":video["video_id"],
+                            "channel_id":trusted["channel_id"],
+                            "video_sha256":trusted["master_sha256"],
+                            "youtube_privacy":"private",
+                            "processing_status":"succeeded",
+                            "platform_privacy_verified":True,
+                            "public_release_authorized":False}
+                        # If Pi update fails after local verification, future
+                        # polls can safely repeat GET without videos.insert.
+                        verified=self.gate.reconcile_processing(
+                            proposal_id=pid,worker_id="pi-private-uploader",
+                            receipt=receipt)
+                        if video["state"]=="UPLOADED_UNVERIFIED":
+                            self.journal.record_verified(
+                                trusted["video"].parent.name,video["video_id"])
+                        return {**verified,
+                            "uploader_device":"RASPBERRY_PI",
+                            "mac_required_for_upload":False}
                     if current["state"]!=UPLOAD_READY:
                         continue
                 else:
