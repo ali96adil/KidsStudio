@@ -14,6 +14,7 @@ from .m67_production_handoff import build_manifest
 from .m67_comfy_batch import render_images
 from .m67_macos_voice_batch import render_voices
 from .m67_media_validation import inspect_media_jobs
+from .m67_decode_qualification import decode_check
 
 
 class ProductionStageError(RuntimeError):
@@ -120,6 +121,8 @@ def main(argv=None):
     b.add_argument("--voice", required=True)
     c = sub.add_parser("inspect")
     c.add_argument("--root", type=Path, required=True)
+    e = sub.add_parser("decode")
+    e.add_argument("--root", type=Path, required=True)
     d = sub.add_parser("pin-reviewed")
     d.add_argument("--root", type=Path, required=True)
     d.add_argument("--approvals", type=Path, required=True)
@@ -133,6 +136,11 @@ def main(argv=None):
                           text_node=args.text_node, voice=args.voice)
     elif args.stage == "inspect":
         result = inspect(args.root)
+    elif args.stage == "decode":
+        root = args.root
+        jobs = json.loads((root / "jobs.json").read_text(encoding="utf-8"))
+        result = decode_check(jobs, root)
+        _save_new(root / "media_decode_report.json", result)
     else:
         result = pin_reviewed(args.root,
                               json.loads(args.approvals.read_text(encoding="utf-8")))
