@@ -156,9 +156,44 @@ class PiOrdinaryUploadService:
                             sqlite3.Error):
                         continue
                 current=self.inbox.verify(job,full_sha=True)
-                if self.journal.status(job):
-                    # A previous M25 STARTED is irreversible without
-                    # explicit reconciliation; never enqueue/reupload.
+                existing=self.journal.status(job)
+                if existing:
+                    # M25 STARTED without a video ID is ambiguous and
+                    # irreversible; never try another videos.insert.
+                    if (existing["state"] in (
+                            "UPLOADED_UNVERIFIED","PRIVATE_VERIFIED") and
+                        existing["video_id"] and
+                        existing["master_sha256"]==current["master_sha256"]):
+                        # Processing may take time. GET-only from Pi while
+                        # Mac is offline, then promote original M24 review.
+                        from .youtube_private_upload import VIDEO
+                        import json
+                        if not VIDEO.fullmatch(existing["video_id"]):
+                            continue
+                        plan=json.loads((self.inbox._dir(job)/
+                            "private_upload_plan.json").read_bytes())
+                        check=self.transport.verify(
+                            self.oauth.token(),existing["video_id"],
+                            plan["target_channel_id"])
+                        if (check.get("video_id")!=existing["video_id"] or
+                            check.get("channel_id")!=plan["target_channel_id"] or
+                            check.get("privacy_status")!="private" or
+                            check.get("verified_using_authenticated_youtube_api")
+                                is not True):
+                            raise OrdinaryPiUploaderError(
+                                "M65 original private video proof revoked.")
+                        if check.get("processing_status")!="succeeded":
+                            continue
+                        verified=PrivateUploadPolicy(
+                            self.queue).reconcile_pi_processing(
+                            job,existing["video_id"],
+                            plan["target_channel_id"],
+                            current["master_sha256"])
+                        if existing["state"]=="UPLOADED_UNVERIFIED":
+                            self.journal.record_verified(
+                                job,existing["video_id"])
+                        return {**verified,"uploader_device":"RASPBERRY_PI",
+                                "mac_required_for_upload":False}
                     continue
                 # The Pi refreshes Google credentials before admission.
                 token=self.oauth.token()
