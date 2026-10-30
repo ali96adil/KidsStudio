@@ -82,6 +82,15 @@ class M64LocalPiTransferTests(unittest.TestCase):
         self.channel="UC"+"a"*22
         self.video_bytes=b"M64 PRIVATE SYNTHETIC VIDEO BYTES"*128
         self.sha=hashlib.sha256(self.video_bytes).hexdigest()
+        # Pi audit events reference the original FAILED queue job. Keep
+        # that real FK row even in synthetic, no-device tests.
+        with self.queue._connection(write=True) as db:
+            db.execute("""INSERT INTO jobs(
+                job_id,request_key,kind,payload,state,max_attempts,
+                available_at,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?)""",(
+                "c"*32,"m64-original-failed","episode_assemble","{}",
+                "FAILED",1,1.0,1.0,1.0))
         self.proof={
             "job_id":self.job,"proposal_id":self.proposal,
             "master_sha256":self.sha,"series_id":"colors-ar",
