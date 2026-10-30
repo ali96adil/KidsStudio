@@ -244,6 +244,54 @@ class RecoveryPrivateUploader:
             beat.join(timeout=5)
 
 
+    def reverify_existing(self)->dict:
+        """GET-ONLY YouTube status; cannot issue a second videos.insert."""
+        p=self.plan
+        row=self.journal.status(p["recovery_job_id"])
+        if (not row or row["state"]!="UPLOADED_UNVERIFIED" or
+            row["plan_sha256"]!=self.plan_sha or
+            row["master_sha256"]!=p["master_sha256"] or
+            not isinstance(row["video_id"],str) or
+            not VIDEO.fullmatch(row["video_id"]) or
+            file_sha256(self.media)!=p["master_sha256"]):
+            raise RecoveryPrivateUploaderError(
+                "M63 existing private upload needs immutable local journal.")
+        proof=self.transport.verify(
+            self.token,row["video_id"],p["target_channel_id"])
+        if (proof.get("video_id")!=row["video_id"] or
+            proof.get("channel_id")!=p["target_channel_id"] or
+            proof.get("privacy_status")!="private" or
+            proof.get("verified_using_authenticated_youtube_api") is not True):
+            raise RecoveryPrivateUploaderError("M63 existing video privacy changed.")
+        if proof.get("processing_status")!="succeeded":
+            return {"status":"M63_YOUTUBE_PRIVATE_PROCESSING_PENDING",
+                    "video_id":row["video_id"],
+                    "owner_review_available":False,
+                    "public_release_authorized":False}
+        receipt={"video_id":row["video_id"],
+                 "channel_id":p["target_channel_id"],
+                 "video_sha256":p["master_sha256"],
+                 "youtube_privacy":"private",
+                 "processing_status":"succeeded",
+                 "platform_privacy_verified":True,
+                 "public_release_authorized":False}
+        # Save the independently authenticated YouTube proof locally, but
+        # NEVER issue videos.insert again if Pi ACK gets lost.
+        self.journal.record_verified(p["recovery_job_id"],row["video_id"])
+        try:
+            result=self.pi.call("recovery-private-reverify",{
+                "proposal_id":p["proposal_id"],"receipt":receipt})
+        except (RemoteWorkerError,ValueError,OSError,TypeError):
+            return {"status":"M63_REVERIFY_PENDING_PI_ACK_NO_REUPLOAD",
+                    "video_id":row["video_id"],
+                    "public_release_authorized":False}
+        if result.get("status")!="M63_YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING":
+            raise RecoveryPrivateUploaderError("M63 Pi private reverify state rejected.")
+        return {"status":result["status"],"video_id":row["video_id"],
+                "owner_review_available":True,
+                "public_release_authorized":False}
+
+
 def main(argv:list[str]|None=None)->int:
     p=argparse.ArgumentParser(prog="studio-recovery-private-uploader")
     p.add_argument("--pi-url",required=True)
@@ -253,6 +301,8 @@ def main(argv:list[str]|None=None)->int:
     p.add_argument("--media",type=Path,required=True)
     p.add_argument("--journal",type=Path,required=True)
     p.add_argument("--execute",action="store_true")
+    p.add_argument("--verify-existing",action="store_true",
+                   help="Only GET existing video; never start another upload.")
     args=p.parse_args(argv)
     if not args.execute:
         print(json.dumps({"status":"M63_EXPLICIT_EXECUTE_REQUIRED_NO_NETWORK",
@@ -265,7 +315,7 @@ def main(argv:list[str]|None=None)->int:
         w=RecoveryPrivateUploader(pi,plan_file=args.plan,media_file=args.media,
             journal=UploadJournal(args.journal),
             token=os.environ.get("KIDSSTUDIO_YOUTUBE_ACCESS_TOKEN",""))
-        result=w.run_once()
+        result=(w.reverify_existing() if args.verify_existing else w.run_once())
         print(json.dumps(result,sort_keys=True))
         return 0 if result["status"] in (
             "M63_YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING",
