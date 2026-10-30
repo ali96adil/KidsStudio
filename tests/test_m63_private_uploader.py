@@ -82,8 +82,7 @@ class RecoveryUploader63Tests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root=Path(tmp.name).resolve()
         import hashlib
-        self.media=self.root/"a"*1 if False else (
-            self.root/("a"*32)/"episode_qa_master.mp4")
+        self.media=self.root/("a"*32)/"episode_qa_master.mp4"
         self.media.parent.mkdir()
         self.media.write_bytes(b"synthetic-not-a-real-video"*200)
         self.sha=hashlib.sha256(self.media.read_bytes()).hexdigest()
@@ -138,6 +137,22 @@ class RecoveryUploader63Tests(unittest.TestCase):
         self.assertEqual(self.make_worker().run_once()["status"],
                          "M63_PRIVATE_UPLOAD_BLOCKED_NO_RETRY")
         self.assertEqual(self.transport.calls,3)
+
+    def test_get_only_processing_reverify_never_new_upload(self):
+        self.transport.processing="processing"
+        first=self.make_worker().run_once()
+        self.assertEqual(first["status"],"M63_YOUTUBE_PRIVATE_PROCESSING_PENDING")
+        start_count=self.transport.calls
+        self.transport.processing="succeeded"
+        recheck=self.make_worker().reverify_existing()
+        self.assertEqual(recheck["status"],
+                         "M63_YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING")
+        self.assertEqual(self.transport.calls,start_count+1)
+        self.assertEqual(self.journal.status("a"*32)["state"],"PRIVATE_VERIFIED")
+        self.assertIn("recovery-private-reverify",self.pi.calls)
+        # Subsequent GET check is intentionally not a second insert.
+        with self.assertRaises(RecoveryPrivateUploaderError):
+            self.make_worker().reverify_existing()
 
     def test_changed_media_sha_rejected_before_claim(self):
         self.media.write_bytes(self.media.read_bytes()+b"changed")
