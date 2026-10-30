@@ -1714,6 +1714,79 @@ class Orchestration32(unittest.TestCase):
                 WHERE proposal_id=?""",(pid,)).fetchone()[0]
         self.assertEqual(state,"M63_PRIVATE_UPLOAD_LEASED")
 
+    def test_m63_private_tls_capability_and_targeted_claim(self):
+        from kidsstudio.coordinator_api import Coordinator,TransportError
+        proposal,admitted,gate,policy=self._m63_private_handoff_pi()
+        pid=proposal["proposal_id"]
+        transport=Coordinator(self.queue,self.root/"m63-vault",{
+            "mac-private":("x"*40,{"recovery_private_upload"}),
+            "mac-recovery":("y"*40,{"recovery_assemble"}),
+        })
+        with self.assertRaises(TransportError):
+            transport.dispatch("recovery-private-claim",
+                {"proposal_id":pid},"mac-recovery",
+                frozenset({"recovery_assemble"}))
+        ordinary=transport.dispatch("claim",{},"mac-private",
+            frozenset({"recovery_private_upload"}))
+        self.assertIsNone(ordinary["job"])
+        claim=transport.dispatch("recovery-private-claim",
+            {"proposal_id":pid},"mac-private",
+            frozenset({"recovery_private_upload"}))
+        self.assertEqual(claim["job"]["job_id"],
+                         admitted["reserved_job_id"])
+        check=transport.dispatch("recovery-private-check",{
+                "job_id":claimed if False else admitted["reserved_job_id"],
+                "generation":1,
+            },"mac-private",frozenset({"recovery_private_upload"}))
+        self.assertEqual(check["status"],"M63_CURRENT_PRIVATE_UPLOAD_LEASE")
+        hb=transport.dispatch("recovery-private-heartbeat",{
+                "job_id":admitted["reserved_job_id"],"generation":1,
+            },"mac-private",frozenset({"recovery_private_upload"}))
+        self.assertIs(hb["ok"],True)
+        with self.assertRaises(TransportError):
+            transport.dispatch("recovery-private-check",{
+                "job_id":admitted["reserved_job_id"],"generation":2,
+            },"mac-private",frozenset({"recovery_private_upload"}))
+
+    def test_m63_pending_private_reverify_is_same_video_same_worker(self):
+        from kidsstudio.recovery_private_upload_gate import (
+            RecoveryUploadError,VERIFIED)
+        from kidsstudio.recovery_owner_review import RecoveryOwnerReview
+        proposal,admitted,gate,policy=self._m63_private_handoff_pi()
+        pid=proposal["proposal_id"]
+        claim=gate.claim(proposal_id=pid,worker_id="mac-private",
+            capability="recovery_private_upload")
+        gate.complete(job_id=claim["job_id"],worker_id="mac-private",
+            generation=1,receipt={
+                "status":"YOUTUBE_PRIVATE_PROCESSING_PENDING",
+                "video_id":"abcdefghijk","channel_id":"UC"+"a"*22,
+                "video_sha256":"f"*64,"youtube_privacy":"private",
+                "processing_status":"processing",
+                "platform_privacy_verified":True,
+                "ready_for_owner_review":False,
+                "public_release_authorized":False})
+        receipt={"video_id":"abcdefghijk","channel_id":"UC"+"a"*22,
+            "video_sha256":"f"*64,"youtube_privacy":"private",
+            "processing_status":"succeeded",
+            "platform_privacy_verified":True,
+            "public_release_authorized":False}
+        with self.assertRaises(RecoveryUploadError):
+            gate.reconcile_processing(proposal_id=pid,worker_id="other",
+                receipt=receipt)
+        forged=dict(receipt)
+        forged["video_id"]="zzzzzzzzzzz"
+        with self.assertRaises(RecoveryUploadError):
+            gate.reconcile_processing(proposal_id=pid,
+                worker_id="mac-private",receipt=forged)
+        verified=gate.reconcile_processing(proposal_id=pid,
+            worker_id="mac-private",receipt=receipt)
+        self.assertEqual(verified["status"],VERIFIED)
+        self.assertEqual(RecoveryOwnerReview(self.queue).snapshot()
+                         ["pending_review"],1)
+        with self.assertRaises(RecoveryUploadError):
+            gate.reconcile_processing(proposal_id=pid,
+                worker_id="mac-private",receipt=receipt)
+
     def test_wrong_plan_sha_and_mutation_never_enqueue(self):
         with self.assertRaises(OrchestrationError):
             self.coord.pin(self.root/"missing.json")
