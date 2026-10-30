@@ -333,24 +333,6 @@ def main(argv:list[str]|None=None)->int:
     # policy client and Pi-owned media/OAuth journal after LAN receipt.
     print("M64_MAC_GOOGLE_UPLOAD_DISABLED_USE_PI",file=sys.stderr)
     return 2
-    try:
-        pi=RemoteClient(args.pi_url,worker_id=args.worker_id,
-            token=os.environ.get("KIDSSTUDIO_WORKER_TOKEN",""),
-            ca_file=args.ca_file)
-        w=RecoveryPrivateUploader(pi,plan_file=args.plan,media_file=args.media,
-            journal=UploadJournal(args.journal),
-            token=os.environ.get("KIDSSTUDIO_YOUTUBE_ACCESS_TOKEN",""))
-        result=(w.reverify_existing() if args.verify_existing else w.run_once())
-        print(json.dumps(result,sort_keys=True))
-        return 0 if result["status"] in (
-            "M63_YOUTUBE_PRIVATE_VERIFIED_OWNER_REVIEW_PENDING",
-            "M63_YOUTUBE_PRIVATE_PROCESSING_PENDING",
-            "M63_NO_PRIVATE_UPLOAD_READY") else 2
-    except (RecoveryPrivateUploaderError,YouTubePrivateError,
-            RemoteWorkerError,OSError,ValueError,TypeError):
-        print("M63_PRIVATE_UPLOAD_WORKER_BLOCKED",file=sys.stderr)
-        return 2
-
 
 if __name__=="__main__":
     raise SystemExit(main())
