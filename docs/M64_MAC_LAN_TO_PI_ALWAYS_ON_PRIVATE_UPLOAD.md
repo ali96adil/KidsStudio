@@ -9,12 +9,14 @@ YouTube PRIVATE using **Pi-only OAuth**. Mac can be powered off once
 the LAN transfer has completed. No Google token is stored or used on
 Mac by the new M64 path.
 
-**Current scope:** This release applies to the M55–M63 **recovered
-montage** path. The older M26 ordinary episode uploader still has a
-Mac implementation in the repository; ordinary episodes need the
-equivalent Pi-side handoff before declaring the entire studio migrated.
-The M63 Mac recovery uploader executable has been disabled. Do not
-treat recovery-only M64 as proof that all earlier upload agents migrated.
+**Milestone history:** M64 first established this path for M55–M63
+**recovered montage**. The following **M65 milestone** now extends
+the same pattern to **all ordinary approved M25/M26 episodes**, and
+disables their legacy Mac direct-upload CLIs as well.
+See [M65 — All Videos Pi PRIVATE Upload](M65_ALL_VIDEOS_PI_PRIVATE_UPLOAD.md)
+for the combined service and ordinary episode integration.
+Never regard either milestone as qualified on the owner's devices
+until the actual Mac/Pi LAN, Google OAuth, and PRIVATE test upload pass.
 
 ## Data flow
 
