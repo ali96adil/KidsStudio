@@ -170,6 +170,19 @@ class PiOrdinaryUploadService:
                         import json
                         if not VIDEO.fullmatch(existing["video_id"]):
                             continue
+                        # Do not poll YouTube again after M26 has
+                        # already delivered a verified M24 owner preview.
+                        with self.queue._connection() as db:
+                            old=db.execute("""SELECT result_json FROM jobs
+                                WHERE kind='youtube_private_upload'
+                                AND state='COMPLETED'
+                                AND json_extract(payload,'$.render_job_id')=?
+                                ORDER BY created_at DESC LIMIT 1""",
+                                (job,)).fetchone()
+                        try:reported=json.loads(old["result_json"]) if old else {}
+                        except (ValueError,TypeError):reported={}
+                        if reported.get("status")!="YOUTUBE_PRIVATE_PROCESSING_PENDING":
+                            continue
                         plan=json.loads((self.inbox._dir(job)/
                             "private_upload_plan.json").read_bytes())
                         check=self.transport.verify(
