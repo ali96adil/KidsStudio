@@ -132,11 +132,13 @@ class PrivateCatalogue:
 class PrivateUploadAgent:
     def __init__(self, pi:Any, catalogue:PrivateCatalogue,
                  journal:UploadJournal, token:str, *,
-                 transport:Any|None=None):
+                 transport:Any|None=None,
+                 token_provider:Callable[[],str]|None=None):
         self.pi=pi
         self.catalogue=catalogue
         self.journal=journal
         self.token=token
+        self.token_provider=token_provider
         self.transport=transport if transport is not None else GoogleYouTubeTransport()
 
     @staticmethod
@@ -229,7 +231,8 @@ class PrivateUploadAgent:
                 entry["plan"],entry["paths"]["media"],
                 entry["paths"]["readiness"],entry["readiness_sha256"],
                 self.journal,self.token,transport=self.transport,
-                before_network=final_pi_check)
+                before_network=final_pi_check,
+                token_provider=self.token_provider)
             if lost:
                 raise PrivateAgentError("Lease heartbeat failed during private upload.")
             ack=self.pi.call("complete-private-upload",{
@@ -284,6 +287,10 @@ def main(argv:list[str]|None=None)->int:
                 "public_release_authorized":False
             },ensure_ascii=False))
             return 0
+        # Owner M64/M65 architecture supersedes this Mac executable.
+        # Only Pi-local services may possess the YouTube OAuth token.
+        raise PrivateAgentError(
+            "MAC_GOOGLE_UPLOAD_DISABLED_USE_PI_SERVICE")
         pi=RemoteClient(args.pi,worker_id=args.worker_id,
              token=os.environ.get(args.pi_token_env,""),
              ca_file=args.ca_file)
