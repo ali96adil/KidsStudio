@@ -113,6 +113,46 @@ decisions. They are **not** a real Mac/Pi or actual audiovisual
 qualification. A separate real-FFmpeg integration test on CI remains
 important before hardware signoff.
 
+## Offline operator commands (reference only)
+
+M61 exposes a **Pi-local** activation CLI and a separate Mac worker CLI.
+Activation is not permitted over the worker TLS API. Do not use these
+against owner devices before staged qualification.
+
+```sh
+# Pi: requires M60 reservation and its original private M56 file.
+python -m kidsstudio.recovery_lease \
+    --db /PRIVATE/pi/studio.sqlite --initialize
+python -m kidsstudio.recovery_lease \
+    --db /PRIVATE/pi/studio.sqlite --activate \
+    --proposal /PRIVATE/pi/copied_m56_proposal.json \
+    --sha256 EXACT_COPIED_M56_FILE_SHA256
+
+# Mac: WITHOUT --execute, this is strictly dry-run (no network).
+# With --execute, token is read from KIDSSTUDIO_WORKER_TOKEN.
+python -m kidsstudio.recovery_remote_worker \
+    --pi-url https://PRIVATE_PI_HOST:PORT \
+    --worker-id mac-recovery \
+    --ca-file /PRIVATE/mac/pi-ca.crt \
+    --recipes /PRIVATE/mac/approved_media_catalogue.json \
+    --journal /PRIVATE/mac/media_journal.sqlite \
+    --original-job-id ORIGINAL_32_HEX_ID \
+    --proposal-id NEW_32_HEX_ID \
+    --original-payload /PRIVATE/mac/original_payload.json
+```
+
+For actual operation **only after device qualification**, provision
+a separate `recovery_assemble` worker credential and invoke the Mac
+command with `--execute`. Neither CLI has a PUBLIC upload operation.
+The final M7 full decode and the recovered-byte copy monitor the
+lease-abort signal continuously; any revoked claim quarantines the run.
+
+The tests include one **real FFmpeg/FFprobe media integration** using
+synthetic red/blue scenes and a full decoded master. That isolated
+renderer test mocks earlier M55–M60 contract checks to focus on the
+video pipeline; separate source/contract/lease tests cover those checks.
+No integration test equates to owner Mac/Pi hardware qualification.
+
 ## Activation, owner review, next milestone
 
 M61 activation requires an already initialized Pi recovery lease table,
