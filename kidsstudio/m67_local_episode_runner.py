@@ -55,7 +55,12 @@ def run_local(storyboard, manifest, root, rig, review, evidence, workspace,
     render_dir = root / "render"
     render_dir.mkdir(exist_ok=True)
     output = render_dir / f"{storyboard['episode_id']}_preview.mp4"
-    return compose_fn(pinned, root, output)
+    composed = compose_fn(pinned, root, output)
+    if not isinstance(composed, dict):
+        raise LocalRunError("compositor must return a report dictionary")
+    return {"status": composed.get("status", "LOCAL_PREVIEW_COMPOSED_PENDING_REVIEW"),
+            **composed, "youtube_upload_authorized": False,
+            "public_release_authorized": False}
 
 
 def main(argv=None):
