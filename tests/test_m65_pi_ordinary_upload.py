@@ -114,6 +114,41 @@ class M65PiOrdinaryUploadTests(unittest.TestCase):
         self.assertEqual(outcome["pi_uploader_scope"],"ORDINARY")
         self.assertEqual(google.started,1)
 
+    def test_mac_ordinary_catalogue_auto_stages_and_sends(self):
+        from kidsstudio.mac_outbox_to_pi import MacToPiOutbox
+        outbox=self.root/"catalogue-watcher-outbox"
+        outbox.mkdir()
+        sent=[]
+        self.inbox.prepare(self.job)
+        def transfer(**kwargs):
+            sent.append(kwargs["media"])
+            dest=self.inbox.root/self.job
+            shutil.copyfile(kwargs["media"],
+                            dest/"episode_qa_master.mp4.part")
+            shutil.copyfile(kwargs["plan_file"],
+                            dest/"private_upload_plan.json.part")
+            shutil.copyfile(kwargs["readiness_file"],
+                            dest/"m8_readiness.json.part")
+            return {"status":"M65_MAC_ORDINARY_LAN_SENT_PI_HASH_PENDING"}
+        worker=MacToPiOutbox(
+            outbox=outbox,renders=self.mac.parent,
+            pi_host="pi-kids.local",pi_user="kidsstudio",
+            pi_inbox_root=str(self.inbox.root),
+            ssh_key=self.root/"unused-key",
+            ordinary_transfer=transfer,
+            ordinary_catalogue=self.old.catalogue_file)
+        result=worker.poll_once()
+        self.assertEqual(result["status"],
+                         "M65_MAC_ORDINARY_LAN_SENT_PI_HASH_PENDING")
+        self.assertEqual(sent,[self.master])
+        self.assertTrue((outbox/(self.job+
+                        ".ordinary.ready.json")).is_file())
+        self.assertTrue((outbox/(self.job+
+                        ".ordinary.m8.json")).is_file())
+        self.assertEqual(worker.poll_once()["status"],
+                         "M64_MAC_OUTBOX_IDLE_NO_LAN_TRANSFER")
+        self.assertEqual(self.inbox.accept(self.job)["status"],READY)
+
     def test_pi_full_original_master_sha_m8_and_owner_gate(self):
         folder=self.stage()
         accepted=self.inbox.accept(self.job)
