@@ -26,6 +26,10 @@ OWNER_ENV = re.compile(r"^[A-Z][A-Z0-9_]{4,90}$")
 
 
 def make_handler(ledger: PreviewReview, token: str):
+    # M63 recovery previews use a separate ledger and NEVER impersonate
+    # a completed original episode render. Same local owner token/UI.
+    from .recovery_owner_review import RecoveryOwnerReview
+    recovered=RecoveryOwnerReview(ledger.queue)
     if not isinstance(token, str) or len(token) < 32:
         raise PreviewReviewError("Private owner session token must be 32+ characters.")
 
@@ -98,6 +102,13 @@ def make_handler(ledger: PreviewReview, token: str):
             try:
                 if url.path=="/api/previews":
                     data=ledger.snapshot()
+                    additional=recovered.snapshot()
+                    data["previews"]+=additional["previews"]
+                    data["previews"].sort(
+                        key=lambda x:x["recorded_at"],reverse=True)
+                    data["pending_review"]+=additional["pending_review"]
+                    data["revision_requests"]+=additional["revision_requests"]
+                    data["recovery_video_reviews"]=len(additional["previews"])
                 elif url.path=="/api/candidates":
                     data={"candidates":ledger.candidates()}
                 else:
@@ -144,11 +155,15 @@ def make_handler(ledger: PreviewReview, token: str):
                 elif url.path=="/api/comment":
                     if set(body)!={"video_id","text","category","second"}:
                         raise PreviewReviewError("Unexpected feedback fields.")
-                    result=ledger.add_comment(**body)
+                    target=(recovered if recovered.has_video(body["video_id"])
+                            else ledger)
+                    result=target.add_comment(**body)
                 else:
                     if set(body)!={"video_id","decision","note"}:
                         raise PreviewReviewError("Unexpected owner decision fields.")
-                    result=ledger.decide(**body)
+                    target=(recovered if recovered.has_video(body["video_id"])
+                            else ledger)
+                    result=target.decide(**body)
             except (PreviewReviewError, ValueError, TypeError, KeyError):
                 self._json(409,{"error":"OWNER_ACTION_REJECTED_CHECK_CURRENT_STATE"})
                 return
