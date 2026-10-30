@@ -25,7 +25,10 @@ def sha256_file(path):
 
 def inventory(root, *, master, episode_id):
     root = Path(root).resolve()
-    master = Path(master).resolve()
+    supplied_master = Path(master)
+    if supplied_master.is_symlink():
+        raise HandoffError("master symlink not permitted")
+    master = supplied_master.resolve()
     if not root.is_dir() or not master.is_file() or not master.is_relative_to(root):
         raise HandoffError("master must be inside existing episode directory")
     if master.is_symlink() or master.stat().st_size == 0:
@@ -33,7 +36,8 @@ def inventory(root, *, master, episode_id):
     if master.suffix.lower() != ".mp4":
         raise HandoffError("MP4 master required")
     relative = master.relative_to(root)
-    if any((root / part).is_symlink() for part in relative.parts[:-1]):
+    if any((root / Path(*relative.parts[:i])).is_symlink()
+           for i in range(1, len(relative.parts))):
         raise HandoffError("symlink directory in master path")
     return {"schema_version": 1, "episode_id": episode_id,
             "status": "MASTER_INVENTORIED_NOT_TRANSFERRED",
@@ -49,10 +53,14 @@ def verify_inventory(root, manifest):
     root = Path(root).resolve()
     rel = manifest["master"]["relative_path"]
     if (not isinstance(rel, str) or not rel
-            or Path(rel).is_absolute() or ".." in Path(rel).parts):
+            or Path(rel).is_absolute() or any(p in (".", "..")
+            for p in rel.replace("\\", "/").split("/"))):
         raise HandoffError("invalid relative path")
     master = root / rel
-    if master.is_symlink() or not master.is_file() or not master.resolve().is_relative_to(root):
+    if (master.is_symlink() or not master.is_file()
+            or any((root / Path(*Path(rel).parts[:i])).is_symlink()
+                   for i in range(1, len(Path(rel).parts)))
+            or not master.resolve().is_relative_to(root)):
         raise HandoffError("unsafe master path")
     if (master.stat().st_size != manifest["master"]["bytes"]
             or sha256_file(master) != manifest["master"]["sha256"]):
