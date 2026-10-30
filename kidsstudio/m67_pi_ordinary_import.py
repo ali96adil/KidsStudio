@@ -11,6 +11,7 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import re
 
 from .studio_queue import StudioQueue
 from .pi_ordinary_inbox import PiOrdinaryInbox
@@ -31,7 +32,7 @@ def import_transferred(queue, inbox_root, *, render_job_id, transferred_master,
     for item in (source, plan, readiness):
         if item.is_symlink() or not item.is_file():
             raise PiImportError("regular existing source files required")
-    if not isinstance(expected_sha256, str) or len(expected_sha256) != 64:
+    if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
         raise PiImportError("exact master SHA256 required")
     if file_sha256(source) != expected_sha256:
         raise PiImportError("transferred MP4 hash mismatch")
@@ -46,10 +47,19 @@ def import_transferred(queue, inbox_root, *, render_job_id, transferred_master,
         if target.exists() or target.is_symlink():
             raise PiImportError("existing staged files require reconciliation")
     # Never move the raw inbox source; preserve the original LAN delivery.
-    for original, target in ((source, video_target), (plan, plan_target),
-                             (readiness, ready_target)):
-        with original.open("rb") as reader, target.open("xb") as writer:
-            shutil.copyfileobj(reader, writer, length=1024 * 1024)
+    created = []
+    try:
+        for original, target in ((source, video_target), (plan, plan_target),
+                                 (readiness, ready_target)):
+            with original.open("rb") as reader, target.open("xb") as writer:
+                created.append(target)
+                shutil.copyfileobj(reader, writer, length=1024 * 1024)
+        if file_sha256(video_target) != expected_sha256:
+            raise PiImportError("staged master changed during copy")
+    except Exception:
+        for target in created:
+            target.unlink(missing_ok=True)
+        raise
     try:
         result = inbox.accept(render_job_id)
     except Exception as exc:
