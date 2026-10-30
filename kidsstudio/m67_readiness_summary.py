@@ -9,9 +9,9 @@ from .m67_episode_status import summarize
 
 
 EXPECTED = {
-    "jobs": {"PREPARED"},
-    "images": {"IMAGES_RENDERED_PENDING_QA"},
-    "voice": {"VOICES_RENDERED_PENDING_QA"},
+    "jobs": {"MEDIA_JOBS_PREPARED_NOT_GENERATED"},
+    "images": {"IMAGES_GENERATED_PENDING_QA"},
+    "voice": {"VOICES_GENERATED_PENDING_QA"},
     "structural": {"MEDIA_STRUCTURALLY_READY_PENDING_QA"},
     "decode": {"MEDIA_DECODED_PENDING_QA"},
     "review": {"ASSETS_QA_READY_FOR_RENDER"},
