@@ -1,9 +1,9 @@
 """M59: prepare a distinct PRIVATE recovery montage recipe and sealed metadata.
 
-The M4-compatible derived recipe is NOT in an executable MediaRecipes
-catalogue. The companion M59 manifest uses schema 2 intentionally:
-neither the Pi nor an ordinary Mac media worker can dispatch it. M60+
-must implement separate authorization and lease gates before execution.
+The M4-shaped staged recipe uses schema_version=2 and an explicit
+non-executable marker, so EpisodeAssembler rejects it even when called
+directly. The companion M59 manifest is also schema 2; M60+ must add a
+new authorization and lease gate before compiling an executable recipe.
 """
 from __future__ import annotations
 
@@ -138,7 +138,8 @@ def prepare_private_recovery_recipe(
             "publication_approved":False,
         })
     derived={
-        "schema_version":1,
+        "schema_version":2,
+        "recovery_stage":"M59_STAGED_ONLY_NO_EXECUTION",
         "series_id":assembler.recipe["series_id"],
         "episode_number":assembler.recipe["episode_number"],
         "script":dict(assembler.recipe["script"]),
@@ -183,7 +184,7 @@ def freeze_private_recovery_recipe(
     original_job_id:str,payload:dict[str,Any],proposal_id:str,
     prober=None,full_qa:Callable|None=None,
 )->dict[str,Any]:
-    """Stage new files once, without creating executable media catalogue."""
+    """Stage non-executable v2 recipe/metadata once, no media catalogue."""
     recipe,manifest=prepare_private_recovery_recipe(
         recipes,journal,original_job_id=original_job_id,
         payload=payload,proposal_id=proposal_id,
