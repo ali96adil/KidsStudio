@@ -78,3 +78,49 @@ class LessonModelTests(unittest.TestCase):
                                "sha256": "f" * 64},
                               script_path="/tmp/script.txt", lesson_path="/tmp/lesson.json",
                               first=first, second=second)
+
+    def test_two_models_agree_or_disagree_without_upload_permission(self):
+        import hashlib
+        import tempfile
+        from pathlib import Path
+        from kidsstudio.m68_lesson_evidence import audit_lesson
+
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "script.txt"
+            lesson = Path(directory) / "lesson.json"
+            script.write_text("Today we identify the red, blue and yellow colors.",
+                              encoding="utf-8")
+            handoff = {"short_id": "short-1", "source_episode_id": "episode-1",
+                       "sha256": "f" * 64}
+            doc = {
+                "schema_version": 1, "short_id": "short-1",
+                "source_episode_id": "episode-1", "video_sha256": "f" * 64,
+                "script_sha256": hashlib.sha256(script.read_bytes()).hexdigest(),
+                "language": "en", "learning_objective": "Identify three colors",
+                "age_range": "Children three to five years old",
+                "teaching_method": "Name and point at each color",
+                "assessment_question": "Which object is the red one?",
+                "fact_check_reference": "Owner approved color curriculum",
+            }
+            lesson.write_text(json.dumps(doc), encoding="utf-8")
+            self.assertFalse(audit_lesson(handoff, script_path=script,
+                                          lesson_path=lesson)["reasons"])
+            first = OllamaLesson("http://127.0.0.1:11434/api/chat", "model-one")
+            second = OllamaLesson("http://127.0.0.1:11435/api/chat", "model-two")
+            def response(decision):
+                return {"checks": {
+                    axis: {"decision": decision,
+                           "evidence": "The script explicitly names three colors and asks a question."}
+                    for axis in ("pedagogy", "source_consistency")}}
+            first.run = lambda **kwargs: (response("PASS"), "a" * 64)
+            second.run = lambda **kwargs: (response("PASS"), "b" * 64)
+            approved = review_lesson(handoff, script_path=script, lesson_path=lesson,
+                                     first=first, second=second)
+            self.assertTrue(approved["checks"]["pedagogy"])
+            self.assertFalse(approved["youtube_upload_authorized"])
+            second.run = lambda **kwargs: (response("UNSURE"), "c" * 64)
+            uncertain = review_lesson(handoff, script_path=script, lesson_path=lesson,
+                                      first=first, second=second)
+            self.assertFalse(uncertain["checks"]["pedagogy"])
+            self.assertFalse(uncertain["checks"]["source_consistency"])
+            self.assertFalse(uncertain["public_release_authorized"])
