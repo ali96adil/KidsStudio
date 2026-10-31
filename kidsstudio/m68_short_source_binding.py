@@ -80,7 +80,8 @@ def bind(queue, *, short_id, series_id, source_episode_id, source_ordinal,
     return {"status": "SHORT_SOURCE_BOUND_NOT_UPLOAD_APPROVED",
             "short_id": short_id, "series_id": series_id,
             "source_master_sha256": source_master_sha256,
-            "youtube_upload_authorized": False}
+            "youtube_upload_authorized": False,
+            "public_release_authorized": False}
 
 def verify_current(db, *, short_id, series_id):
     """Fail closed if source approval or render job changed since binding."""
