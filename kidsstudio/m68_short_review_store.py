@@ -30,6 +30,11 @@ class ShortReviewStore:
                 ai_evidence_json TEXT,
                 FOREIGN KEY(short_id) REFERENCES studio_derived_shorts(short_id)
             )""")
+            columns = {row["name"] for row in db.execute(
+                "PRAGMA table_info(studio_short_reviews)")}
+            if "ai_evidence_json" not in columns:
+                db.execute("ALTER TABLE studio_short_reviews "
+                           "ADD COLUMN ai_evidence_json TEXT")
 
     def record(self, receipt):
         if not isinstance(receipt, dict):
