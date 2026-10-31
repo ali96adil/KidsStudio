@@ -19,6 +19,8 @@ def audit_lesson(handoff, *, script_path, lesson_path):
     if (not isinstance(handoff.get("sha256"), str)
             or not SHA.fullmatch(handoff["sha256"])):
         raise ValueError("valid pinned video identity required")
+    if not isinstance(script_path, (str, Path)) or not isinstance(lesson_path, (str, Path)):
+        raise ValueError("script and lesson paths required")
     script = Path(script_path)
     lesson = Path(lesson_path)
     for path in (script, lesson):
