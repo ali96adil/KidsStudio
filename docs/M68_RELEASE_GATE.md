@@ -84,3 +84,25 @@ Ollama is running, models are loaded, actual AV content was reviewed, SSH
 transfer worked, or YouTube OAuth/private upload succeeded. The diagnostics
 perform no network calls or modifications. Next pilot steps require separate
 operator-controlled real media tests and a single explicit PRIVATE upload.
+
+## Local actual-frame Ollama pilot (Mac; no upload)
+
+```sh
+python3 -m kidsstudio.m68_local_vision_diagnostic \
+  --root /absolute/private/short-bundle \
+  --handoff /absolute/private/short-handoff.json \
+  --mp4 /absolute/private/short.mp4 \
+  --script /absolute/private/approved-script.txt \
+  --ffmpeg "$(command -v ffmpeg)" \
+  --ffprobe "$(command -v ffprobe)" \
+  --model YOUR_INSTALLED_VISION_MODEL
+```
+
+Requires Ollama running at the explicit loopback endpoint and a model that
+accepts real images. The diagnostic decodes actual MP4 frames, sends them
+with the approved script to the local model, and records model observations.
+It **always rejects** the audio and copyright axes because silent frames
+cannot prove either. Its output must not be used as an all-axis PASS or
+permission to upload. A separate qualified audio reviewer and verified
+rights/provenance catalogue must be integrated before six-axis acceptance.
+The command only prints a receipt; it does not write the Pi review database.
