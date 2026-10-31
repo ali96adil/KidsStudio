@@ -18,8 +18,10 @@ from .m68_ai_review_adapter import run_ai_review
 from .m68_short_content_review import CHECKS
 from .real_media_evidence import capture_frames, digest
 
-VISUAL_AXES = frozenset(("pedagogy", "visual", "age_appropriate", "source_consistency"))
+VISUAL_AXES = frozenset(("visual", "age_appropriate"))
 UNOBSERVABLE = {
+    "pedagogy": "Child safety checks do not establish educational accuracy, learning objectives, or pedagogical effectiveness.",
+    "source_consistency": "Child safety checks do not establish complete scene-to-script or source episode consistency.",
     "audio": "Audio cannot be evaluated from silent decoded video frames; independent actual audio analysis is required.",
     "copyright": "Visual similarity cannot establish licensing, consent, provenance, or copyright ownership of source assets.",
 }
@@ -51,10 +53,11 @@ def run_vision_diagnostic(root, handoff, *, mp4, script, ffmpeg, ffprobe,
                 passed, evidence = False, UNOBSERVABLE[axis]
             else:
                 objective = (
-                    "Review the actual ordered frames for " + axis +
-                    ". Check educational appropriateness, consistency with the "
-                    "provided approved script, and child safety. No assumptions "
-                    "about sound or copyright. If uncertain, reject.")
+                    "Inspect actual ordered frames for child visual safety only. "
+                    "Evaluate age appropriateness, visual consistency and "
+                    "absence of unsafe visual content. Never claim audio, "
+                    "copyright, educational correctness or script fidelity. "
+                    "If uncertain, return UNSURE.")
                 answer, _ = vision.run(
                     role="visual_child_safety", script=source_text,
                     images=images, objective=objective)
@@ -69,7 +72,7 @@ def run_vision_diagnostic(root, handoff, *, mp4, script, ffmpeg, ffprobe,
                     "video_sha256": verified}
         receipt = run_ai_review(root, handoff, infer=infer,
                                 reviewer_id="kidsstudio-ai-vision-diagnostic")
-    if receipt["decision"] != "REJECT" or receipt["checks"]["audio"] or receipt["checks"]["copyright"]:
+    if receipt["decision"] != "REJECT" or any(receipt["checks"][axis] for axis in UNOBSERVABLE):
         raise ValueError("vision-only review must not certify audio or rights")
     receipt["review_scope"] = "REAL_LOCAL_VISION_ONLY_AUDIO_AND_RIGHTS_UNVERIFIED"
     return receipt
