@@ -2,6 +2,8 @@
 import tempfile
 import unittest
 from pathlib import Path
+import json
+from kidsstudio.m68_short_content_review import CHECKS
 from unittest.mock import Mock
 
 from kidsstudio.studio_queue import StudioQueue
@@ -34,6 +36,19 @@ class PiShortUploadTests(unittest.TestCase):
             db.execute("""INSERT INTO studio_short_quota_reservations
                 VALUES('colors-short-01','colors',?,0,'RESERVED_NO_UPLOAD')""",
                 (self.sha,))
+        with self.queue._connection(write=True) as db:
+            db.execute("""CREATE TABLE studio_derived_shorts(
+                short_id TEXT PRIMARY KEY,source_episode_id TEXT,
+                media_sha256 TEXT,state TEXT)""")
+            db.execute("""CREATE TABLE studio_short_reviews(
+                short_id TEXT PRIMARY KEY,source_episode_id TEXT,
+                media_sha256 TEXT,decision TEXT,checks_json TEXT)""")
+            db.execute("""INSERT INTO studio_derived_shorts VALUES(
+                'colors-short-01','colors-ep-01',?,'PI_STAGED_NOT_APPROVED')""",
+                (self.sha,))
+            db.execute("""INSERT INTO studio_short_reviews VALUES(
+                'colors-short-01','colors-ep-01',?,'PASS',?)""",
+                (self.sha, json.dumps(dict.fromkeys(CHECKS, True))))
         self.kwargs = dict(short_id="colors-short-01", series_id="colors",
                            media_sha256=self.sha, media_path=self.media,
                            channel_id=self.channel, title="Learn colors",
@@ -71,3 +86,21 @@ class PiShortUploadTests(unittest.TestCase):
         with self.assertRaises(ShortAttemptError):
             upload_short_private(self.queue, **self.kwargs, transport=Mock())
         self.assertIsNone(self.journal.status(short_id="colors-short-01"))
+
+    def test_failed_qa_never_starts_google_upload(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("UPDATE studio_short_reviews SET decision='REJECT'")
+        transport = Mock()
+        with self.assertRaises(ShortAttemptError):
+            upload_short_private(self.queue, **self.kwargs, transport=transport)
+        transport.start.assert_not_called()
+        self.assertIsNone(self.journal.status(short_id="colors-short-01"))
+
+    def test_wrong_staged_sha_never_starts_google_upload(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("UPDATE studio_derived_shorts SET media_sha256=?",
+                       ("b" * 64,))
+        transport = Mock()
+        with self.assertRaises(ShortAttemptError):
+            upload_short_private(self.queue, **self.kwargs, transport=transport)
+        transport.start.assert_not_called()
