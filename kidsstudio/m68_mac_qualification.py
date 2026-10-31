@@ -35,11 +35,25 @@ def qualify_mac(*, first_endpoint, first_model, second_endpoint, second_model,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--inventory-only", action="store_true")
     for label in ("first", "second"):
         parser.add_argument("--" + label + "-endpoint", required=True)
-        parser.add_argument("--" + label + "-model", required=True)
+        parser.add_argument("--" + label + "-model")
     args = parser.parse_args(argv)
     try:
+        if args.inventory_only:
+            dependencies = probe(require_ollama=True,
+                                 ollama_endpoints=(args.first_endpoint, args.second_endpoint))
+            result = {"status": "MAC_MODEL_INVENTORY_ONLY",
+                      "dependencies": dependencies,
+                      "ready_for_manual_inference_trial": False,
+                      "inference_executed": False,
+                      "youtube_upload_authorized": False,
+                      "public_release_authorized": False}
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 2 if dependencies["missing"] else 0
+        if not args.first_model or not args.second_model:
+            raise ValueError("model names required unless --inventory-only")
         result = qualify_mac(
             first_endpoint=args.first_endpoint, first_model=args.first_model,
             second_endpoint=args.second_endpoint, second_model=args.second_model)
