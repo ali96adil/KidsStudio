@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Kids Studio | لوحة الإنتاج</title>
+  <link rel="stylesheet" href="/dashboard.css">
+  <script defer src="/dashboard.js"></script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" aria-label="القائمة الرئيسية">
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">✳</div>
+      <div><strong>Kids Studio</strong><span>PRODUCTION CONTROL</span></div>
+    </div>
+    <nav aria-label="أقسام اللوحة">
+      <a href="#overview" class="selected"><span>◫</span> نظرة عامة</a>
+      <a href="#series"><span>▤</span> السلاسل التعليمية</a>
+      <a href="#episodes"><span>▣</span> الحلقات والإنتاج</a>
+      <a href="#private-preview"><span>▶</span> مراجعة فيديوهات Private</a>
+      <a href="#notes"><span>✎</span> الملاحظات</a>
+      <a href="#queue"><span>◷</span> طابور الوكلاء</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="dotline"><i class="status-dot"></i> متصل بالبيانات المحلية</div>
+      <div class="muted">قراءة فقط · لا تشغيل تلقائي</div>
+    </div>
+  </aside>
+
+  <main class="content" id="overview">
+    <header class="topbar">
+      <div><p class="eyebrow">STUDIO OPERATIONS</p>
+        <h1>مركز متابعة الإنتاج</h1>
+        <p class="lead">سلاسل متكاملة، مهام واضحة، ونتائج موثّقة بدون تخمين.</p></div>
+      <div class="refresh">
+        <span id="sync-status" aria-live="polite">جاري قراءة البيانات...</span>
+        <button id="refresh-now" type="button" aria-label="تحديث البيانات">↻ تحديث</button>
+      </div>
+    </header>
+
+    <section aria-label="ملخص الإنتاج" class="metrics" id="metrics"></section>
+    <section class="split" id="series">
+      <div class="panel">
+        <div class="section-heading"><div><p class="eyebrow">SERIES ROADMAP</p>
+          <h2>السلاسل التعليمية</h2></div>
+          <span id="series-count" class="tiny-pill">—</span></div>
+        <div id="series-list" class="series-list" aria-live="polite"></div>
+      </div>
+      <div class="panel" id="queue">
+        <div class="section-heading"><div><p class="eyebrow">WORKER QUEUE</p>
+          <h2>حالة الشغل</h2></div>
+          <span class="tiny-pill" id="queue-state">—</span></div>
+        <div id="queue-breakdown" class="queue-breakdown"></div>
+        <div class="notice"><strong>معلومة مهمة</strong><p>
+          حالة المهمة تأتي من Studio Brain. ما نعني كلمة «مكتمل»
+          أن الحلقة منشورة أو أن المراجع البشري اعتمدها.</p></div>
+      </div>
+    </section>
+
+    <section class="panel wide" id="private-preview">
+      <div class="section-heading">
+        <div><p class="eyebrow">OWNER PRIVATE REVIEW</p>
+          <h2>الحلقات المرفوعة Private</h2>
+          <p class="subline">كل نسخة لها رابطها وقرارك وملاحظاتك. مراجعة المالك تتم من واجهة مستقلة ومحمية.</p></div>
+        <a href="http://127.0.0.1:8794/" target="_blank" rel="noopener noreferrer"
+           class="tiny-pill">فتح واجهة المراجعة المحلية ↗</a>
+      </div>
+      <p id="private-review-overview" class="small-explainer">لم تبدأ مراجعات النسخ الخاصة بعد.</p>
+      <p class="small-explainer">الرابط يحتاج تشغيل خدمة المراجعة صراحةً على جهازك. لوحة المتابعة هذه تبقى قراءة فقط، ومو متصلة بواجهة نشر YouTube.</p>
+    </section>
+
+    <section class="panel wide" id="episodes">
+      <div class="section-heading">
+        <div><p class="eyebrow">EPISODE TRACKER</p><h2>الحلقات والمراحل</h2>
+          <p class="subline">اختَر حلقة حتى تشوف مسار الإنتاج، والمراحل اللي بعد ما مرتبطة.</p></div>
+        <div class="filters">
+          <label for="series-filter">السلسلة</label><select id="series-filter"><option value="">كل السلاسل</option></select>
+          <label for="state-filter">الحالة</label><select id="state-filter"><option value="">كل الحالات</option></select>
+        </div>
+      </div>
+      <div class="episode-scroller">
+        <table><thead><tr>
+          <th>الرقم</th><th>الحلقة</th><th>السلسلة</th><th>حالة التنفيذ</th><th>نسخة النص</th>
+        </tr></thead><tbody id="episodes-body"></tbody></table>
+      </div>
+      <div class="detail" id="episode-detail"><p class="placeholder">اختَر حلقة من الجدول لعرض مراحلها.</p></div>
+    </section>
+
+    <section class="panel wide" id="notes">
+      <div class="section-heading"><div><p class="eyebrow">PRODUCTION NOTES</p>
+        <h2>سجل الملاحظات</h2></div><span class="tiny-pill">من قاعدة المشروع</span></div>
+      <div id="notes-list" class="notes-list"></div>
+      <p class="small-explainer">اللوحة حالياً للعرض فقط. تُسجَّل الملاحظات عبر
+        أوامر مدير السلاسل المصرّح بها، وراح نضيف تحريراً آمناً بالمرحلة اللاحقة.</p>
+    </section>
+    <section class="panel wide" id="educational-ai">
+      <div class="section-heading"><div>
+        <p class="eyebrow">EDUCATIONAL AI REVIEW</p>
+        <h2>مراجعة السيناريوهات التعليمية</h2>
+        <p class="subline">مراجعة نماذج AI للنص فقط؛ لا تعني فحص الفيديو أو الموافقة على نشره.</p>
+      </div><span class="tiny-pill">قراءة فقط</span></div>
+      <p id="educational-status" class="small-explainer" aria-live="polite">جاري قراءة حالة المراجعات...</p>
+      <div id="educational-series" class="acceptance-list"></div>
+    </section>
+    <section class="panel wide" id="learning">
+      <div class="section-heading">
+        <div><p class="eyebrow">LEARN & IMPROVE</p>
+          <h2>مختبر التعلّم من أداء الحلقات</h2>
+          <p class="subline">مقارنة مشاهدات ووصول واحتفاظ متشابهين؛ اقتراحات وليس أوامر إنتاج.</p>
+        </div><span class="tiny-pill">بموافقة المالك فقط</span>
+      </div>
+      <p id="learning-status" class="small-explainer">لا توجد بيانات تحليل حقيقية بعد.</p>
+      <div id="learning-findings" class="acceptance-list"></div>
+      <p class="small-explainer">لا نقارن Shorts بالفيديوهات الطويلة، ولا نغيّر النصوص القديمة أو نعتمد صيغة متكررة لمجرد ارتفاع المشاهدات.</p>
+    </section>
+    <section class="panel wide" id="acceptance">
+      <div class="section-heading">
+        <div><p class="eyebrow">FINAL ACCEPTANCE</p>
+          <h2>جاهزية اختبار الإنتاج النهائي</h2>
+          <p class="subline">فحص مباشر لقاعدة المشروع فقط؛ ما يشغّل النماذج أو يغيّر أي ملف.</p>
+        </div>
+        <button id="acceptance-check" type="button" class="acceptance-button">فحص الجاهزية</button>
+      </div>
+      <p id="acceptance-status" class="small-explainer" aria-live="polite">لم يُجرَ فحص الجاهزية بعد.</p>
+      <div id="acceptance-findings" class="acceptance-list"></div>
+      <p class="small-explainer">تأكيد إنتاج الحلقة على الماك وحقوق المحتوى يحتاج مراجعة فعلية منك؛ نجاح الكود وحده لا يكفي.</p>
+    </section>
+    <footer>
+      <span>Kids Studio · مصدر البيانات: Studio Brain SQLite</span>
+      <span id="last-update"></span>
+    </footer>
+  </main>
+</div>
+</body>
+</html>

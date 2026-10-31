@@ -20,7 +20,8 @@ from uuid import uuid4
 
 KINDS = frozenset({
     "character_generate", "rig_review", "godot_render",
-    "script_draft", "editorial_review", "archive_verify",
+    "script_draft", "editorial_review", "archive_verify", "episode_assemble",
+    "voice_synthesize", "ltx_animate", "youtube_private_upload",
 })
 STATES = frozenset({
     "QUEUED", "LEASED", "COMPLETED", "FAILED", "CANCELLED"
@@ -231,6 +232,22 @@ class StudioQueue:
             """, (now, *kinds)).fetchone()
             if item is None:
                 return None
+            # M52: an M32 montage must still be valid at the moment the Mac
+            # worker requests a lease, not merely when the job was enqueued.
+            # Guard and lease share this BEGIN IMMEDIATE transaction.
+            if item["kind"] == "episode_assemble":
+                from .render_claim_gate import m32_montage_claim_blocker
+                blocker=m32_montage_claim_blocker(db,item)
+                if blocker is not None:
+                    db.execute("""UPDATE jobs SET state='FAILED',
+                        error_code='M52_CLAIM_PROVENANCE_REVOKED',updated_at=?,
+                        worker_id=NULL,lease_expires=NULL
+                        WHERE job_id=? AND state='QUEUED'""",
+                        (now,item["job_id"]))
+                    self._event(db,item["job_id"],
+                                "M52_RENDER_CLAIM_REVOKED",
+                                {"reason":blocker})
+                    return None
             db.execute("""
                 UPDATE jobs SET state='LEASED', worker_id=?, attempts=attempts+1,
                 generation=generation+1, lease_expires=?,updated_at=?
@@ -254,13 +271,70 @@ class StudioQueue:
             raise QueueError("Stale, expired or revoked worker lease.")
         return row
 
+    def pre_execute_montage(self, *, job_id: str, worker_id: str,
+                            generation: int, payload: dict[str, Any]) -> dict[str, Any]:
+        """M53: require a CURRENT M52 montage proof immediately before FFmpeg.
+
+        All reads and a possible lease revocation share BEGIN IMMEDIATE.
+        This cannot attest files on Mac; Mac separately hashes local media.
+        """
+        if not isinstance(payload,dict):
+            raise QueueError("M53 expected a pinned montage JSON object.")
+        now=self.clock()
+        with self._connection(write=True) as db:
+            job=self._guard_current(db,job_id,worker_id,generation,now)
+            if job["kind"]!="episode_assemble":
+                raise QueueError("M53 lease must be an episode montage.")
+            from .render_claim_gate import m32_montage_claim_blocker
+            try:
+                original=json.loads(job["payload"])
+            except (TypeError,ValueError):
+                original=None
+            paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
+            if original!=payload:
+                reason="M53_LEASE_PAYLOAD_CHANGED"
+            elif not paused or paused["paused"]:
+                reason="M53_STUDIO_PAUSED"
+            else:
+                reason=m32_montage_claim_blocker(db,job)
+            if reason is not None:
+                db.execute("""UPDATE jobs SET state='FAILED',
+                    error_code='M53_PRE_EXEC_PROVENANCE_REVOKED',updated_at=?,
+                    worker_id=NULL,lease_expires=NULL WHERE job_id=? AND state='LEASED'""",
+                    (now,job_id))
+                self._event(db,job_id,"M53_RENDER_PRE_EXEC_REVOKED",
+                            {"reason":reason})
+                return {"status":"M53_PRE_EXEC_DENIED_NO_RENDER",
+                        "publication_approved":False,
+                        "render_started":False}
+            return {"status":"M53_CURRENT_PRIVATE_MONTAGE_LEASE_NOT_EXECUTED",
+                    "job_id":job_id,"generation":generation,
+                    "payload":original,"publication_approved":False,
+                    "render_started":False}
+
     def heartbeat(self, *, job_id: str, worker_id: str,
                   generation: int, lease_seconds: int = 120) -> dict[str, Any]:
         if type(lease_seconds) is not int or not 10 <= lease_seconds <= 3600:
             raise QueueError("Lease seconds must be 10..3600.")
         now = self.clock()
         with self._connection(write=True) as db:
-            self._guard_current(db, job_id, worker_id, generation, now)
+            current=self._guard_current(db, job_id, worker_id, generation, now)
+            if current["kind"]=="episode_assemble":
+                # M54: every renewal is also a fresh M52 owner/scene/catalogue
+                # check. Revoke inside this write transaction, not afterwards.
+                from .render_claim_gate import m32_montage_claim_blocker
+                paused=db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
+                reason=("M54_STUDIO_PAUSED" if not paused or paused["paused"]
+                        else m32_montage_claim_blocker(db,current))
+                if reason is not None:
+                    db.execute("""UPDATE jobs SET state='FAILED',
+                        error_code='M54_MONTAGE_LEASE_REVOKED',updated_at=?,
+                        worker_id=NULL,lease_expires=NULL
+                        WHERE job_id=? AND state='LEASED'""",(now,job_id))
+                    self._event(db,job_id,"M54_MONTAGE_HEARTBEAT_REVOKED",
+                                {"reason":reason})
+                    return dict(db.execute(
+                        "SELECT * FROM jobs WHERE job_id=?",(job_id,)).fetchone())
             db.execute(
                 "UPDATE jobs SET lease_expires=?,updated_at=? WHERE job_id=?",
                 (now + lease_seconds, now, job_id)

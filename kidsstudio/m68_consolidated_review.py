@@ -1,0 +1,136 @@
+"""Read-only consolidated M68 review gate.
+
+AI visual observations and an asset rights ledger are supporting evidence,
+not six-axis certification. Unverified dimensions always remain blocked.
+No network calls, database writes, upload permission, or public release.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from .m67_master_handoff import verify_inventory
+from .m68_rights_inventory import audit as audit_rights
+from .m68_short_content_review import CHECKS
+from .m68_audio_evidence_bridge import audit_audio_receipt
+from .m68_lesson_evidence import audit_lesson
+from .m68_lesson_model_bridge import audit_lesson_model_receipt
+
+
+def audit(root, handoff, *, vision_receipt=None, rights_manifest=None, audio_receipt=None, script_path=None, lesson_path=None,
+          lesson_model_receipt=None):
+    if (not isinstance(handoff, dict)
+            or handoff.get("status") != "SHORT_HASH_PINNED_CONTENT_QA_PENDING"
+            or handoff.get("short_id") != handoff.get("episode_id")
+            or handoff.get("youtube_upload_authorized") is not False
+            or handoff.get("public_release_authorized") is not False):
+        raise ValueError("invalid M68 handoff")
+    sha = verify_inventory(root, handoff)["sha256"]
+    if sha != handoff.get("sha256"):
+        raise ValueError("media inventory does not match handoff")
+    blockers = []
+    checks = {axis: False for axis in CHECKS}
+    if vision_receipt is None:
+        blockers.append("visual_model_evidence_missing")
+    else:
+        if (not isinstance(vision_receipt, dict)
+                or vision_receipt.get("short_id") != handoff["short_id"]
+                or vision_receipt.get("video_sha256") != sha
+                or vision_receipt.get("source_episode_id") != handoff.get("source_episode_id")
+                or vision_receipt.get("independent_reviewers") != 1
+                or not isinstance(vision_receipt.get("local_model_response_sha256"), str)
+                or len(vision_receipt["local_model_response_sha256"]) != 64
+                or any(ch not in "0123456789abcdef" for ch in vision_receipt["local_model_response_sha256"])
+                or vision_receipt.get("decision") != "REJECT"
+                or vision_receipt.get("review_scope")
+                    != "LOCAL_VISUAL_SAFETY_ONLY_FOUR_AXES_UNVERIFIED"
+                or not isinstance(vision_receipt.get("checks"), dict)
+                or set(vision_receipt["checks"]) != set(CHECKS)
+                or any(type(value) is not bool
+                       for value in vision_receipt["checks"].values())
+                or any(vision_receipt["checks"][axis] for axis in (
+                    "audio", "copyright", "pedagogy", "source_consistency"))):
+            raise ValueError("untrusted or incompatible visual diagnostic")
+        for axis in ("visual", "age_appropriate"):
+            checks[axis] = vision_receipt["checks"][axis]
+            if not checks[axis]:
+                blockers.append(axis + "_visual_evidence_failed")
+    if rights_manifest is None:
+        blockers.append("source_rights_inventory_missing")
+        rights = None
+    else:
+        rights = audit_rights(rights_manifest, expected_video_sha256=sha)
+        if rights["reasons"]:
+            blockers.append("source_rights_inventory_blocked")
+        else:
+            blockers.append("source_rights_documented_not_legally_verified")
+    if audio_receipt is None:
+        blockers.append("audio_independent_review_missing")
+        audio = None
+    else:
+        audio = audit_audio_receipt(handoff, audio_receipt)
+        blockers.append("audio_model_claim_not_independently_attested")
+    if (script_path is None) != (lesson_path is None):
+        raise ValueError("script and lesson plan must be supplied together")
+    lesson = None
+    if script_path is not None:
+        lesson = audit_lesson(handoff, script_path=script_path, lesson_path=lesson_path)
+        if lesson["reasons"]:
+            blockers.append("lesson_plan_incomplete_or_mismatched")
+        else:
+            blockers.append("lesson_plan_documented_not_pedagogically_verified")
+    else:
+        blockers.append("lesson_plan_missing")
+    lesson_model = None
+    if lesson_model_receipt is not None:
+        if lesson is None or lesson["reasons"]:
+            raise ValueError("valid pinned lesson source required before model evidence")
+        lesson_model = audit_lesson_model_receipt(
+            handoff, lesson, lesson_model_receipt)
+        blockers.append("lesson_model_claims_not_independently_attested")
+    for axis in ("pedagogy", "copyright", "source_consistency"):
+        blockers.append(axis + "_independent_review_missing")
+    return {
+        "status": "M68_CONSOLIDATED_REVIEW_BLOCKED",
+        "short_id": handoff["short_id"],
+        "video_sha256": sha,
+        "checks": checks,
+        "blockers": blockers,
+        "rights_inventory": rights,
+        "audio_evidence": audio,
+        "lesson_evidence": lesson,
+        "lesson_model_evidence": lesson_model,
+        "youtube_upload_authorized": False,
+        "public_release_authorized": False,
+    }
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--handoff", type=Path, required=True)
+    parser.add_argument("--vision-receipt", type=Path)
+    parser.add_argument("--rights-manifest", type=Path)
+    parser.add_argument("--audio-receipt", type=Path)
+    parser.add_argument("--script", type=Path)
+    parser.add_argument("--lesson-plan", type=Path)
+    parser.add_argument("--lesson-model-receipt", type=Path)
+    args = parser.parse_args(argv)
+    handoff = json.loads(args.handoff.read_text(encoding="utf-8"))
+    vision = (json.loads(args.vision_receipt.read_text(encoding="utf-8"))
+              if args.vision_receipt else None)
+    audio = (json.loads(args.audio_receipt.read_text(encoding="utf-8"))
+             if args.audio_receipt else None)
+    lesson_model = (json.loads(args.lesson_model_receipt.read_text(encoding="utf-8"))
+                    if args.lesson_model_receipt else None)
+    result = audit(args.root, handoff, vision_receipt=vision,
+                   rights_manifest=args.rights_manifest, audio_receipt=audio,
+                   script_path=args.script, lesson_path=args.lesson_plan,
+                   lesson_model_receipt=lesson_model)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

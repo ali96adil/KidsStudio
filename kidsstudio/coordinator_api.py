@@ -25,12 +25,19 @@ MAX_ANSWER_BYTES = 20_000
 ID = re.compile(r"^[a-f0-9]{32}$")
 IDENT = re.compile(r"^[a-zA-Z0-9_./:-]{1,160}$")
 ALLOWED_KINDS = frozenset({
-    "script_draft", "editorial_review", "character_generate", "godot_render"
+    "script_draft", "editorial_review", "character_generate", "godot_render",
+    "episode_assemble", "voice_synthesize", "ltx_animate",
+    "youtube_private_upload", "recovery_assemble",
+    "recovery_private_upload"
 })
-MEDIA_KINDS = frozenset({"character_generate", "godot_render"})
+MEDIA_KINDS = frozenset({"character_generate", "godot_render", "episode_assemble",
+                         "voice_synthesize", "ltx_animate"})
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 MEDIA_STATUSES = {
     "godot_render": frozenset({"VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"}),
+    "episode_assemble": frozenset({"VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW"}),
+    "voice_synthesize": frozenset({"VOICE_RENDERED_PENDING_QA"}),
+    "ltx_animate": frozenset({"A2V_RENDERED_PENDING_QA"}),
     "character_generate": frozenset({
         "INTERNAL_ASSET_APPROVED_NOT_FOR_PUBLICATION",
         "REPAIR_BUDGET_EXHAUSTED", "BLOCKED_MANUAL_TRIAGE",
@@ -107,9 +114,262 @@ class Coordinator:
 
     def dispatch(self, action: str, request: dict[str, Any],
                  worker_id: str, capabilities: frozenset[str]) -> dict[str, Any]:
+        # M63 private uploader uses its OWN capability, not M26 ordinary
+        # jobs or M61 montage. No activation over worker TLS.
+        if action.startswith("recovery-private-"):
+            if "recovery_private_upload" not in capabilities:
+                raise TransportError("M63 dedicated private uploader permission required.")
+            from .recovery_private_upload_gate import (
+                RecoveryPrivateUploadGate, RecoveryUploadError)
+            gate=RecoveryPrivateUploadGate(self.queue)
+            try:
+                if action=="recovery-private-claim":
+                    if (set(request)!={"proposal_id"} or
+                        not isinstance(request["proposal_id"],str) or
+                        not ID.fullmatch(request["proposal_id"])):
+                        raise TransportError("M63 exact target proposal required.")
+                    return {"job":gate.claim(
+                        proposal_id=request["proposal_id"],
+                        worker_id=worker_id,
+                        capability="recovery_private_upload")}
+                if action=="recovery-private-reverify":
+                    if (set(request)!={"proposal_id","receipt"} or
+                        not isinstance(request["proposal_id"],str) or
+                        not ID.fullmatch(request["proposal_id"]) or
+                        not isinstance(request["receipt"],dict)):
+                        raise TransportError("M63 reverify exact existing video only.")
+                    return gate.reconcile_processing(
+                        proposal_id=request["proposal_id"],
+                        worker_id=worker_id,receipt=request["receipt"])
+                if action not in (
+                    "recovery-private-check","recovery-private-heartbeat",
+                    "recovery-private-complete","recovery-private-fail"):
+                    raise TransportError("Unknown M63 private upload action.")
+                expected={"job_id","generation"}
+                if action=="recovery-private-complete":
+                    expected.add("receipt")
+                if set(request)!=expected or (
+                    not isinstance(request["job_id"],str) or
+                    not ID.fullmatch(request["job_id"]) or
+                    type(request["generation"]) is not int or
+                    request["generation"]!=1):
+                    raise TransportError("M63 malformed lease fields.")
+                params={"job_id":request["job_id"],
+                        "worker_id":worker_id,
+                        "generation":request["generation"]}
+                if action=="recovery-private-check":
+                    return gate.check(**params)
+                if action=="recovery-private-heartbeat":
+                    result=gate.check(**params,renew=True)
+                    return {"ok":result.get("status")==
+                        "M63_CURRENT_PRIVATE_UPLOAD_LEASE"}
+                if action=="recovery-private-complete":
+                    return gate.complete(**params,receipt=request["receipt"])
+                return gate.fail(**params)
+            except RecoveryUploadError as exc:
+                raise TransportError("M63 private upload permission revoked.") from exc
+
+        # M61 has an ISOLATED lease namespace; never call the ordinary
+        # jobs queue's M52/53/54 methods for recovered scene bytes.
+        if action.startswith("recovery-"):
+            if "recovery_assemble" not in capabilities:
+                raise TransportError("Separate recovery capability required.")
+            from .recovery_lease import RecoveryLeaseGate,RecoveryLeaseError
+            gate=RecoveryLeaseGate(self.queue)
+            try:
+                if action=="recovery-claim":
+                    if (set(request)!={"proposal_id"} or
+                        not isinstance(request["proposal_id"],str) or
+                        not ID.fullmatch(request["proposal_id"])):
+                        raise TransportError("M61 requires exact targeted proposal.")
+                    return {"job":gate.claim(
+                        worker_id=worker_id,capability="recovery_assemble",
+                        proposal_id=request["proposal_id"],lease_seconds=120)}
+                if action not in (
+                    "recovery-pre-execution-check","recovery-heartbeat",
+                    "recovery-complete","recovery-fail"):
+                    raise TransportError("Unknown recovery action.")
+                expected={"job_id","generation"}
+                if action=="recovery-complete":
+                    expected.add("result")
+                if set(request)!=expected:
+                    raise TransportError("M61 accepts exact worker lease fields only.")
+                if (not isinstance(request["job_id"],str) or
+                    not ID.fullmatch(request["job_id"]) or
+                    type(request["generation"]) is not int or
+                    request["generation"]!=1):
+                    raise TransportError("M61 worker lease identity malformed.")
+                params=dict(job_id=request["job_id"],worker_id=worker_id,
+                            generation=request["generation"])
+                if action=="recovery-pre-execution-check":
+                    return gate.check(**params)
+                if action=="recovery-heartbeat":
+                    proof=gate.check(**params,renew=True)
+                    return {"ok":proof.get("status")==
+                        "M61_CURRENT_PRIVATE_RECOVERY_LEASE"}
+                if action=="recovery-complete":
+                    return gate.complete(**params,result=request["result"])
+                return gate.fail(**params)
+            except RecoveryLeaseError as exc:
+                raise TransportError("M61 dedicated recovery lease denied.") from exc
+
+        if action == "pilot-readiness":
+            # Explicit authenticated voice worker capability; read-only and
+            # BEFORE the generic lease requirement. This never claims work.
+            if "voice_synthesize" not in capabilities:
+                raise TransportError("Pilot observation requires voice worker access.")
+            from .live_pilot_gate import observe_live_scene_plan
+            return observe_live_scene_plan(self.queue, request)
+        if action == "pilot-voice-lease-check":
+            if "voice_synthesize" not in capabilities:
+                raise TransportError("Pilot lease check requires voice worker capability.")
+            if set(request)!={"job_id","generation","pilot_plan_sha256",
+                               "script_sha256","recipe_id","pilot_scene"}:
+                raise TransportError("Invalid pilot lease check fields.")
+            leased=self._lease(request,worker_id)
+            if leased["kind"]!="voice_synthesize":
+                raise TransportError("Pilot voice lease kind mismatch.")
+            from .studio_scenes import SHA, RECIPE
+            plan_sha=request["pilot_plan_sha256"]
+            script_sha=request["script_sha256"]
+            recipe_id=request["recipe_id"]
+            if (not isinstance(plan_sha,str) or not SHA.fullmatch(plan_sha) or
+                not isinstance(script_sha,str) or not SHA.fullmatch(script_sha) or
+                not isinstance(recipe_id,str) or not RECIPE.fullmatch(recipe_id) or
+                type(request["pilot_scene"]) is not int or request["pilot_scene"]!=1):
+                raise TransportError("Invalid pinned pilot lease metadata.")
+            try:
+                payload=json.loads(leased["payload"])
+            except (TypeError,ValueError):
+                raise TransportError("Pilot lease payload malformed.") from None
+            expected={"recipe_id":recipe_id,"script_sha256":script_sha,
+                      "pilot_plan_sha256":plan_sha,"pilot_scene":1}
+            if payload!=expected:
+                raise TransportError("Pilot worker input differs from Pi lease.")
+            # Use one consistent SQLite read transaction after the lease
+            # check; repeat lease identity INSIDE the same transaction.
+            with self.queue._connection() as db:
+                db.execute("BEGIN")
+                now=self.queue.clock()
+                current=db.execute("SELECT * FROM jobs WHERE job_id=?",
+                                   (leased["job_id"],)).fetchone()
+                if (not current or current["state"]!="LEASED" or
+                    current["worker_id"]!=worker_id or
+                    current["generation"]!=leased["generation"] or
+                    current["lease_expires"]<=now or
+                    db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()[0]):
+                    raise TransportError("Pilot lease was revoked or coordinator paused.")
+                rows=db.execute("""SELECT st.series_id,st.ordinal,st.scene,
+                    st.stage,st.state,st.scene_script_sha256,
+                    e.state AS episode_state,e.source_sha256,
+                    e.owner_review_note,s.state AS series_state,
+                    p.plan_sha256,p.episode_script_sha256,sc.script_sha256
+                    FROM studio_scene_stages st
+                    JOIN studio_episodes e ON e.series_id=st.series_id AND
+                        e.ordinal=st.ordinal
+                    JOIN studio_series s ON s.series_id=st.series_id
+                    JOIN studio_scene_plans p ON p.series_id=st.series_id
+                        AND p.ordinal=st.ordinal
+                    JOIN studio_scenes sc ON sc.series_id=st.series_id
+                        AND sc.ordinal=st.ordinal AND sc.scene=st.scene
+                    WHERE st.job_id=?""",(leased["job_id"],)).fetchall()
+                if len(rows)!=1:
+                    raise TransportError("Pilot stage lineage not unique.")
+                item=rows[0]
+                if (item["scene"]!=1 or item["stage"]!="voice_synthesize" or
+                    item["state"]!="QUEUED" or
+                    item["scene_script_sha256"]!=script_sha or
+                    item["script_sha256"]!=script_sha or
+                    item["plan_sha256"]!=plan_sha or
+                    item["episode_script_sha256"]!=item["source_sha256"] or
+                    item["episode_state"]!="SCRIPT_APPROVED" or
+                    item["series_state"]!="ACTIVE" or
+                    not isinstance(item["owner_review_note"],str) or
+                    len(item["owner_review_note"].strip())<5):
+                    raise TransportError("Pilot plan/parent/scene/approval changed.")
+                from .script_gate import current_script_mode
+                if (db.execute("""SELECT COUNT(*) FROM studio_scene_stages
+                    WHERE series_id=? AND ordinal=?""",
+                    (item["series_id"],item["ordinal"])).fetchone()[0]!=1 or
+                    current_script_mode(db,item["series_id"],item["ordinal"]) is None):
+                    raise TransportError("Pilot stage or current owner/M30 approval proof missing.")
+                db.execute("COMMIT")
+            return {"status":"PINNED_SINGLE_VOICE_LEASE_CURRENT_NOT_EXECUTED",
+                    "job_id":leased["job_id"],"generation":leased["generation"],
+                    "pilot_scene":1,"pilot_plan_sha256":plan_sha,
+                    "script_sha256":script_sha,"recipe_id":recipe_id,
+                    "model_execution_authorized":False,"publication_approved":False,
+                    "server_time":self.queue.clock()}
+
+        if action == "request-private-upload":
+            if "youtube_private_upload" not in capabilities:
+                raise TransportError("Private upload permission required.")
+            from .private_upload_policy import PrivateUploadPolicy, PrivatePolicyError
+            try:
+                result=PrivateUploadPolicy(self.queue).enqueue_private(
+                    request["series_id"],request["episode_number"],
+                    render_job_id=request["render_job_id"],
+                    master_sha256=request["master_sha256"],
+                    plan_sha256=request["plan_sha256"],
+                    readiness_sha256=request["readiness_sha256"],
+                    channel_id=request["channel_id"],
+                    made_for_kids=request["made_for_kids"],
+                    contains_synthetic_media=request["contains_synthetic_media"])
+            except (PrivatePolicyError,KeyError) as exc:
+                raise TransportError("Standing private policy denied job.") from exc
+            return result
+        if action == "private-upload-lease-check":
+            if "youtube_private_upload" not in capabilities:
+                raise TransportError("Private upload proof permission required.")
+            if set(request)!={"job_id","generation","payload"}:
+                raise TransportError("Invalid private upload proof fields.")
+            from .private_upload_policy import PrivateUploadPolicy, PrivatePolicyError
+            try:
+                return PrivateUploadPolicy(self.queue).check_lease(
+                    request["job_id"],request["generation"],worker_id,
+                    request["payload"])
+            except (PrivatePolicyError,QueueError,KeyError,TypeError) as exc:
+                raise TransportError("Private lease/policy changed.") from exc
+        if action == "complete-private-upload":
+            if "youtube_private_upload" not in capabilities:
+                raise TransportError("Only private upload worker may complete.")
+            if set(request)!={"job_id","generation","result"}:
+                raise TransportError("Invalid private completion fields.")
+            from .private_upload_policy import PrivateUploadPolicy, PrivatePolicyError
+            try:
+                return PrivateUploadPolicy(self.queue).complete(
+                    request["job_id"],request["generation"],worker_id,
+                    request["result"])
+            except (PrivatePolicyError,QueueError,KeyError,TypeError) as exc:
+                raise TransportError("Private upload completion rejected.") from exc
+
+        if action == "montage-pre-execution-check":
+            if "episode_assemble" not in capabilities:
+                raise TransportError("M53 requires the authorized montage worker.")
+            if set(request)!={"job_id","generation","payload"}:
+                raise TransportError("M53 requires exact lease and payload fields.")
+            if (not isinstance(request["job_id"],str) or
+                not ID.fullmatch(request["job_id"]) or
+                type(request["generation"]) is not int or
+                request["generation"]<1 or
+                not isinstance(request["payload"],dict)):
+                raise TransportError("Invalid M53 montage lease request.")
+            try:
+                return self.queue.pre_execute_montage(
+                    job_id=request["job_id"],worker_id=worker_id,
+                    generation=request["generation"],
+                    payload=request["payload"])
+            except QueueError as exc:
+                raise TransportError("M53 montage lease no longer valid.") from exc
+
         if action == "claim":
-            job = self.queue.claim(worker_id=worker_id,
-                                   capabilities=sorted(capabilities), lease_seconds=600)
+            # A worker with only recovery_assemble must not be routed
+            # into the legacy generic claim/KINDS namespace.
+            ordinary=sorted(capabilities & ALLOWED_KINDS -
+                            {"recovery_assemble","recovery_private_upload"})
+            job = (self.queue.claim(worker_id=worker_id,
+                                    capabilities=ordinary,lease_seconds=600)
+                   if ordinary else None)
             if job is None:
                 return {"job": None}
             return {"job": {
@@ -124,9 +384,11 @@ class Coordinator:
             raise TransportError("Worker capability does not permit this job.")
 
         if action == "heartbeat":
-            self.queue.heartbeat(
+            renewed=self.queue.heartbeat(
                 job_id=leased["job_id"], worker_id=worker_id,
                 generation=leased["generation"], lease_seconds=600)
+            if renewed["state"]!="LEASED":
+                raise TransportError("M54 montage lease revoked during render.")
             return {"ok": True}
 
         if action == "fail":
@@ -180,7 +442,9 @@ class Coordinator:
             digest = request["artifact_sha256"]
             bytes_count = request["artifact_bytes"]
             expected_type = (
-                "mp4" if leased["kind"] == "godot_render" else "rig_report"
+                ("wav" if leased["kind"] == "voice_synthesize" else
+                 "mp4" if leased["kind"] in ("godot_render", "episode_assemble", "ltx_animate")
+                 else "rig_report")
             )
             if (
                 status not in MEDIA_STATUSES[leased["kind"]]
@@ -212,8 +476,8 @@ class Coordinator:
 
         if action != "complete":
             raise TransportError("Unknown action.")
-        if leased["kind"] not in ALLOWED_KINDS:
-            raise TransportError("Only editorial work permitted remotely.")
+        if leased["kind"] not in ("script_draft", "editorial_review"):
+            raise TransportError("Only editorial work may use this completion endpoint.")
         provider = request.get("provider_id")
         model = request.get("model")
         answer = request.get("answer")
@@ -282,7 +546,24 @@ def create_handler(coordinator: Coordinator):
         def do_POST(self):
             path = self.path
             if path not in ("/v1/claim", "/v1/heartbeat", "/v1/review-source",
-                            "/v1/complete", "/v1/complete-media", "/v1/fail"):
+                            "/v1/complete", "/v1/complete-media", "/v1/fail",
+                            "/v1/pilot-readiness",
+                            "/v1/pilot-voice-lease-check",
+                            "/v1/montage-pre-execution-check",
+                            "/v1/request-private-upload",
+                            "/v1/private-upload-lease-check",
+                            "/v1/complete-private-upload",
+                            "/v1/recovery-claim",
+                            "/v1/recovery-pre-execution-check",
+                            "/v1/recovery-heartbeat",
+                            "/v1/recovery-complete",
+                            "/v1/recovery-fail",
+                            "/v1/recovery-private-claim",
+                            "/v1/recovery-private-check",
+                            "/v1/recovery-private-heartbeat",
+                            "/v1/recovery-private-complete",
+                            "/v1/recovery-private-fail",
+                            "/v1/recovery-private-reverify"):
                 self._reply(404, {"error": "NOT_FOUND"})
                 return
             length = self.headers.get("Content-Length")
