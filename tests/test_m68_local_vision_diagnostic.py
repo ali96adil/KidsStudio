@@ -37,15 +37,18 @@ class VisionDiagnosticTests(unittest.TestCase):
             answers = {"checks": {
                 key: {"decision": "PASS", "evidence": "Clearly safe visuals across frames."}
                 for key in ("age_appropriate", "visual_consistency", "no_unsafe_content")}}
-            with (
-                patch("kidsstudio.m68_local_vision_diagnostic.verify_inventory",
-                      return_value={"sha256": "a" * 64}),
-                patch("kidsstudio.m68_local_vision_diagnostic.digest",
-                      return_value="a" * 64),
-                patch("kidsstudio.m68_local_vision_diagnostic.capture_frames") as capture,
-                patch("kidsstudio.m68_local_vision_diagnostic.OllamaVision") as model,
-                patch("kidsstudio.m68_local_vision_diagnostic.run_ai_review") as adapter,
-            ):
+            from contextlib import ExitStack
+            with ExitStack() as stack:
+                stack.enter_context(patch("kidsstudio.m68_local_vision_diagnostic.verify_inventory",
+                                          return_value={"sha256": "a" * 64}))
+                stack.enter_context(patch("kidsstudio.m68_local_vision_diagnostic.digest",
+                                          return_value="a" * 64))
+                capture = stack.enter_context(patch(
+                    "kidsstudio.m68_local_vision_diagnostic.capture_frames"))
+                model = stack.enter_context(patch(
+                    "kidsstudio.m68_local_vision_diagnostic.OllamaVision"))
+                adapter = stack.enter_context(patch(
+                    "kidsstudio.m68_local_vision_diagnostic.run_ai_review"))
                 frame = root / "frame.png"
                 frame.write_bytes(b"png-bytes")
                 manifest = root / "manifest.json"
