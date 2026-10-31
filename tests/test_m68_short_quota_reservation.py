@@ -85,3 +85,26 @@ class ReservationTests(unittest.TestCase):
                                media_sha256="a" * 64)
         with self.assertRaises(ShortQuotaError):
             self.reserve("colors-short-01", "a" * 64)
+
+    def test_unused_reservation_release_reopens_slot(self):
+        self.add_short("colors-short-01", "a" * 64)
+        self.add_short("colors-short-02", "b" * 64)
+        self.reserve("colors-short-01", "a" * 64)
+        released = self.quota.release_unused(short_id="colors-short-01",
+                                             series_id="colors",
+                                             media_sha256="a" * 64)
+        self.assertFalse(released["youtube_upload_authorized"])
+        self.assertEqual(self.reserve("colors-short-02", "b" * 64)["status"],
+                         "SHORT_QUOTA_RESERVED_NO_UPLOAD")
+
+    def test_release_rejects_wrong_media_and_missing_reservation(self):
+        self.add_short("colors-short-01", "a" * 64)
+        self.reserve("colors-short-01", "a" * 64)
+        with self.assertRaises(ShortQuotaError):
+            self.quota.release_unused(short_id="colors-short-01",
+                                      series_id="colors", media_sha256="b" * 64)
+        self.quota.release_unused(short_id="colors-short-01",
+                                  series_id="colors", media_sha256="a" * 64)
+        with self.assertRaises(ShortQuotaError):
+            self.quota.release_unused(short_id="colors-short-01",
+                                      series_id="colors", media_sha256="a" * 64)
