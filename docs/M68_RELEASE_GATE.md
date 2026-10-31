@@ -23,3 +23,18 @@
 - CI green on the final commit.
 
 **Release decision: BLOCKED. Do not enable unattended Pi uploads or automatic public publication.**
+
+## Operator preflight (read-only)
+
+Before any one-shot upload, call `kidsstudio.m68_pi_preflight.assess(queue, short_id=..., series_id=..., media_path=Path(...))` on the Pi. A result of `READY_FOR_EXPLICIT_PRIVATE_UPLOAD` is only a diagnostic, **not permission to publish or to skip the owner policy**. Every blocking reason must be resolved before explicit invocation. The uploader rechecks the critical policy and QA in its own transaction.
+
+Never place OAuth tokens in Git, episode metadata, upload receipts or UI logs. Provide a fresh token at invocation and do not log it. Do not schedule retries for `STARTED_UNCERTAIN` or `MANUAL_RECONCILIATION`. Reconcile unknown uploads in YouTube Studio before any new upload.
+
+## Recent engineering updates
+
+- M26 `_approved` source render receipt and 11-axis quality gate are checked when binding and before attempting a Short upload.
+- A new read-only Pi preflight reports actionable blockers without Google network calls.
+- A unique partial index prevents the same YouTube video ID being recorded for two Shorts.
+- Test coverage includes forged source receipt, changed media, revoked source and duplicate attempts.
+
+This is a **code-complete candidate for local integration testing only**, not a certified unattended production pipeline. The actual Pi environment, credentials, agent review implementation and one controlled real PRIVATE upload remain outstanding.
