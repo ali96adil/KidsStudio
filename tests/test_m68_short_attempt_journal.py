@@ -2,6 +2,8 @@
 import tempfile
 import unittest
 from pathlib import Path
+import json
+from kidsstudio.m68_short_content_review import CHECKS
 from unittest.mock import Mock
 
 from kidsstudio.studio_queue import StudioQueue
@@ -23,6 +25,25 @@ class ShortAttemptTests(unittest.TestCase):
             db.execute("""INSERT INTO studio_short_quota_reservations
                 VALUES ('colors-short-01','colors',? ,0,'RESERVED_NO_UPLOAD')""",
                 ("a" * 64,))
+        with self.queue._connection(write=True) as db:
+            db.execute("CREATE TABLE studio_series(series_id TEXT PRIMARY KEY,state TEXT)")
+            db.execute("INSERT INTO studio_series VALUES('colors','ACTIVE')")
+            db.execute("""CREATE TABLE studio_youtube_private_policies(
+                series_id TEXT PRIMARY KEY,channel_id TEXT,state TEXT)""")
+            db.execute("""INSERT INTO studio_youtube_private_policies
+                VALUES('colors','UC1234567890123456789012','ENABLED')""")
+            db.execute("""CREATE TABLE studio_derived_shorts(
+                short_id TEXT PRIMARY KEY,source_episode_id TEXT,
+                media_sha256 TEXT,state TEXT)""")
+            db.execute("""INSERT INTO studio_derived_shorts VALUES(
+                'colors-short-01','colors-ep-01',?,'PI_STAGED_NOT_APPROVED')""",
+                ("a" * 64,))
+            db.execute("""CREATE TABLE studio_short_reviews(
+                short_id TEXT PRIMARY KEY,source_episode_id TEXT,
+                media_sha256 TEXT,decision TEXT,checks_json TEXT)""")
+            db.execute("""INSERT INTO studio_short_reviews VALUES(
+                'colors-short-01','colors-ep-01',?,'PASS',?)""",
+                ("a" * 64, json.dumps(dict.fromkeys(CHECKS, True))))
         self.args = dict(short_id="colors-short-01",
                          series_id="colors", media_sha256="a" * 64)
 
@@ -49,11 +70,6 @@ class ShortAttemptTests(unittest.TestCase):
             self.journal.begin(**self.args)
 
     def test_authenticated_private_verification(self):
-        with self.queue._connection(write=True) as db:
-            db.execute("""CREATE TABLE studio_youtube_private_policies(
-                series_id TEXT PRIMARY KEY,channel_id TEXT,state TEXT)""")
-            db.execute("""INSERT INTO studio_youtube_private_policies
-                VALUES('colors','UC1234567890123456789012','ENABLED')""")
         self.journal.begin(**self.args)
         self.journal.record_upload_result(**self.args, video_id="AbCdEfGhI12")
         transport = Mock()
@@ -73,11 +89,6 @@ class ShortAttemptTests(unittest.TestCase):
         self.assertFalse(report["public_release_authorized"])
 
     def test_wrong_privacy_never_verifies(self):
-        with self.queue._connection(write=True) as db:
-            db.execute("""CREATE TABLE studio_youtube_private_policies(
-                series_id TEXT PRIMARY KEY,channel_id TEXT,state TEXT)""")
-            db.execute("""INSERT INTO studio_youtube_private_policies
-                VALUES('colors','UC1234567890123456789012','ENABLED')""")
         self.journal.begin(**self.args)
         transport = Mock()
         transport.verify.return_value = {
@@ -96,11 +107,6 @@ class ShortAttemptTests(unittest.TestCase):
                          "STARTED_UNCERTAIN")
 
     def test_unpinned_video_cannot_be_verified(self):
-        with self.queue._connection(write=True) as db:
-            db.execute("""CREATE TABLE studio_youtube_private_policies(
-                series_id TEXT PRIMARY KEY,channel_id TEXT,state TEXT)""")
-            db.execute("""INSERT INTO studio_youtube_private_policies
-                VALUES('colors','UC1234567890123456789012','ENABLED')""")
         self.journal.begin(**self.args)
         transport = Mock()
         with self.assertRaises(ShortAttemptError):
@@ -115,3 +121,10 @@ class ShortAttemptTests(unittest.TestCase):
         self.journal.record_upload_result(**self.args, video_id="AbCdEfGhI12")
         with self.assertRaises(ShortAttemptError):
             self.journal.record_upload_result(**self.args, video_id="AbCdEfGhI13")
+
+    def test_revoked_review_blocks_attempt_before_network(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("UPDATE studio_short_reviews SET decision='REJECT'")
+        with self.assertRaises(ShortAttemptError):
+            self.journal.begin(**self.args)
+        self.assertIsNone(self.journal.status(short_id="colors-short-01"))
