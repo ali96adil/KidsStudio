@@ -101,8 +101,7 @@ python3 -m kidsstudio.m68_local_vision_diagnostic \
 Requires Ollama running at the explicit loopback endpoint and a model that
 accepts real images. The diagnostic decodes actual MP4 frames, sends them
 with the approved script to the local model, and records model observations.
-It **always rejects** the audio and copyright axes because silent frames
-cannot prove either. Its output must not be used as an all-axis PASS or
+It **always rejects** the audio, copyright, pedagogy and source-consistency\naxes: the existing child-visual-safety model checks cannot establish any of\nthese. Only visual safety and age appropriateness can be assessed. Its output must not be used as an all-axis PASS or
 permission to upload. A separate qualified audio reviewer and verified
 rights/provenance catalogue must be integrated before six-axis acceptance.
 The command only prints a receipt; it does not write the Pi review database.
