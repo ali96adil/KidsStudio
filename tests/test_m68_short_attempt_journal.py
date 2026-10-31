@@ -55,6 +55,7 @@ class ShortAttemptTests(unittest.TestCase):
             db.execute("""INSERT INTO studio_youtube_private_policies
                 VALUES('colors','UC1234567890123456789012','ENABLED')""")
         self.journal.begin(**self.args)
+        self.journal.record_upload_result(**self.args, video_id="AbCdEfGhI12")
         transport = Mock()
         transport.verify.return_value = {
             "video_id": "AbCdEfGhI12",
@@ -93,3 +94,24 @@ class ShortAttemptTests(unittest.TestCase):
                 token="x" * 40, transport=transport)
         self.assertEqual(self.journal.status(short_id="colors-short-01")["status"],
                          "STARTED_UNCERTAIN")
+
+    def test_unpinned_video_cannot_be_verified(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("""CREATE TABLE studio_youtube_private_policies(
+                series_id TEXT PRIMARY KEY,channel_id TEXT,state TEXT)""")
+            db.execute("""INSERT INTO studio_youtube_private_policies
+                VALUES('colors','UC1234567890123456789012','ENABLED')""")
+        self.journal.begin(**self.args)
+        transport = Mock()
+        with self.assertRaises(ShortAttemptError):
+            self.journal.verify_private(
+                **self.args, video_id="AbCdEfGhI12",
+                channel_id="UC1234567890123456789012",
+                token="x" * 40, transport=transport)
+        transport.verify.assert_not_called()
+
+    def test_upload_response_video_id_is_immutable(self):
+        self.journal.begin(**self.args)
+        self.journal.record_upload_result(**self.args, video_id="AbCdEfGhI12")
+        with self.assertRaises(ShortAttemptError):
+            self.journal.record_upload_result(**self.args, video_id="AbCdEfGhI13")
