@@ -25,9 +25,8 @@ def record_cycle(path, *, series_id, handoff, cycle):
     # A separate stable lock file survives os.replace of the JSON snapshot.
     lock_path = target.with_name(target.name + ".lock")
     lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    try:
-        with os.fdopen(lock_fd, "rb") as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+    with os.fdopen(lock_fd, "rb") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         existing = []
         if target.exists():
             if not target.is_file() or not 1 <= target.stat().st_size <= 2_000_000:
