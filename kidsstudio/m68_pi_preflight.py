@@ -65,6 +65,15 @@ def assess(queue, *, short_id, series_id, media_path):
             reasons.append("QUOTA_RESERVATION_MISSING")
         if attempt:
             reasons.append("UPLOAD_ATTEMPT_ALREADY_EXISTS")
+        # A reservation is only valid within the owner policy's rolling
+        # 24-hour window; stale reservations cannot authorize upload.
+        if reservation:
+            try:
+                age = queue.clock() - reservation["created_at"]
+                if age < 0 or age >= 86400:
+                    reasons.append("QUOTA_RESERVATION_EXPIRED")
+            except (KeyError, IndexError, TypeError):
+                reasons.append("QUOTA_RESERVATION_TIMESTAMP_INVALID")
         try:
             verify_current(db, short_id=short_id, series_id=series_id)
         except Exception:
