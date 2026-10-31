@@ -46,6 +46,7 @@ class ShortReviewStoreTests(unittest.TestCase):
     def test_pass_persisted_but_not_upload_approved(self):
         result = self.store.record(self.receipt)
         self.assertEqual(result["decision"], "PASS")
+        self.assertIsNone(result["ai_evidence"])
         self.assertFalse(result["youtube_upload_authorized"])
         self.assertEqual(result, self.store.record(self.receipt))
 
@@ -72,6 +73,8 @@ class ShortReviewStoreTests(unittest.TestCase):
             CHECKS, "Verified in the reviewed media.")
         result = self.store.record(self.receipt)
         self.assertEqual(result["decision"], "PASS")
+        self.assertEqual(result["ai_evidence"], self.receipt["ai_evidence"])
+        self.assertEqual(result, self.store.record(self.receipt))
 
     def test_ai_receipt_with_wrong_evidence_hash_is_rejected(self):
         self.receipt["ai_review_completed"] = True
