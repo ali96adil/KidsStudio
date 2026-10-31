@@ -92,7 +92,9 @@ def run_vision_diagnostic(root, handoff, *, mp4, script, ffmpeg, ffprobe,
                                 reviewer_id="kidsstudio-ai-vision-diagnostic")
     if receipt["decision"] != "REJECT" or any(receipt["checks"][axis] for axis in UNOBSERVABLE):
         raise ValueError("vision-only review must not certify audio or rights")
-    receipt["review_scope"] = "LOCAL_VISUAL_SAFETY_ONLY_FOUR_AXES_UNVERIFIED"\n    receipt["local_model_response_sha256"] = model_response_sha\n    receipt["independent_reviewers"] = 1
+    receipt["review_scope"] = "LOCAL_VISUAL_SAFETY_ONLY_FOUR_AXES_UNVERIFIED"
+    receipt["local_model_response_sha256"] = model_response_sha
+    receipt["independent_reviewers"] = 1
     return receipt
 
 
