@@ -27,6 +27,7 @@ class LessonReviewRunTests(unittest.TestCase):
 
     def test_ready_models_invoke_real_review_adapter(self):
         receipt = {"status": "LESSON_MODEL_EVIDENCE_RECORDED_NOT_INDEPENDENTLY_ATTESTED",
+                   "checks": {"pedagogy": True, "source_consistency": True},
                    "youtube_upload_authorized": False,
                    "public_release_authorized": False}
         with patch("kidsstudio.m68_lesson_review_run.review_lesson",
@@ -35,4 +36,16 @@ class LessonReviewRunTests(unittest.TestCase):
                 "reachable": True, "models": ["model-one", "model-two"]})
         inference.assert_called_once()
         self.assertEqual(result["review"], receipt)
+        self.assertEqual(result["status"], "LESSON_REVIEW_MODEL_PASS_RECORDED")
         self.assertFalse(result["public_release_authorized"])
+
+    def test_model_rejection_is_needs_fix_not_success(self):
+        receipt = {"checks": {"pedagogy": False, "source_consistency": True},
+                   "youtube_upload_authorized": False,
+                   "public_release_authorized": False}
+        with patch("kidsstudio.m68_lesson_review_run.review_lesson",
+                   return_value=receipt):
+            result = run(self.handoff, **self.args, inspector=lambda _: {
+                "reachable": True, "models": ["model-one", "model-two"]})
+        self.assertEqual(result["status"], "LESSON_REVIEW_NEEDS_FIX")
+        self.assertFalse(result["youtube_upload_authorized"])
