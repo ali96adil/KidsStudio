@@ -7,14 +7,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
-SHA_CHARS = frozenset("0123456789abcdef")
+SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
 def audit_lesson(handoff, *, script_path, lesson_path):
     if not isinstance(handoff, dict):
         raise ValueError("handoff required")
+    if (not isinstance(handoff.get("sha256"), str)
+            or not SHA.fullmatch(handoff["sha256"])):
+        raise ValueError("valid pinned video identity required")
     script = Path(script_path)
     lesson = Path(lesson_path)
     for path in (script, lesson):
@@ -42,7 +46,9 @@ def audit_lesson(handoff, *, script_path, lesson_path):
         reasons.append("source_episode_id_mismatch")
     if doc.get("video_sha256") != handoff.get("sha256"):
         reasons.append("video_sha256_mismatch")
-    if doc.get("script_sha256") != sha:
+    if (not isinstance(doc.get("script_sha256"), str)
+            or not SHA.fullmatch(doc["script_sha256"])
+            or doc["script_sha256"] != sha):
         reasons.append("script_sha256_mismatch")
     if doc.get("language") not in ("ar", "en"):
         reasons.append("language_missing")
