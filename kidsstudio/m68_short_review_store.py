@@ -52,6 +52,18 @@ class ShortReviewStore:
                     or short["source_episode_id"] != receipt.get("source_episode_id")
                     or short["media_sha256"] != receipt.get("video_sha256")):
                 raise ShortReviewStoreError("review does not match staged short")
+            # AI receipts must carry independently recorded six-axis evidence.
+            # Legacy explicit reviews remain valid; this does not claim that
+            # arbitrary reviewer strings are proof of model execution.
+            if receipt.get("ai_review_completed") is True:
+                evidence = receipt.get("ai_evidence")
+                if (receipt.get("ai_evidence_video_sha256") != short["media_sha256"]
+                        or not isinstance(evidence, dict)
+                        or set(evidence) != set(CHECKS)
+                        or any(not isinstance(evidence[k], str)
+                               or not 12 <= len(evidence[k].strip()) <= 2000
+                               for k in CHECKS)):
+                    raise ShortReviewStoreError("AI review evidence missing or mismatched")
             packed = json.dumps(checks, sort_keys=True)
             prior = db.execute(
                 "SELECT * FROM studio_short_reviews WHERE short_id=?",
