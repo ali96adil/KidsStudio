@@ -14,10 +14,20 @@ from .m68_consolidated_review import audit
 def preflight(*, root, handoff_path, vision_path=None, audio_path=None,
               rights_path=None, script_path=None, lesson_path=None,
               lesson_model_path=None):
-    handoff = json.loads(Path(handoff_path).read_text(encoding="utf-8"))
+    def read_json(path):
+        item = Path(path)
+        if (not item.is_absolute() or item.is_symlink()
+                or not item.is_file() or not 1 <= item.stat().st_size <= 200_000):
+            raise ValueError("absolute regular bounded JSON evidence required")
+        data = json.loads(item.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("JSON evidence must be an object")
+        return data
+
+    handoff = read_json(handoff_path)
 
     def read_optional(path):
-        return json.loads(Path(path).read_text(encoding="utf-8")) if path else None
+        return read_json(path) if path else None
 
     report = audit(
         root, handoff,
