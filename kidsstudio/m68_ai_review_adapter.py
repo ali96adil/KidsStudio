@@ -57,5 +57,6 @@ def run_ai_review(root, handoff, *, infer, reviewer_id="kidsstudio-ai-reviewer")
         raise ShortAIReviewError("media hash changed during AI review")
     receipt = review(root, handoff, checks, reviewer_id)
     receipt["ai_evidence"] = observations
+    receipt["ai_evidence_video_sha256"] = actual_sha
     receipt["ai_review_completed"] = True
     return receipt
