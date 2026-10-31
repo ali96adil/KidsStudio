@@ -56,3 +56,22 @@ class ConsolidatedReviewTests(unittest.TestCase):
                 "short_id": "short-001", "video_sha256": "a" * 64,
                 "decision": "PASS", "checks": {axis: True for axis in CHECKS},
                 "review_scope": "LOCAL_VISUAL_SAFETY_ONLY_FOUR_AXES_UNVERIFIED"})
+
+    @patch("kidsstudio.m68_consolidated_review.audit_lesson",
+           return_value={"reasons": [], "pedagogy_independently_verified": False})
+    @patch("kidsstudio.m68_consolidated_review.verify_inventory",
+           return_value={"sha256": "a" * 64})
+    def test_documented_lesson_remains_blocked(self, _verify, _lesson):
+        result = audit("/tmp", self.handoff,
+                       script_path="/tmp/script.txt",
+                       lesson_path="/tmp/lesson.json")
+        self.assertIn("lesson_plan_documented_not_pedagogically_verified",
+                      result["blockers"])
+        self.assertFalse(result["checks"]["pedagogy"])
+        self.assertFalse(result["youtube_upload_authorized"])
+
+    @patch("kidsstudio.m68_consolidated_review.verify_inventory",
+           return_value={"sha256": "a" * 64})
+    def test_partial_lesson_inputs_rejected(self, _verify):
+        with self.assertRaises(ValueError):
+            audit("/tmp", self.handoff, script_path="/tmp/script.txt")
