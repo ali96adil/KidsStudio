@@ -64,3 +64,19 @@ class ShortReviewStoreTests(unittest.TestCase):
         self.receipt["checks"]["visual"] = False
         with self.assertRaises(ShortReviewStoreError):
             self.store.record(self.receipt)
+
+    def test_ai_receipt_requires_complete_hash_bound_evidence(self):
+        self.receipt["ai_review_completed"] = True
+        self.receipt["ai_evidence_video_sha256"] = "a" * 64
+        self.receipt["ai_evidence"] = dict.fromkeys(
+            CHECKS, "Verified in the reviewed media.")
+        result = self.store.record(self.receipt)
+        self.assertEqual(result["decision"], "PASS")
+
+    def test_ai_receipt_with_wrong_evidence_hash_is_rejected(self):
+        self.receipt["ai_review_completed"] = True
+        self.receipt["ai_evidence_video_sha256"] = "b" * 64
+        self.receipt["ai_evidence"] = dict.fromkeys(
+            CHECKS, "Verified in the reviewed media.")
+        with self.assertRaises(ShortReviewStoreError):
+            self.store.record(self.receipt)
