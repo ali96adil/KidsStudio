@@ -80,3 +80,14 @@ class ShortReviewStoreTests(unittest.TestCase):
             CHECKS, "Verified in the reviewed media.")
         with self.assertRaises(ShortReviewStoreError):
             self.store.record(self.receipt)
+
+    def test_ai_evidence_without_completion_is_rejected(self):
+        self.receipt["ai_evidence"] = dict.fromkeys(
+            CHECKS, "Verified in the reviewed media.")
+        with self.assertRaises(ShortReviewStoreError):
+            self.store.record(self.receipt)
+
+    def test_false_ai_completion_marker_is_rejected(self):
+        self.receipt["ai_review_completed"] = False
+        with self.assertRaises(ShortReviewStoreError):
+            self.store.record(self.receipt)
