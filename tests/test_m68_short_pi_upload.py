@@ -126,3 +126,22 @@ class PiShortUploadTests(unittest.TestCase):
         with self.assertRaises(ShortAttemptError):
             upload_short_private(self.queue, **self.kwargs, transport=transport)
         transport.start.assert_not_called()
+
+    def test_preflight_blocks_paused_coordinator_without_attempt(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("UPDATE settings SET paused=1 WHERE slot=1")
+        transport = Mock()
+        with self.assertRaises(ShortAttemptError):
+            upload_short_private(self.queue, **self.kwargs, transport=transport)
+        transport.start.assert_not_called()
+        self.assertIsNone(self.journal.status(short_id="colors-short-01"))
+
+    def test_preflight_blocks_missing_source_binding_without_attempt(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("DELETE FROM studio_short_source_bindings WHERE short_id=?",
+                       ("colors-short-01",))
+        transport = Mock()
+        with self.assertRaises(ShortAttemptError):
+            upload_short_private(self.queue, **self.kwargs, transport=transport)
+        transport.start.assert_not_called()
+        self.assertIsNone(self.journal.status(short_id="colors-short-01"))
