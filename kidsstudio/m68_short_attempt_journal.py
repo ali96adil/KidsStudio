@@ -56,7 +56,8 @@ class ShortAttemptJournal:
                 (short_id,)).fetchone()
             if (not reservation or reservation["series_id"] != series_id
                     or reservation["media_sha256"] != media_sha256
-                    or reservation["state"] != "RESERVED_NO_UPLOAD"):
+                    or reservation["state"] != "RESERVED_NO_UPLOAD"
+                    or not 0 <= self.queue.clock() - reservation["created_at"] < 86400):
                 raise ShortAttemptError("matching quota reservation required")
             # The upload attempt must revalidate policy and QA under the same
             # SQLite write transaction as its durable one-shot journal entry.
