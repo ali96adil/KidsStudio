@@ -79,6 +79,7 @@ class ShortAttemptJournal:
                     or not paused or paused["paused"]
                     or not short or short["state"] != "PI_STAGED_NOT_APPROVED"
                     or short["media_sha256"] != media_sha256
+                    or review["short_id"] != short_id
                     or not review or review["media_sha256"] != media_sha256
                     or review["source_episode_id"] != short["source_episode_id"]
                     or review["decision"] != "PASS"):
