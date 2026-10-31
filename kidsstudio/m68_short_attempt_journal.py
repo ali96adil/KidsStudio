@@ -87,6 +87,8 @@ class ShortAttemptJournal:
             if (not isinstance(checks, dict) or set(checks) != set(CHECKS)
                     or any(checks[k] is not True for k in CHECKS)):
                 raise ShortAttemptError("six-axis QA must pass")
+            from .m68_short_source_binding import verify_current
+            verify_current(db, short_id=short_id, series_id=series_id)
             now = self.queue.clock()
             db.execute("""INSERT INTO studio_short_upload_attempts VALUES
                 (?,?,?,'STARTED_UNCERTAIN',NULL,?,?)""",
