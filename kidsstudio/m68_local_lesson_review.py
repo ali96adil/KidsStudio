@@ -117,6 +117,13 @@ def review_lesson(handoff, *, script_path, lesson_path, first, second):
         "script_sha256": evidence["script_sha256"],
         "model_response_sha256": [sha for _, sha in results],
         "checks": checks,
+        "review_findings": [
+            {"reviewer_model": runner.model, "axis": axis,
+             "decision": answer["checks"][axis]["decision"],
+             "evidence": answer["checks"][axis]["evidence"]}
+            for runner, (answer, _) in zip((first, second), results)
+            for axis in AXES
+        ],
         "model_claims_independently_attested": False,
         "video_script_fidelity_verified": False,
         "youtube_upload_authorized": False,
