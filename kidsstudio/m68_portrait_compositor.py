@@ -42,13 +42,13 @@ def render_portrait(short, manifest, root, output, *, ffmpeg="ffmpeg",
         raise ShortRenderError("beat out of range")
     asset = manifest["assets"][index - 1]
     duration = asset["end"] - asset["start"]
-    if not 4 <= duration <= 45:
+    if type(duration) not in (int, float) or not 4 <= duration <= 45:
         raise ShortRenderError("invalid duration")
     if (short.get("start_seconds"), short.get("end_seconds")) != (asset["start"], asset["end"]):
         raise ShortRenderError("source timing mismatch")
     if short.get("source_asset_keys") != [asset["art"], asset["voice"]]:
         raise ShortRenderError("source references mismatch")
-    binary = shutil.which(ffmpeg)
+    if short.get("render") != {"width": 1080, "height": 1920, "layout": "RECOMPOSE_SOURCE_ASSETS_NOT_CROP_MASTER"}:\n        raise ShortRenderError("unsupported portrait render contract")\n    binary = shutil.which(ffmpeg)
     if not binary:
         raise ShortRenderError("ffmpeg not available")
     animation = asset.get("godot_animation")
