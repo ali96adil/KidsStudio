@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from .m68_short_source_binding import verify_current
-from .youtube_private_upload import file_sha256
+from .youtube_private_upload import file_sha256, CHANNEL
 
 
 def assess(queue, *, short_id, series_id, media_path):
@@ -43,7 +43,7 @@ def assess(queue, *, short_id, series_id, media_path):
         if policy and policy["state"] == "ENABLED":
             try:
                 channel = policy["channel_id"]
-                if not isinstance(channel, str) or not channel.startswith("UC"):
+                if not isinstance(channel, str) or not CHANNEL.fullmatch(channel):
                     reasons.append("OWNER_CHANNEL_INVALID")
             except (KeyError, IndexError):
                 reasons.append("OWNER_CHANNEL_MISSING")
