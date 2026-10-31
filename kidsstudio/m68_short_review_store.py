@@ -27,6 +27,7 @@ class ShortReviewStore:
                 reviewer TEXT NOT NULL,
                 checks_json TEXT NOT NULL,
                 created_at REAL NOT NULL,
+                ai_evidence_json TEXT,
                 FOREIGN KEY(short_id) REFERENCES studio_derived_shorts(short_id)
             )""")
 
@@ -69,6 +70,8 @@ class ShortReviewStore:
             if receipt.get("ai_evidence") is not None and receipt.get("ai_review_completed") is not True:
                 raise ShortReviewStoreError("unverified AI evidence marker")
             packed = json.dumps(checks, sort_keys=True)
+            evidence_packed = (json.dumps(receipt["ai_evidence"], sort_keys=True)
+                               if receipt.get("ai_review_completed") is True else None)
             prior = db.execute(
                 "SELECT * FROM studio_short_reviews WHERE short_id=?",
                 (receipt["short_id"],)).fetchone()
@@ -77,15 +80,16 @@ class ShortReviewStore:
                         or prior["media_sha256"] != short["media_sha256"]
                         or prior["decision"] != receipt["decision"]
                         or prior["reviewer"] != receipt["reviewer"]
-                        or prior["checks_json"] != packed):
+                        or prior["checks_json"] != packed
+                        or prior["ai_evidence_json"] != evidence_packed):
                     raise ShortReviewStoreError("review already recorded; cannot overwrite")
                 return self._report(prior)
             db.execute("""INSERT INTO studio_short_reviews
                 (short_id,source_episode_id,media_sha256,decision,
-                 reviewer,checks_json,created_at) VALUES (?,?,?,?,?,?,?)""",
+                 reviewer,checks_json,created_at,ai_evidence_json) VALUES (?,?,?,?,?,?,?,?)""",
                 (short["short_id"], short["source_episode_id"],
                  short["media_sha256"], receipt["decision"],
-                 receipt["reviewer"], packed, self.queue.clock()))
+                 receipt["reviewer"], packed, self.queue.clock(), evidence_packed))
             return self._report(db.execute(
                 "SELECT * FROM studio_short_reviews WHERE short_id=?",
                 (receipt["short_id"],)).fetchone())
@@ -98,6 +102,8 @@ class ShortReviewStore:
             "media_sha256": row["media_sha256"],
             "decision": row["decision"],
             "reviewer": row["reviewer"],
+            "ai_evidence": (json.loads(row["ai_evidence_json"])
+                            if row["ai_evidence_json"] else None),
             "status": "SHORT_CONTENT_REVIEW_RECORDED_NOT_UPLOAD_APPROVED",
             "youtube_upload_authorized": False,
             "public_release_authorized": False,
