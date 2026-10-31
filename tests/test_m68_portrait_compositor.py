@@ -18,7 +18,9 @@ class PortraitTests(unittest.TestCase):
                       "source_beats": [1], "source_asset_keys": ["art.png", "voice.wav"],
                       "start_seconds": 0, "end_seconds": 10,
                       "youtube_visibility": "PRIVATE_ONLY",
-                      "public_release_authorized": False,\n                      "render": {"width": 1080, "height": 1920,\n                                 "layout": "RECOMPOSE_SOURCE_ASSETS_NOT_CROP_MASTER"}}
+                      "public_release_authorized": False,
+                      "render": {"width": 1080, "height": 1920,
+                                 "layout": "RECOMPOSE_SOURCE_ASSETS_NOT_CROP_MASTER"}}
 
     def tearDown(self):
         self.temp.cleanup()
