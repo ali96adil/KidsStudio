@@ -33,6 +33,9 @@ class ConsolidatedReviewTests(unittest.TestCase):
         checks = {axis: axis in ("visual", "age_appropriate") for axis in CHECKS}
         receipt = {
             "short_id": "short-001", "video_sha256": "a" * 64,
+            "source_episode_id": "episode-001",
+            "local_model_response_sha256": "b" * 64,
+            "independent_reviewers": 1,
             "decision": "REJECT",
             "review_scope": "LOCAL_VISUAL_SAFETY_ONLY_FOUR_AXES_UNVERIFIED",
             "checks": checks,
