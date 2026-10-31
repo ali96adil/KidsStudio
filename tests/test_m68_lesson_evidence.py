@@ -46,3 +46,9 @@ class LessonEvidenceTests(unittest.TestCase):
             result = audit_lesson({"short_id": "short1"}, script_path=script,
                                   lesson_path=lesson)
             self.assertIn("learning_objective_missing", result["reasons"])
+
+    def test_unpinned_video_identity_rejected(self):
+        with self.assertRaises(ValueError):
+            audit_lesson({"short_id": "short1", "sha256": "untrusted"},
+                         script_path="/tmp/not-present",
+                         lesson_path="/tmp/not-present")
