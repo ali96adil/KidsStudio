@@ -32,6 +32,29 @@ class ShortQuotaReservations:
                 state TEXT NOT NULL CHECK(state='RESERVED_NO_UPLOAD')
             )""")
 
+    def release_unused(self, *, short_id, series_id, media_sha256):
+        """Release an unused slot only; an upload attempt must use a separate journal."""
+        if (not isinstance(short_id, str) or not IDENT.fullmatch(short_id)
+                or not isinstance(series_id, str) or not IDENT.fullmatch(series_id)
+                or not isinstance(media_sha256, str) or not SHA.fullmatch(media_sha256)):
+            raise ShortQuotaError("exact reservation identity required")
+        with self.queue._connection(write=True) as db:
+            row = db.execute(
+                "SELECT * FROM studio_short_quota_reservations WHERE short_id=?",
+                (short_id,)).fetchone()
+            if (not row or row["series_id"] != series_id
+                    or row["media_sha256"] != media_sha256):
+                raise ShortQuotaError("reservation not found or identity mismatch")
+            if row["state"] != "RESERVED_NO_UPLOAD":
+                raise ShortQuotaError("only unused reservations can be released")
+            # This table never records an upload attempt. Operators must not use
+            # release after an upload attempt has started.
+            db.execute("DELETE FROM studio_short_quota_reservations WHERE short_id=?",
+                       (short_id,))
+        return {"status": "SHORT_UNUSED_RESERVATION_RELEASED_NO_UPLOAD",
+                "short_id": short_id, "youtube_upload_authorized": False,
+                "public_release_authorized": False}
+
     def reserve(self, *, short_id, series_id, media_sha256):
         if (not isinstance(short_id, str) or not IDENT.fullmatch(short_id)
                 or not isinstance(series_id, str) or not IDENT.fullmatch(series_id)
