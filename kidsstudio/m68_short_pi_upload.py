@@ -51,7 +51,8 @@ def upload_short_private(queue, *, short_id, series_id, media_sha256,
             (short_id,)).fetchone()
         if (not short or short["state"] != "PI_STAGED_NOT_APPROVED"
                 or short["media_sha256"] != media_sha256
-                or not review or review["media_sha256"] != media_sha256
+                or not review or review["short_id"] != short_id
+                or review["media_sha256"] != media_sha256
                 or review["source_episode_id"] != short["source_episode_id"]
                 or review["decision"] != "PASS"):
             raise ShortAttemptError("staged short and matching approved QA required")
