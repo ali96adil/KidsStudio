@@ -11,6 +11,7 @@ from pathlib import Path
 from .m68_lesson_auto_cycle import run_cycle
 from .m68_local_lesson_review import OllamaLesson
 from .m68_local_script_rewriter import OllamaScriptRewriter
+from .m68_educational_dashboard_store import record_cycle
 
 
 def main(argv=None):
@@ -26,6 +27,8 @@ def main(argv=None):
     parser.add_argument("--rewriter-endpoint", required=True)
     parser.add_argument("--rewriter-model", required=True)
     parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--series-id", default=None)
+    parser.add_argument("--dashboard-records", type=Path, default=None)
     args = parser.parse_args(argv)
     try:
         if (not args.handoff.is_absolute() or args.handoff.is_symlink()
@@ -39,6 +42,8 @@ def main(argv=None):
         second = OllamaLesson(args.second_endpoint, args.second_model)
         rewriter = OllamaScriptRewriter(args.rewriter_endpoint,
                                        args.rewriter_model)
+        if (args.dashboard_records is None) != (args.series_id is None):
+            raise ValueError("series-id and dashboard-records must be supplied together")
         result = run_cycle(
             handoff, script_path=args.script, lesson_path=args.lesson_plan,
             output_dir=args.output_dir, first=first, second=second,
@@ -49,6 +54,17 @@ def main(argv=None):
                           "youtube_upload_authorized": False,
                           "public_release_authorized": False}))
         return 2
+    if args.dashboard_records is not None:
+        try:
+            result["dashboard_record"] = record_cycle(
+                args.dashboard_records, series_id=args.series_id,
+                handoff=handoff, cycle=result)
+        except (ValueError, OSError, UnicodeError, KeyError, TypeError) as exc:
+            print(json.dumps({"status": "LESSON_DASHBOARD_RECORD_FAILED",
+                              "error": str(exc),
+                              "youtube_upload_authorized": False,
+                              "public_release_authorized": False}))
+            return 2
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] == "LESSON_MODEL_PASS_NOT_VIDEO_APPROVAL" else 2
 
