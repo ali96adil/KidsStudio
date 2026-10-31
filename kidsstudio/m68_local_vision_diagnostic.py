@@ -48,7 +48,10 @@ def run_vision_diagnostic(root, handoff, *, mp4, script, ffmpeg, ffprobe,
             out_dir=directory, frames=frames)
         manifest = json.loads(Path(capture["frames_manifest_file"]).read_text(encoding="utf-8"))
         images = [Path(item["file"]).read_bytes() for item in manifest["frames"]]
+        model_result = None
+        model_response_sha = None
         def infer(*, axis, root, handoff):
+            nonlocal model_result, model_response_sha
             if axis in UNOBSERVABLE:
                 passed, evidence = False, UNOBSERVABLE[axis]
             else:
@@ -58,10 +61,13 @@ def run_vision_diagnostic(root, handoff, *, mp4, script, ffmpeg, ffprobe,
                     "absence of unsafe visual content. Never claim audio, "
                     "copyright, educational correctness or script fidelity. "
                     "If uncertain, return UNSURE.")
-                answer, _ = vision.run(
-                    role="visual_child_safety", script=source_text,
-                    images=images, objective=objective)
-                results = answer["checks"]
+                if model_result is None:
+                    model_result, model_response_sha = vision.run(
+                        role="visual_child_safety", script=source_text,
+                        images=images, objective=objective)
+                results = model_result["checks"]
+                # The existing model's three visual-safety criteria jointly
+                # support both axes; they are NOT independent reviewers.
                 passed = all(item["decision"] == "PASS" for item in results.values())
                 evidence = " ".join(item["evidence"] for item in results.values())
                 if len(evidence) > 2000:
@@ -74,7 +80,7 @@ def run_vision_diagnostic(root, handoff, *, mp4, script, ffmpeg, ffprobe,
                                 reviewer_id="kidsstudio-ai-vision-diagnostic")
     if receipt["decision"] != "REJECT" or any(receipt["checks"][axis] for axis in UNOBSERVABLE):
         raise ValueError("vision-only review must not certify audio or rights")
-    receipt["review_scope"] = "REAL_LOCAL_VISION_ONLY_AUDIO_AND_RIGHTS_UNVERIFIED"
+    receipt["review_scope"] = "LOCAL_VISUAL_SAFETY_ONLY_FOUR_AXES_UNVERIFIED"\n    receipt["local_model_response_sha256"] = model_response_sha\n    receipt["independent_reviewers"] = 1
     return receipt
 
 
