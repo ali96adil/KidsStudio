@@ -145,3 +145,21 @@ class PiShortUploadTests(unittest.TestCase):
             upload_short_private(self.queue, **self.kwargs, transport=transport)
         transport.start.assert_not_called()
         self.assertIsNone(self.journal.status(short_id="colors-short-01"))
+
+    def test_media_mutated_after_journal_before_google_is_quarantined(self):
+        from unittest.mock import patch
+        import kidsstudio.m68_short_pi_upload as module
+        original = module.file_sha256
+        calls = [0]
+        def changing_hash(path):
+            calls[0] += 1
+            if calls[0] == 3:
+                self.media.write_bytes(b"z" * 1200)
+            return original(path)
+        transport = Mock()
+        with patch.object(module, "file_sha256", side_effect=changing_hash):
+            with self.assertRaises(ShortAttemptError):
+                upload_short_private(self.queue, **self.kwargs, transport=transport)
+        transport.start.assert_not_called()
+        self.assertEqual(self.journal.status(short_id="colors-short-01")["status"],
+                         "MANUAL_RECONCILIATION")
