@@ -153,7 +153,7 @@ class PiShortUploadTests(unittest.TestCase):
         calls = [0]
         def changing_hash(path):
             calls[0] += 1
-            if calls[0] == 3:
+            if calls[0] == 2:
                 self.media.write_bytes(b"z" * 1200)
             return original(path)
         transport = Mock()
