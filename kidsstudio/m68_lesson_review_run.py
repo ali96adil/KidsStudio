@@ -65,8 +65,16 @@ def main(argv=None):
                           "public_release_authorized": False}))
         return 2
     if result["review"] is not None:
-        args.output.write_text(json.dumps(result["review"], ensure_ascii=False,
-                                          indent=2) + "\n", encoding="utf-8")
+        try:
+            with args.output.open("x", encoding="utf-8") as handle:
+                json.dump(result["review"], handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+        except OSError as exc:
+            print(json.dumps({"status": "LESSON_REVIEW_OUTPUT_FAILED",
+                              "error": str(exc),
+                              "youtube_upload_authorized": False,
+                              "public_release_authorized": False}))
+            return 2
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["review"] is not None else 2
 
