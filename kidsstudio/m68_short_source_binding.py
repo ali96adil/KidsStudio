@@ -74,3 +74,23 @@ def bind(queue, *, short_id, series_id, source_episode_id, source_ordinal,
             "short_id": short_id, "series_id": series_id,
             "source_master_sha256": source_master_sha256,
             "youtube_upload_authorized": False}
+
+def verify_current(db, *, short_id, series_id):
+    """Fail closed if source approval or render job changed since binding."""
+    row = db.execute("""SELECT b.*,e.state AS episode_state,
+        e.render_job_id AS current_render_job,j.state AS job_state,
+        j.kind AS job_kind,s.source_episode_id AS current_source_id
+        FROM studio_short_source_bindings b
+        JOIN studio_episodes e ON e.series_id=b.series_id
+            AND e.ordinal=b.source_ordinal
+        JOIN jobs j ON j.job_id=b.source_render_job_id
+        JOIN studio_derived_shorts s ON s.short_id=b.short_id
+        WHERE b.short_id=? AND b.series_id=?""",
+        (short_id, series_id)).fetchone()
+    if (not row or row["episode_state"] != "EPISODE_APPROVED"
+            or row["current_render_job"] != row["source_render_job_id"]
+            or row["current_source_id"] != row["source_episode_id"]
+            or row["job_state"] != "COMPLETED"
+            or row["job_kind"] not in ("episode_assemble", "godot_render")):
+        raise ShortAttemptError("current approved source provenance required")
+    return row["source_master_sha256"]
