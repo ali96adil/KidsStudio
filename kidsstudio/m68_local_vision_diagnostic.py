@@ -29,6 +29,8 @@ UNOBSERVABLE = {
 
 def run_vision_diagnostic(root, handoff, *, mp4, script, ffmpeg, ffprobe,
                           endpoint, model, frames=5):
+    if type(frames) is not int or not 3 <= frames <= 12:
+        raise ValueError("3 to 12 real decoded frames required")
     root = Path(root)
     mp4 = Path(mp4)
     script = Path(script)
@@ -47,7 +49,17 @@ def run_vision_diagnostic(root, handoff, *, mp4, script, ffmpeg, ffprobe,
             ffprobe_binary=ffprobe, ffmpeg_binary=ffmpeg,
             out_dir=directory, frames=frames)
         manifest = json.loads(Path(capture["frames_manifest_file"]).read_text(encoding="utf-8"))
-        images = [Path(item["file"]).read_bytes() for item in manifest["frames"]]
+        if (manifest.get("a2v_sha256") != verified
+                or not isinstance(manifest.get("frames"), list)
+                or len(manifest["frames"]) != frames):
+            raise ValueError("captured frame manifest mismatched source video")
+        images = []
+        for item in manifest["frames"]:
+            frame = Path(item["file"])
+            if (not frame.is_file() or frame.is_symlink()
+                    or digest(frame) != item.get("sha256")):
+                raise ValueError("captured frame hash mismatch")
+            images.append(frame.read_bytes())
         model_result = None
         model_response_sha = None
         def infer(*, axis, root, handoff):
