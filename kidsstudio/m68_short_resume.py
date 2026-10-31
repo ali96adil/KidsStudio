@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from .m67_master_handoff import verify_inventory
+from .m68_short_content_review import CHECKS
 from .m67_pi_transfer_resume import transfer_resumable
 
 
@@ -29,6 +30,16 @@ def resume_short(root, manifest, qa_receipt, *, host, user, remote_dir,
             or qa_receipt.get("short_id") != manifest.get("short_id")
             or qa_receipt.get("source_episode_id") != manifest.get("source_episode_id")):
         raise ShortResumeError("matching content QA PASS required")
+    checks = qa_receipt.get("checks")
+    if (qa_receipt.get("status") != "SHORT_CONTENT_QA_RECORDED"
+            or not isinstance(checks, dict)
+            or set(checks) != set(CHECKS)
+            or any(checks[key] is not True for key in CHECKS)
+            or not isinstance(qa_receipt.get("reviewer"), str)
+            or not 3 <= len(qa_receipt["reviewer"].strip()) <= 100
+            or qa_receipt.get("youtube_upload_authorized") is not False
+            or qa_receipt.get("public_release_authorized") is not False):
+        raise ShortResumeError("complete private six-axis content QA required")
     digest = verify_inventory(root, manifest)["sha256"]
     if qa_receipt.get("video_sha256") != digest:
         raise ShortResumeError("QA receipt MP4 digest mismatch")
