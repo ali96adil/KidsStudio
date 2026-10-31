@@ -40,6 +40,30 @@ def upload_short_private(queue, *, short_id, series_id, media_sha256,
                 or bool(policy["allowed_made_for_kids"]) != made_for_kids
                 or bool(policy["allowed_synthetic_media"]) != contains_synthetic_media):
             raise ShortAttemptError("current owner private policy mismatch")
+    # Revalidate staged identity and six-axis QA immediately before the one-shot
+    # journal write. A quota reservation alone is never editorial approval.
+    with queue._connection() as db:
+        short = db.execute(
+            "SELECT * FROM studio_derived_shorts WHERE short_id=?",
+            (short_id,)).fetchone()
+        review = db.execute(
+            "SELECT * FROM studio_short_reviews WHERE short_id=?",
+            (short_id,)).fetchone()
+        if (not short or short["state"] != "PI_STAGED_NOT_APPROVED"
+                or short["media_sha256"] != media_sha256
+                or not review or review["media_sha256"] != media_sha256
+                or review["source_episode_id"] != short["source_episode_id"]
+                or review["decision"] != "PASS"):
+            raise ShortAttemptError("staged short and matching approved QA required")
+        import json
+        from .m68_short_content_review import CHECKS
+        try:
+            checks = json.loads(review["checks_json"])
+        except (TypeError, ValueError) as exc:
+            raise ShortAttemptError("invalid persisted QA") from exc
+        if (not isinstance(checks, dict) or set(checks) != set(CHECKS)
+                or any(checks[key] is not True for key in CHECKS)):
+            raise ShortAttemptError("six independent QA checks must pass")
     journal = ShortAttemptJournal(queue)
     journal.begin(short_id=short_id, series_id=series_id, media_sha256=media_sha256)
     transport = transport if transport is not None else GoogleYouTubeTransport()
