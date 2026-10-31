@@ -51,6 +51,22 @@ class PiShortUploadTests(unittest.TestCase):
             db.execute("""INSERT INTO studio_short_reviews VALUES(
                 'colors-short-01','colors-ep-01',?,'PASS',?)""",
                 (self.sha, json.dumps(dict.fromkeys(CHECKS, True))))
+        from kidsstudio.m68_short_source_binding import initialize as init_source, bind
+        init_source(self.queue)
+        with self.queue._connection(write=True) as db:
+            db.execute("""CREATE TABLE studio_episodes(
+                series_id TEXT,ordinal INTEGER,state TEXT,render_job_id TEXT,
+                PRIMARY KEY(series_id,ordinal))""")
+            db.execute("""INSERT INTO studio_episodes
+                VALUES('colors',1,'EPISODE_APPROVED',?)""", ("a" * 32,))
+            db.execute("""INSERT INTO jobs(job_id,request_key,kind,payload,state,
+                max_attempts,available_at,created_at,updated_at)
+                VALUES (?,?,?,?,?,1,?,?,?)""",
+                ("a" * 32, "source-render", "episode_assemble", "{}", "COMPLETED",
+                 0, 0, 0))
+        bind(self.queue, short_id="colors-short-01", series_id="colors",
+             source_episode_id="colors-ep-01", source_ordinal=1,
+             source_render_job_id="a" * 32, source_master_sha256="c" * 64)
         self.kwargs = dict(short_id="colors-short-01", series_id="colors",
                            media_sha256=self.sha, media_path=self.media,
                            channel_id=self.channel, title="Learn colors",
