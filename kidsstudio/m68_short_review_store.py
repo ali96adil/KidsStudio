@@ -64,6 +64,10 @@ class ShortReviewStore:
                                or not 12 <= len(evidence[k].strip()) <= 2000
                                for k in CHECKS)):
                     raise ShortReviewStoreError("AI review evidence missing or mismatched")
+            if receipt.get("ai_review_completed") not in (None, True):
+                raise ShortReviewStoreError("invalid AI completion marker")
+            if receipt.get("ai_evidence") is not None and receipt.get("ai_review_completed") is not True:
+                raise ShortReviewStoreError("unverified AI evidence marker")
             packed = json.dumps(checks, sort_keys=True)
             prior = db.execute(
                 "SELECT * FROM studio_short_reviews WHERE short_id=?",
