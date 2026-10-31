@@ -1,5 +1,5 @@
 """M68 read-only preflight regression tests."""
-from tests.test_m68_short_pi_upload import PiShortUploadTests
+from test_m68_short_pi_upload import PiShortUploadTests
 from kidsstudio.m68_pi_preflight import assess
 
 
