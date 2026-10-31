@@ -54,6 +54,39 @@ class ShortAttemptJournal:
                     or reservation["media_sha256"] != media_sha256
                     or reservation["state"] != "RESERVED_NO_UPLOAD"):
                 raise ShortAttemptError("matching quota reservation required")
+            # The upload attempt must revalidate policy and QA under the same
+            # SQLite write transaction as its durable one-shot journal entry.
+            policy = db.execute(
+                "SELECT state FROM studio_youtube_private_policies WHERE series_id=?",
+                (series_id,)).fetchone()
+            series = db.execute(
+                "SELECT state FROM studio_series WHERE series_id=?",
+                (series_id,)).fetchone()
+            paused = db.execute("SELECT paused FROM settings WHERE slot=1").fetchone()
+            short = db.execute(
+                "SELECT * FROM studio_derived_shorts WHERE short_id=?",
+                (short_id,)).fetchone()
+            review = db.execute(
+                "SELECT * FROM studio_short_reviews WHERE short_id=?",
+                (short_id,)).fetchone()
+            if (not policy or policy["state"] != "ENABLED"
+                    or not series or series["state"] != "ACTIVE"
+                    or not paused or paused["paused"]
+                    or not short or short["state"] != "PI_STAGED_NOT_APPROVED"
+                    or short["media_sha256"] != media_sha256
+                    or not review or review["media_sha256"] != media_sha256
+                    or review["source_episode_id"] != short["source_episode_id"]
+                    or review["decision"] != "PASS"):
+                raise ShortAttemptError("current owner policy, staging and QA required")
+            import json
+            from .m68_short_content_review import CHECKS
+            try:
+                checks = json.loads(review["checks_json"])
+            except (TypeError, ValueError) as exc:
+                raise ShortAttemptError("invalid persisted review") from exc
+            if (not isinstance(checks, dict) or set(checks) != set(CHECKS)
+                    or any(checks[k] is not True for k in CHECKS)):
+                raise ShortAttemptError("six-axis QA must pass")
             now = self.queue.clock()
             db.execute("""INSERT INTO studio_short_upload_attempts VALUES
                 (?,?,?,'STARTED_UNCERTAIN',NULL,?,?)""",
