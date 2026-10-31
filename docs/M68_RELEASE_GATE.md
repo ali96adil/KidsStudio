@@ -140,3 +140,14 @@ the asset rights inventory and reports missing pedagogy, audio, copyright,
 and script-consistency evidence. It **always returns a blocked status and
 exit code 2** until a separate independent six-axis review system is
 implemented and qualified. It never stages or uploads media.
+
+## Optional audio evidence diagnostic
+
+The consolidated diagnostic accepts `--audio-receipt /absolute/private/audio.json`.
+The receipt must bind `short_id`, `source_episode_id`, and `video_sha256`,
+declare actual MP4 audio observation, include an audio SHA, two distinct
+model hashes and bounded evidence. This is **a claim-format validator**,
+not proof that those model runners executed: the current bridge does not
+execute or attest them. Even a claimed PASS leaves the consolidated audio
+axis blocked and cannot authorize YouTube upload. Qualification must use
+the existing pinned local audio/AV runners with verifiable source receipts.
