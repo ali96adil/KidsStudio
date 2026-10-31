@@ -47,8 +47,13 @@ class ShortQuotaReservations:
                 raise ShortQuotaError("reservation not found or identity mismatch")
             if row["state"] != "RESERVED_NO_UPLOAD":
                 raise ShortQuotaError("only unused reservations can be released")
-            # This table never records an upload attempt. Operators must not use
-            # release after an upload attempt has started.
+            # An attempt is permanent evidence even if the external API timed out.
+            has_journal = db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='studio_short_upload_attempts'""").fetchone()
+            if has_journal and db.execute(
+                "SELECT 1 FROM studio_short_upload_attempts WHERE short_id=?",
+                (short_id,)).fetchone():
+                raise ShortQuotaError("upload attempt exists; reservation cannot be released")
             db.execute("DELETE FROM studio_short_quota_reservations WHERE short_id=?",
                        (short_id,))
         return {"status": "SHORT_UNUSED_RESERVATION_RELEASED_NO_UPLOAD",
