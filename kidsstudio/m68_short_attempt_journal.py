@@ -76,6 +76,26 @@ class ShortAttemptJournal:
                 "SELECT * FROM studio_short_upload_attempts WHERE short_id=?",
                 (short_id,)).fetchone())
 
+    def record_upload_result(self, *, short_id, series_id, media_sha256, video_id):
+        """Record video ID returned by this attempt's upload response only."""
+        if not isinstance(video_id, str) or not VIDEO.fullmatch(video_id):
+            raise ShortAttemptError("valid YouTube response video ID required")
+        with self.queue._connection(write=True) as db:
+            row = db.execute(
+                "SELECT * FROM studio_short_upload_attempts WHERE short_id=?",
+                (short_id,)).fetchone()
+            if (not row or row["series_id"] != series_id
+                    or row["media_sha256"] != media_sha256
+                    or row["state"] != "STARTED_UNCERTAIN"
+                    or row["video_id"] is not None):
+                raise ShortAttemptError("matching fresh unresolved attempt required")
+            db.execute("""UPDATE studio_short_upload_attempts
+                SET video_id=?,updated_at=? WHERE short_id=?""",
+                (video_id, self.queue.clock(), short_id))
+            return self._result(db.execute(
+                "SELECT * FROM studio_short_upload_attempts WHERE short_id=?",
+                (short_id,)).fetchone())
+
     def verify_private(self, *, short_id, series_id, media_sha256,
                        video_id, channel_id, token, transport=None):
         """Authenticated YouTube GET only; never initiates or retries upload."""
@@ -91,7 +111,8 @@ class ShortAttemptJournal:
             if (not row or row["series_id"] != series_id
                     or row["media_sha256"] != media_sha256
                     or row["state"] not in ("STARTED_UNCERTAIN",
-                                           "MANUAL_RECONCILIATION")):
+                                           "MANUAL_RECONCILIATION")
+                    or row["video_id"] != video_id):
                 raise ShortAttemptError("matching unresolved attempt required")
             policy = db.execute(
                 "SELECT channel_id,state FROM studio_youtube_private_policies WHERE series_id=?",
@@ -121,6 +142,7 @@ class ShortAttemptJournal:
                     or row["media_sha256"] != media_sha256
                     or row["state"] not in ("STARTED_UNCERTAIN",
                                            "MANUAL_RECONCILIATION")
+                    or row["video_id"] != video_id
                     or not policy or policy["state"] != "ENABLED"
                     or policy["channel_id"] != channel_id):
                 raise ShortAttemptError("attempt or owner policy changed during verification")
