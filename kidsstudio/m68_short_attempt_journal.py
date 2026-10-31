@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import re
 
+from .youtube_private_upload import VIDEO, CHANNEL
+
 
 class ShortAttemptError(ValueError):
     pass
@@ -74,6 +76,61 @@ class ShortAttemptJournal:
                 "SELECT * FROM studio_short_upload_attempts WHERE short_id=?",
                 (short_id,)).fetchone())
 
+    def verify_private(self, *, short_id, series_id, media_sha256,
+                       video_id, channel_id, token, transport=None):
+        """Authenticated YouTube GET only; never initiates or retries upload."""
+        if (not isinstance(video_id, str) or not VIDEO.fullmatch(video_id)
+                or not isinstance(channel_id, str) or not CHANNEL.fullmatch(channel_id)
+                or not isinstance(token, str) or len(token) < 30
+                or any(ch.isspace() for ch in token)):
+            raise ShortAttemptError("exact YouTube identity and fresh token required")
+        with self.queue._connection() as db:
+            row = db.execute(
+                "SELECT * FROM studio_short_upload_attempts WHERE short_id=?",
+                (short_id,)).fetchone()
+            if (not row or row["series_id"] != series_id
+                    or row["media_sha256"] != media_sha256
+                    or row["state"] not in ("STARTED_UNCERTAIN",
+                                           "MANUAL_RECONCILIATION")):
+                raise ShortAttemptError("matching unresolved attempt required")
+            policy = db.execute(
+                "SELECT channel_id,state FROM studio_youtube_private_policies WHERE series_id=?",
+                (series_id,)).fetchone()
+            if (not policy or policy["state"] != "ENABLED"
+                    or policy["channel_id"] != channel_id):
+                raise ShortAttemptError("current owner channel policy required")
+        if transport is None:
+            from .youtube_private_upload import GoogleYouTubeTransport
+            transport = GoogleYouTubeTransport()
+        proof = transport.verify(token, video_id, channel_id)
+        if (not isinstance(proof, dict)
+                or proof.get("video_id") != video_id
+                or proof.get("channel_id") != channel_id
+                or proof.get("privacy_status") != "private"
+                or proof.get("verified_using_authenticated_youtube_api") is not True
+                or proof.get("processing_status") != "succeeded"):
+            raise ShortAttemptError("authenticated private processing proof required")
+        with self.queue._connection(write=True) as db:
+            row = db.execute(
+                "SELECT * FROM studio_short_upload_attempts WHERE short_id=?",
+                (short_id,)).fetchone()
+            policy = db.execute(
+                "SELECT channel_id,state FROM studio_youtube_private_policies WHERE series_id=?",
+                (series_id,)).fetchone()
+            if (not row or row["series_id"] != series_id
+                    or row["media_sha256"] != media_sha256
+                    or row["state"] not in ("STARTED_UNCERTAIN",
+                                           "MANUAL_RECONCILIATION")
+                    or not policy or policy["state"] != "ENABLED"
+                    or policy["channel_id"] != channel_id):
+                raise ShortAttemptError("attempt or owner policy changed during verification")
+            db.execute("""UPDATE studio_short_upload_attempts
+                SET state='PRIVATE_VERIFIED',video_id=?,updated_at=?
+                WHERE short_id=?""", (video_id, self.queue.clock(), short_id))
+            return self._result(db.execute(
+                "SELECT * FROM studio_short_upload_attempts WHERE short_id=?",
+                (short_id,)).fetchone())
+
     def status(self, *, short_id):
         with self.queue._connection() as db:
             row = db.execute(
@@ -88,6 +145,7 @@ class ShortAttemptJournal:
             "series_id": row["series_id"],
             "media_sha256": row["media_sha256"],
             "status": row["state"],
+            "video_id": row["video_id"],
             "youtube_upload_authorized": False,
             "public_release_authorized": False,
         }
