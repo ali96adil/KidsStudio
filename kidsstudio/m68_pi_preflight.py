@@ -52,7 +52,8 @@ def assess(queue, *, short_id, series_id, media_path):
         if not paused or paused["paused"]:
             reasons.append("COORDINATOR_PAUSED")
         if not short or not review or (
-                review["source_episode_id"] != short["source_episode_id"]
+                review["short_id"] != short_id
+                or review["source_episode_id"] != short["source_episode_id"]
                 or review["media_sha256"] != short["media_sha256"]
                 or review["decision"] != "PASS"):
             reasons.append("CONTENT_REVIEW_NOT_APPROVED")
