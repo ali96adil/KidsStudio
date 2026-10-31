@@ -14,9 +14,10 @@ from .m67_master_handoff import verify_inventory
 from .m68_rights_inventory import audit as audit_rights
 from .m68_short_content_review import CHECKS
 from .m68_audio_evidence_bridge import audit_audio_receipt
+from .m68_lesson_evidence import audit_lesson
 
 
-def audit(root, handoff, *, vision_receipt=None, rights_manifest=None, audio_receipt=None):
+def audit(root, handoff, *, vision_receipt=None, rights_manifest=None, audio_receipt=None, script_path=None, lesson_path=None):
     if (not isinstance(handoff, dict)
             or handoff.get("status") != "SHORT_HASH_PINNED_CONTENT_QA_PENDING"
             or handoff.get("short_id") != handoff.get("episode_id")
@@ -68,6 +69,17 @@ def audit(root, handoff, *, vision_receipt=None, rights_manifest=None, audio_rec
     else:
         audio = audit_audio_receipt(handoff, audio_receipt)
         blockers.append("audio_model_claim_not_independently_attested")
+    if (script_path is None) != (lesson_path is None):
+        raise ValueError("script and lesson plan must be supplied together")
+    lesson = None
+    if script_path is not None:
+        lesson = audit_lesson(handoff, script_path=script_path, lesson_path=lesson_path)
+        if lesson["reasons"]:
+            blockers.append("lesson_plan_incomplete_or_mismatched")
+        else:
+            blockers.append("lesson_plan_documented_not_pedagogically_verified")
+    else:
+        blockers.append("lesson_plan_missing")
     for axis in ("pedagogy", "copyright", "source_consistency"):
         blockers.append(axis + "_independent_review_missing")
     return {
@@ -78,6 +90,7 @@ def audit(root, handoff, *, vision_receipt=None, rights_manifest=None, audio_rec
         "blockers": blockers,
         "rights_inventory": rights,
         "audio_evidence": audio,
+        "lesson_evidence": lesson,
         "youtube_upload_authorized": False,
         "public_release_authorized": False,
     }
@@ -90,6 +103,8 @@ def main(argv=None):
     parser.add_argument("--vision-receipt", type=Path)
     parser.add_argument("--rights-manifest", type=Path)
     parser.add_argument("--audio-receipt", type=Path)
+    parser.add_argument("--script", type=Path)
+    parser.add_argument("--lesson-plan", type=Path)
     args = parser.parse_args(argv)
     handoff = json.loads(args.handoff.read_text(encoding="utf-8"))
     vision = (json.loads(args.vision_receipt.read_text(encoding="utf-8"))
@@ -97,7 +112,8 @@ def main(argv=None):
     audio = (json.loads(args.audio_receipt.read_text(encoding="utf-8"))
              if args.audio_receipt else None)
     result = audit(args.root, handoff, vision_receipt=vision,
-                   rights_manifest=args.rights_manifest, audio_receipt=audio)
+                   rights_manifest=args.rights_manifest, audio_receipt=audio,
+                   script_path=args.script, lesson_path=args.lesson_plan)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 2
 
