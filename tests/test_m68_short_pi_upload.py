@@ -28,6 +28,8 @@ class PiShortUploadTests(unittest.TestCase):
         self.journal.initialize()
         self.channel = "UC1234567890123456789012"
         with self.queue._connection(write=True) as db:
+            db.execute("CREATE TABLE studio_series(series_id TEXT PRIMARY KEY,state TEXT)")
+            db.execute("INSERT INTO studio_series VALUES('colors','ACTIVE')")
             db.execute("""CREATE TABLE studio_youtube_private_policies(
                 series_id TEXT PRIMARY KEY,state TEXT,channel_id TEXT,
                 allowed_made_for_kids INTEGER,allowed_synthetic_media INTEGER)""")
