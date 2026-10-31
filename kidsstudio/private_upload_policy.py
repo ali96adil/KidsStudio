@@ -186,6 +186,15 @@ class PrivateUploadPolicy:
                       ON i.proposal_id=u.proposal_id
                     WHERE i.series_id=? AND u.created_at>=?""",
                     (series_id,now-86400)).fetchone()[0]
+            # M68 reservations consume the same daily budget as ordinary episodes.
+            # This check shares the BEGIN IMMEDIATE SQLite transaction with M68.
+            short_quota_present=db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='studio_short_quota_reservations'""").fetchone()
+            if short_quota_present:
+                recent+=db.execute("""SELECT COUNT(*) FROM
+                    studio_short_quota_reservations
+                    WHERE series_id=? AND created_at>=?""",
+                    (series_id,now-86400)).fetchone()[0]
             if recent>=policy["max_uploads_24h"]:
                 raise PrivatePolicyError("Owner 24-hour private upload budget reached.")
             active=db.execute("""SELECT COUNT(*) FROM jobs WHERE
