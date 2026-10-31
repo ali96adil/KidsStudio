@@ -44,3 +44,10 @@ class PiOperationsTests(unittest.TestCase):
             self.assertEqual(report["counts"]["review_blocked"], 1)
             self.assertEqual(report["shorts"][0]["review_status"], "NO_REVIEW")
             self.assertFalse(report["shorts"][0]["upload_authorized"])
+
+    def test_missing_m68_tables_fail_with_actionable_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = StudioQueue(Path(tmp) / "queue.db")
+            queue.initialize()
+            with self.assertRaisesRegex(ValueError, "not initialized"):
+                snapshot(queue)
