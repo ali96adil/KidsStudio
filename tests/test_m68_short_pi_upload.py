@@ -163,3 +163,13 @@ class PiShortUploadTests(unittest.TestCase):
         transport.start.assert_not_called()
         self.assertEqual(self.journal.status(short_id="colors-short-01")["status"],
                          "MANUAL_RECONCILIATION")
+
+    def test_mismatched_review_identity_never_contacts_google(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_short_reviews SET short_id='other-short'
+                WHERE short_id='colors-short-01'""")
+        transport = Mock()
+        with self.assertRaises(ShortAttemptError):
+            upload_short_private(self.queue, **self.kwargs, transport=transport)
+        transport.start.assert_not_called()
+        self.assertIsNone(self.journal.status(short_id="colors-short-01"))
