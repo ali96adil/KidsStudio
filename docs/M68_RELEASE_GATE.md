@@ -60,3 +60,27 @@ prove that the video and audio were genuinely examined. Production release
 remains blocked until a qualified local visual/audio reviewer is connected and
 tested against actual media, plus one controlled Pi PRIVATE upload and owner
 review in YouTube Studio.
+
+## Mac and Pi pilot prerequisite commands (read-only)
+
+On the Mac, from the project checkout:
+
+```sh
+python3 -m kidsstudio.m68_runtime_prerequisites --role mac --require-ollama
+```
+
+On the Pi, from the same checkout with its existing SQLite database and a
+previously transferred private Short:
+
+```sh
+python3 -m kidsstudio.m68_runtime_prerequisites --role pi \
+  --db /absolute/path/to/studio.sqlite \
+  --media /absolute/path/to/staged-short.mp4
+```
+
+A result of `PREREQUISITES_PRESENT_NOT_END_TO_END_TESTED` means only
+that named local executables and file paths exist. It does **not** prove
+Ollama is running, models are loaded, actual AV content was reviewed, SSH
+transfer worked, or YouTube OAuth/private upload succeeded. The diagnostics
+perform no network calls or modifications. Next pilot steps require separate
+operator-controlled real media tests and a single explicit PRIVATE upload.
