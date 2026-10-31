@@ -36,8 +36,8 @@ class PiShortUploadTests(unittest.TestCase):
             db.execute("""INSERT INTO studio_youtube_private_policies
                 VALUES('colors','ENABLED',?,1,1)""", (self.channel,))
             db.execute("""INSERT INTO studio_short_quota_reservations
-                VALUES('colors-short-01','colors',?,0,'RESERVED_NO_UPLOAD')""",
-                (self.sha,))
+                VALUES('colors-short-01','colors',?,?,'RESERVED_NO_UPLOAD')""",
+                (self.sha, self.queue.clock()))
         with self.queue._connection(write=True) as db:
             db.execute("""CREATE TABLE studio_derived_shorts(
                 short_id TEXT PRIMARY KEY,source_episode_id TEXT,
