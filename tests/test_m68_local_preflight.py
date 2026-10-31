@@ -34,3 +34,25 @@ class PreflightTests(unittest.TestCase):
             self.assertFalse(result["youtube_upload_authorized"])
             self.assertEqual(result["blockers"],
                              ["audio_independent_review_missing"])
+
+    @patch("kidsstudio.m68_local_preflight.audit")
+    def test_symlink_handoff_rejected(self, mock_audit):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "actual.json"
+            target.write_text('{"short_id":"short1"}')
+            link = root / "handoff.json"
+            link.symlink_to(target)
+            with self.assertRaises(ValueError):
+                preflight(root=root, handoff_path=link)
+            mock_audit.assert_not_called()
+
+    @patch("kidsstudio.m68_local_preflight.audit")
+    def test_oversized_handoff_rejected(self, mock_audit):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            handoff = root / "handoff.json"
+            handoff.write_text('{"padding":"' + 'x' * 200001 + '"}')
+            with self.assertRaises(ValueError):
+                preflight(root=root, handoff_path=handoff)
+            mock_audit.assert_not_called()
