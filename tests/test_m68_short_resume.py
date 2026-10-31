@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from kidsstudio.m67_master_handoff import inventory
 from kidsstudio.m68_short_resume import resume_short, ShortResumeError
+from kidsstudio.m68_short_content_review import CHECKS
 
 
 class ShortResumeTests(unittest.TestCase):
@@ -20,8 +21,13 @@ class ShortResumeTests(unittest.TestCase):
         self.manifest.update(short_id="episode-short-01", source_episode_id="episode",
                              status="SHORT_HASH_PINNED_CONTENT_QA_PENDING")
         self.digest = hashlib.sha256(b"short-payload").hexdigest()
-        self.qa = {"decision": "PASS", "short_id": "episode-short-01",
-                   "source_episode_id": "episode", "video_sha256": self.digest}
+        self.qa = {"status": "SHORT_CONTENT_QA_RECORDED",
+                   "decision": "PASS", "short_id": "episode-short-01",
+                   "source_episode_id": "episode", "video_sha256": self.digest,
+                   "reviewer": "content-reviewer",
+                   "checks": dict.fromkeys(CHECKS, True),
+                   "youtube_upload_authorized": False,
+                   "public_release_authorized": False}
 
     def call_resume(self, receipt=None):
         return resume_short(self.root, self.manifest,
