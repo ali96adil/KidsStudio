@@ -23,8 +23,8 @@ class ShortAttemptTests(unittest.TestCase):
         self.journal.initialize()
         with self.queue._connection(write=True) as db:
             db.execute("""INSERT INTO studio_short_quota_reservations
-                VALUES ('colors-short-01','colors',? ,0,'RESERVED_NO_UPLOAD')""",
-                ("a" * 64,))
+                VALUES ('colors-short-01','colors',? ,?,'RESERVED_NO_UPLOAD')""",
+                ("a" * 64, self.queue.clock()))
         with self.queue._connection(write=True) as db:
             db.execute("CREATE TABLE studio_series(series_id TEXT PRIMARY KEY,state TEXT)")
             db.execute("INSERT INTO studio_series VALUES('colors','ACTIVE')")
@@ -163,3 +163,12 @@ class ShortAttemptTests(unittest.TestCase):
                 WHERE series_id='colors' AND ordinal=1""", ("b" * 32,))
         with self.assertRaises(ShortAttemptError):
             self.journal.begin(**self.args)
+
+    def test_expired_reservation_cannot_start_upload(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_short_quota_reservations
+                SET created_at=? WHERE short_id='colors-short-01'""",
+                (self.queue.clock() - 86401,))
+        with self.assertRaises(ShortAttemptError):
+            self.journal.begin(**self.args)
+        self.assertIsNone(self.journal.status(short_id="colors-short-01"))
