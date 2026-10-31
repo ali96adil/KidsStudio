@@ -64,6 +64,12 @@ def upload_short_private(queue, *, short_id, series_id, media_sha256,
         if (not isinstance(checks, dict) or set(checks) != set(CHECKS)
                 or any(checks[key] is not True for key in CHECKS)):
             raise ShortAttemptError("six independent QA checks must pass")
+    from .m68_pi_preflight import assess
+    preflight = assess(queue, short_id=short_id, series_id=series_id,
+                       media_path=path)
+    if preflight["status"] != "READY_FOR_EXPLICIT_PRIVATE_UPLOAD":
+        raise ShortAttemptError(
+            "Pi upload preflight blocked: " + ",".join(preflight["reasons"]))
     journal = ShortAttemptJournal(queue)
     journal.begin(short_id=short_id, series_id=series_id, media_sha256=media_sha256)
     transport = transport if transport is not None else GoogleYouTubeTransport()
