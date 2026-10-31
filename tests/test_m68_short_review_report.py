@@ -54,3 +54,34 @@ class ReviewReportTests(unittest.TestCase):
             self.assertEqual(set(report["ai_evidence"]), set(CHECKS))
             self.assertFalse(report["upload_authorized"])
             self.assertFalse(report["public_release_authorized"])
+
+    def test_corrupt_review_json_reports_invalid_not_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = StudioQueue(Path(tmp) / "queue.db")
+            queue.initialize()
+            registry = ShortRegistry(queue)
+            registry.initialize()
+            registry.register(short_id="s2", source_episode_id="e2",
+                              media_sha256="b" * 64)
+            registry.mark_staged(short_id="s2", media_sha256="b" * 64,
+                                 transfer_receipt={
+                                     "status": "SHORT_PI_STAGED_REQUIRES_M65_INBOX",
+                                     "short_id": "s2", "source_episode_id": "e2",
+                                     "sha256": "b" * 64,
+                                     "youtube_upload_authorized": False,
+                                     "public_release_authorized": False})
+            store = ShortReviewStore(queue)
+            store.initialize()
+            store.record({
+                "status": "SHORT_CONTENT_QA_RECORDED", "decision": "PASS",
+                "short_id": "s2", "source_episode_id": "e2",
+                "video_sha256": "b" * 64, "reviewer": "content-reviewer",
+                "checks": dict.fromkeys(CHECKS, True),
+                "youtube_upload_authorized": False,
+                "public_release_authorized": False})
+            with queue._connection(write=True) as db:
+                db.execute("UPDATE studio_short_reviews SET checks_json=? WHERE short_id=?",
+                           ("not-json", "s2"))
+            report = inspect(queue, "s2")
+            self.assertEqual(report["status"], "REVIEW_EVIDENCE_INVALID")
+            self.assertFalse(report["upload_authorized"])
