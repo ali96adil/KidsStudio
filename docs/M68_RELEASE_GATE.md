@@ -105,3 +105,22 @@ It **always rejects** the audio, copyright, pedagogy and source-consistency\naxe
 permission to upload. A separate qualified audio reviewer and verified
 rights/provenance catalogue must be integrated before six-axis acceptance.
 The command only prints a receipt; it does not write the Pi review database.
+
+## Rights provenance inventory (read-only)
+
+Before attempting independent legal review, create a private JSON manifest
+with `schema_version: 1`, the pinned `video_sha256`, and a nonempty
+`assets` list. Each asset requires a unique `id`, `kind` (image,
+audio, music, font, video, voice or other), `rights_basis` (original,
+licensed, public_domain or permission), human-readable `source`,
+`evidence_reference`, absolute `path` and the actual file `sha256`.
+
+```sh
+python3 -m kidsstudio.m68_rights_inventory \
+  --manifest /absolute/private/rights.json \
+  --video-sha256 YOUR_PINNED_MP4_SHA256
+```
+
+The validator checks exact asset bytes and declared provenance completeness.
+A documented inventory is **not** legal verification, and never grants
+upload or publication permission. Rights review must be completed separately.
