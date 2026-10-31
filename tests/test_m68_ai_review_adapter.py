@@ -60,3 +60,15 @@ class AIReviewAdapterTests(unittest.TestCase):
             with self.assertRaises(ShortAIReviewError):
                 run_ai_review(".", self.handoff, infer=infer)
         infer.assert_not_called()
+
+    def test_media_changed_during_inference_never_records_review(self):
+        from unittest.mock import Mock
+        infer = Mock(side_effect=self.infer)
+        with patch("kidsstudio.m67_master_handoff.verify_inventory",
+                   side_effect=[{"sha256": "a" * 64},
+                                ValueError("inventory changed")]), \
+             patch("kidsstudio.m68_ai_review_adapter.review") as record:
+            with self.assertRaises(ShortAIReviewError):
+                run_ai_review(".", self.handoff, infer=infer)
+        self.assertEqual(infer.call_count, len(CHECKS))
+        record.assert_not_called()
