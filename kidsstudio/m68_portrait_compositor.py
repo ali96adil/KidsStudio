@@ -48,7 +48,9 @@ def render_portrait(short, manifest, root, output, *, ffmpeg="ffmpeg",
         raise ShortRenderError("source timing mismatch")
     if short.get("source_asset_keys") != [asset["art"], asset["voice"]]:
         raise ShortRenderError("source references mismatch")
-    if short.get("render") != {"width": 1080, "height": 1920, "layout": "RECOMPOSE_SOURCE_ASSETS_NOT_CROP_MASTER"}:\n        raise ShortRenderError("unsupported portrait render contract")\n    binary = shutil.which(ffmpeg)
+    if short.get("render") != {"width": 1080, "height": 1920, "layout": "RECOMPOSE_SOURCE_ASSETS_NOT_CROP_MASTER"}:
+        raise ShortRenderError("unsupported portrait render contract")
+    binary = shutil.which(ffmpeg)
     if not binary:
         raise ShortRenderError("ffmpeg not available")
     animation = asset.get("godot_animation")
