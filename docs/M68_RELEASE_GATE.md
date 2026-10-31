@@ -124,3 +124,19 @@ python3 -m kidsstudio.m68_rights_inventory \
 The validator checks exact asset bytes and declared provenance completeness.
 A documented inventory is **not** legal verification, and never grants
 upload or publication permission. Rights review must be completed separately.
+
+## Consolidated review diagnostic
+
+```sh
+python3 -m kidsstudio.m68_consolidated_review \
+  --root /absolute/private/short-root \
+  --handoff /absolute/private/handoff.json \
+  --vision-receipt /absolute/private/vision.json \
+  --rights-manifest /absolute/private/rights.json
+```
+
+This read-only command joins the SHA-pinned local vision diagnostic with
+the asset rights inventory and reports missing pedagogy, audio, copyright,
+and script-consistency evidence. It **always returns a blocked status and
+exit code 2** until a separate independent six-axis review system is
+implemented and qualified. It never stages or uploads media.
