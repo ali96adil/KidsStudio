@@ -28,7 +28,12 @@ def run(handoff, *, script_path, lesson_path, first_endpoint, first_model,
         handoff, script_path=script_path, lesson_path=lesson_path,
         first=reviewer_factory(first_endpoint, first_model),
         second=reviewer_factory(second_endpoint, second_model))
-    return {"status": "LESSON_REVIEW_RECORDED",
+    checks = review.get("checks", {})
+    passed = (isinstance(checks, dict) and
+              set(checks) == {"pedagogy", "source_consistency"} and
+              all(value is True for value in checks.values()))
+    return {"status": ("LESSON_REVIEW_MODEL_PASS_RECORDED" if passed else
+                       "LESSON_REVIEW_NEEDS_FIX"),
             "readiness": readiness, "review": review,
             "youtube_upload_authorized": False,
             "public_release_authorized": False}
@@ -76,7 +81,7 @@ def main(argv=None):
                               "public_release_authorized": False}))
             return 2
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["review"] is not None else 2
+    return 0 if result["status"] == "LESSON_REVIEW_MODEL_PASS_RECORDED" else 2
 
 
 if __name__ == "__main__":
