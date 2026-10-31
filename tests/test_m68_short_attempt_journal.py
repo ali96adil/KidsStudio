@@ -144,3 +144,18 @@ class ShortAttemptTests(unittest.TestCase):
         with self.assertRaises(ShortAttemptError):
             self.journal.begin(**self.args)
         self.assertIsNone(self.journal.status(short_id="colors-short-01"))
+
+    def test_revoked_source_approval_blocks_upload_attempt(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_episodes SET state='PLANNED'
+                WHERE series_id='colors' AND ordinal=1""")
+        with self.assertRaises(ShortAttemptError):
+            self.journal.begin(**self.args)
+        self.assertIsNone(self.journal.status(short_id="colors-short-01"))
+
+    def test_changed_source_render_job_blocks_upload_attempt(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_episodes SET render_job_id=?
+                WHERE series_id='colors' AND ordinal=1""", ("b" * 32,))
+        with self.assertRaises(ShortAttemptError):
+            self.journal.begin(**self.args)
