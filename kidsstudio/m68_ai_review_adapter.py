@@ -17,6 +17,21 @@ def run_ai_review(root, handoff, *, infer, reviewer_id="kidsstudio-ai-reviewer")
         raise ShortAIReviewError("configured AI inference callback required")
     if not isinstance(reviewer_id, str) or not reviewer_id.startswith("kidsstudio-ai-"):
         raise ShortAIReviewError("independent AI reviewer identity required")
+    # Verify the source inventory before invoking potentially expensive models.
+    # A forged handoff must never be sent for inference.
+    from .m67_master_handoff import verify_inventory
+    if (not isinstance(handoff, dict)
+            or handoff.get("status") != "SHORT_HASH_PINNED_CONTENT_QA_PENDING"
+            or handoff.get("short_id") != handoff.get("episode_id")
+            or handoff.get("youtube_upload_authorized") is not False
+            or handoff.get("public_release_authorized") is not False):
+        raise ShortAIReviewError("invalid short handoff")
+    try:
+        actual_sha = verify_inventory(root, handoff)["sha256"]
+    except Exception as exc:
+        raise ShortAIReviewError("source media inventory verification failed") from exc
+    if handoff.get("sha256") != actual_sha:
+        raise ShortAIReviewError("handoff SHA does not match verified inventory")
     observations = {}
     checks = {}
     for axis in CHECKS:
