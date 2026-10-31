@@ -9,16 +9,22 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 KINDS = frozenset(("image", "audio", "music", "font", "video", "voice", "other"))
 RIGHTS = frozenset(("original", "licensed", "public_domain", "permission"))
+SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
 def audit(manifest_path, *, expected_video_sha256):
+    if not isinstance(expected_video_sha256, str) or not SHA.fullmatch(expected_video_sha256):
+        raise ValueError("valid pinned video SHA-256 required")
     path = Path(manifest_path)
     if not path.is_file() or path.is_symlink() or not path.is_absolute():
         raise ValueError("absolute existing non-symlink rights manifest required")
+    if not 0 < path.stat().st_size <= 2_000_000:
+        raise ValueError("rights manifest size out of bounds")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, UnicodeError) as exc:
@@ -55,7 +61,7 @@ def audit(manifest_path, *, expected_video_sha256):
         file_name = asset.get("path")
         digest = asset.get("sha256")
         if (not isinstance(file_name, str) or not isinstance(digest, str)
-                or len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest)):
+                or not SHA.fullmatch(digest)):
             reasons.append(label + ":asset_hash_missing")
             continue
         asset_path = Path(file_name)
