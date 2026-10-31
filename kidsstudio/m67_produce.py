@@ -57,6 +57,11 @@ def generate(root, *, workflow, text_node, voice, image_fn=render_images,
             raise ProductionStageError("batch already attempted; use a new episode root")
     images = image_fn(jobs, workflow, root, text_node=text_node)
     voices = voice_fn(jobs, root, voice=voice)
+    expected = len(jobs["jobs"])
+    if len(images.get("images", [])) != expected or len(voices.get("voices", [])) != expected:
+        raise ProductionStageError("generated media count does not match storyboard beats")
+    if images.get("status") in ("BLOCKED", "FAILED") or voices.get("status") in ("BLOCKED", "FAILED"):
+        raise ProductionStageError("media worker reported failure")
     return {"status": "GENERATED_PENDING_MEDIA_INSPECTION",
             "images": len(images["images"]), "voices": len(voices["voices"]),
             "public_release_authorized": False}
