@@ -8,7 +8,7 @@
 - Atomic review/policy revalidation when recording upload attempt.
 
 ## Production blockers
-1. Source provenance: source_episode_id is not yet securely bound to an approved studio_episodes row and approved master render receipt. A string ID is not proof.
+1. Source provenance is now bound through the M68 source binding and rechecked against M26 approved master receipts; this still needs validation with real production episode data.
 2. Pi deployment: OAuth storage/refresh, transfer permissions, service launch and dashboard controls need end-to-end validation.
 3. Quota lifecycle: unknown upload outcomes require operator reconciliation; do not expire attempted reservations automatically.
 4. Review execution: six-axis results are persisted, but autonomous AI reviewer execution is not yet integrated.
@@ -38,3 +38,25 @@ Never place OAuth tokens in Git, episode metadata, upload receipts or UI logs. P
 - Test coverage includes forged source receipt, changed media, revoked source and duplicate attempts.
 
 This is a **code-complete candidate for local integration testing only**, not a certified unattended production pipeline. The actual Pi environment, credentials, agent review implementation and one controlled real PRIVATE upload remain outstanding.
+
+## Consolidated Pi operations inspection
+
+Run on the Pi with the existing initialized SQLite database:
+
+```sh
+python3 -m kidsstudio.m68_pi_operations --db /absolute/path/to/studio.sqlite
+```
+
+This produces a JSON summary of staged/registered Shorts, review decisions,
+quota reservation state, uncertain attempts, manual reconciliation and verified
+PRIVATE uploads. It does **not** call Google, initialize missing tables, retry
+uploads, or grant upload/public permission. Treat any STARTED_UNCERTAIN attempt
+as potentially uploaded; reconcile it manually using the YouTube channel before
+taking further action. No tokens are read or printed.
+
+The M68 AI callback adapter is a contract for externally executed model
+observations, **not a model runtime**. Six text evidence strings alone do not
+prove that the video and audio were genuinely examined. Production release
+remains blocked until a qualified local visual/audio reviewer is connected and
+tested against actual media, plus one controlled Pi PRIVATE upload and owner
+review in YouTube Studio.
