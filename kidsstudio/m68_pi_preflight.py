@@ -40,6 +40,13 @@ def assess(queue, *, short_id, series_id, media_path):
             reasons.append("SHORT_NOT_STAGED")
         if not policy or policy["state"] != "ENABLED":
             reasons.append("OWNER_POLICY_NOT_ENABLED")
+        if policy and policy["state"] == "ENABLED":
+            try:
+                channel = policy["channel_id"]
+                if not isinstance(channel, str) or not channel.startswith("UC"):
+                    reasons.append("OWNER_CHANNEL_INVALID")
+            except (KeyError, IndexError):
+                reasons.append("OWNER_CHANNEL_MISSING")
         if not series or series["state"] != "ACTIVE":
             reasons.append("SERIES_NOT_ACTIVE")
         if not paused or paused["paused"]:
