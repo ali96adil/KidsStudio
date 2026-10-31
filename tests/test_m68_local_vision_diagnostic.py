@@ -1,0 +1,15 @@
+"""M68 vision diagnostic must not certify audio or copyright."""
+import unittest
+from unittest.mock import patch
+from kidsstudio.m68_local_vision_diagnostic import UNOBSERVABLE, VISUAL_AXES
+
+
+class VisionDiagnosticTests(unittest.TestCase):
+    def test_silent_frames_never_approve_audio_or_rights(self):
+        self.assertEqual(set(UNOBSERVABLE), {"audio", "copyright"})
+        self.assertTrue(all(len(message) >= 12 for message in UNOBSERVABLE.values()))
+        self.assertFalse(set(UNOBSERVABLE) & VISUAL_AXES)
+
+    def test_all_six_review_axes_are_accounted_for(self):
+        from kidsstudio.m68_short_content_review import CHECKS
+        self.assertEqual(set(CHECKS), set(UNOBSERVABLE) | VISUAL_AXES)
