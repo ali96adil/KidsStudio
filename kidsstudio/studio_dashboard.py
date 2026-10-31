@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 from .series_manager import SeriesManager
 from .acceptance_review import inspect_studio, AcceptanceError
 from .studio_queue import StudioQueue
+from .m68_educational_dashboard_bridge import load_educational_dashboard
 
 
 STATE_COPY = {
@@ -520,7 +521,7 @@ def build_snapshot(queue: StudioQueue) -> dict:
             }
 
 
-def make_handler(queue: StudioQueue):
+def make_handler(queue: StudioQueue, educational_path: Path | None = None):
     class DashboardHandler(BaseHTTPRequestHandler):
         server_version="KidsStudioDashboard/1.0"
         def log_message(self, fmt, *args):
@@ -582,6 +583,21 @@ def make_handler(queue: StudioQueue):
                     return
                 self._reply(200,body,"application/json; charset=utf-8")
                 return
+            elif path.path=="/api/educational":
+                try:
+                    data=(load_educational_dashboard(educational_path)
+                          if educational_path is not None else
+                          {"schema_version":1,"status":"NOT_CONFIGURED",
+                           "series":[],"total_series":0,"total_episodes":0,
+                           "youtube_upload_authorized":False,
+                           "public_release_authorized":False})
+                    body=json.dumps(data,ensure_ascii=False).encode("utf-8")
+                except (OSError,ValueError,TypeError,UnicodeError):
+                    self._reply(503,b'{"error":"educational_snapshot_unavailable"}',
+                                "application/json; charset=utf-8")
+                    return
+                self._reply(200,body,"application/json; charset=utf-8")
+                return
             elif path.path=="/api/health":
                 self._reply(200,b'{"status":"ok","read_only":true}',
                             "application/json; charset=utf-8")
@@ -603,13 +619,13 @@ def make_handler(queue: StudioQueue):
     return DashboardHandler
 
 
-def serve(db: Path, port: int = 8793) -> None:
+def serve(db: Path, port: int = 8793, educational_path: Path | None = None) -> None:
     if type(port) is not int or not 1024 <= port <= 65535:
         raise ValueError("Port must be 1024..65535.")
     queue=StudioQueue(db)
     # Fail closed on absent/uninitialized series schema: don't silently create DB.
     SeriesManager(queue).snapshot()
-    httpd=ThreadingHTTPServer(("127.0.0.1",port),make_handler(queue))
+    httpd=ThreadingHTTPServer(("127.0.0.1",port),make_handler(queue, educational_path))
     print(f"KidsStudio read-only dashboard: http://127.0.0.1:{port}/",flush=True)
     try:
         httpd.serve_forever(poll_interval=0.5)
@@ -622,9 +638,10 @@ def main(argv: list[str] | None = None) -> int:
         description="Read-only local KidsStudio production board")
     p.add_argument("--db",required=True,type=Path)
     p.add_argument("--port",type=int,default=8793)
+    p.add_argument("--educational-records",type=Path,default=None)
     args=p.parse_args(argv)
     try:
-        serve(args.db,args.port)
+        serve(args.db,args.port,args.educational_records)
         return 0
     except (ValueError,OSError) as exc:
         print("STUDIO_DASHBOARD_ERROR: "+str(exc),file=sys.stderr)
