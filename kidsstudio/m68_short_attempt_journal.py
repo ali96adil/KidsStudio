@@ -35,6 +35,10 @@ class ShortAttemptJournal:
                 updated_at REAL NOT NULL,
                 FOREIGN KEY(short_id) REFERENCES studio_short_quota_reservations(short_id)
             )""")
+            db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS
+                studio_short_attempt_unique_video_id
+                ON studio_short_upload_attempts(video_id)
+                WHERE video_id IS NOT NULL""")
 
     def begin(self, *, short_id, series_id, media_sha256):
         if (not isinstance(short_id, str) or not IDENT.fullmatch(short_id)
