@@ -400,10 +400,52 @@
       status.textContent="تعذر فحص الجاهزية. لا تعتمد حالة سابقة من اللوحة.";
     }
   }
+  async function loadEducational() {
+    const status=root("educational-status");
+    const host=root("educational-series");
+    if (!status || !host) return;
+    try {
+      const response=await fetch("/api/educational",{cache:"no-store"});
+      if (!response.ok) throw Error("Educational HTTP "+response.status);
+      const data=await response.json();
+      if (data.schema_version!==1 || !Array.isArray(data.series) ||
+          data.youtube_upload_authorized!==false ||
+          data.public_release_authorized!==false)
+        throw Error("Invalid educational snapshot");
+      clear(host);
+      if (data.status==="NOT_CONFIGURED") {
+        status.textContent="لم تُربط سجلات المراجعة التعليمية بعد.";
+        return;
+      }
+      status.textContent="الحلقات ذات مراجعات AI مسجلة: "+fmt(data.total_episodes)+
+        " · لا تعني الموافقة على إنتاج أو نشر الفيديو.";
+      for (const series of data.series) {
+        const panel=make("article","acceptance-entry");
+        panel.append(make("strong",null,series.series_id),
+          make("p",null,"اجتازت مراجعة النص: "+fmt(series.educational_script_pass)+
+            " · تحتاج معالجة: "+fmt(series.needs_triage)+
+            " · أعطال تقنية: "+fmt(series.technical_failures)));
+        for (const episode of series.episodes) {
+          const label={
+            EDUCATIONAL_SCRIPT_MODEL_PASS:"اجتازت مراجعة النص",
+            EDUCATIONAL_REVIEW_NEEDS_TRIAGE:"تحتاج معالجة",
+            EDUCATIONAL_REVIEW_TECHNICAL_FAILURE:"عطل تقني"
+          }[episode.stage]||"حالة غير معروفة";
+          panel.append(make("p","small-explainer",episode.source_episode_id+
+            " · "+label+" · محاولات الإصلاح: "+fmt(episode.revision_attempts)));
+        }
+        host.append(panel);
+      }
+    } catch {
+      status.textContent="تعذرت قراءة سجل المراجعات التعليمية. لا تعتمد بيانات سابقة.";
+      clear(host);
+    }
+  }
   root("acceptance-check").addEventListener("click",checkAcceptance);
   root("refresh-now").addEventListener("click",load);
   selectState.addEventListener("change",()=>snapshot&&renderEpisodes(snapshot));
   selectSeries.addEventListener("change",()=>snapshot&&renderEpisodes(snapshot));
   load();
-  setInterval(load,15000);
+  loadEducational();
+  setInterval(()=>{load();loadEducational();},15000);
 })();
