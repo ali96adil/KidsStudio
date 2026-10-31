@@ -43,7 +43,7 @@ class LessonEvidenceTests(unittest.TestCase):
             script.write_text("Learn colors")
             lesson = root / "lesson.json"
             lesson.write_text(json.dumps({"schema_version": 1}))
-            result = audit_lesson({"short_id": "short1"}, script_path=script,
+            result = audit_lesson({"short_id": "short1", "sha256": "a" * 64}, script_path=script,
                                   lesson_path=lesson)
             self.assertIn("learning_objective_missing", result["reasons"])
 
