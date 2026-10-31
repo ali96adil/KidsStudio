@@ -47,6 +47,14 @@ def run_ai_review(root, handoff, *, infer, reviewer_id="kidsstudio-ai-reviewer")
             raise ShortAIReviewError("AI evidence missing, unbound, or invalid: " + axis)
         checks[axis] = result["passed"]
         observations[axis] = result["evidence"].strip()
+    # A second integrity check catches media replacement while AI inference
+    # is running. Never record a PASS for bytes that were not evaluated.
+    try:
+        after_sha = verify_inventory(root, handoff)["sha256"]
+    except Exception as exc:
+        raise ShortAIReviewError("media changed during AI review") from exc
+    if after_sha != actual_sha:
+        raise ShortAIReviewError("media hash changed during AI review")
     receipt = review(root, handoff, checks, reviewer_id)
     receipt["ai_evidence"] = observations
     receipt["ai_review_completed"] = True
