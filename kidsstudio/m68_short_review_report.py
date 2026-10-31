@@ -17,15 +17,22 @@ def inspect(queue, short_id):
                WHERE r.short_id=?""", (short_id,)).fetchone()
     if not row:
         return {"short_id": short_id, "status": "NO_REVIEW", "upload_authorized": False}
-    checks = json.loads(row["checks_json"])
-    evidence = json.loads(row["ai_evidence_json"]) if row["ai_evidence_json"] else None
+    try:
+        checks = json.loads(row["checks_json"])
+        evidence = json.loads(row["ai_evidence_json"]) if row["ai_evidence_json"] else None
+    except (ValueError, TypeError):
+        return {"short_id": short_id, "status": "REVIEW_EVIDENCE_INVALID",
+                "upload_authorized": False, "public_release_authorized": False}
     consistent = (row["short_state"] == "PI_STAGED_NOT_APPROVED"
                   and row["staged_sha"] == row["media_sha256"]
                   and isinstance(checks, dict) and set(checks) == set(CHECKS)
                   and all(type(checks[k]) is bool for k in CHECKS)
                   and (row["decision"] == "PASS") == all(checks.values())
                   and (evidence is None or
-                       (isinstance(evidence, dict) and set(evidence) == set(CHECKS))))
+                       (isinstance(evidence, dict) and set(evidence) == set(CHECKS)
+                        and all(isinstance(evidence[k], str)
+                                and 12 <= len(evidence[k].strip()) <= 2000
+                                for k in CHECKS))))
     return {
         "short_id": row["short_id"],
         "source_episode_id": row["source_episode_id"],
