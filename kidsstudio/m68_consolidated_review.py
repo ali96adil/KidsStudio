@@ -33,6 +33,11 @@ def audit(root, handoff, *, vision_receipt=None, rights_manifest=None):
         if (not isinstance(vision_receipt, dict)
                 or vision_receipt.get("short_id") != handoff["short_id"]
                 or vision_receipt.get("video_sha256") != sha
+                or vision_receipt.get("source_episode_id") != handoff.get("source_episode_id")
+                or vision_receipt.get("independent_reviewers") != 1
+                or not isinstance(vision_receipt.get("local_model_response_sha256"), str)
+                or len(vision_receipt["local_model_response_sha256"]) != 64
+                or any(ch not in "0123456789abcdef" for ch in vision_receipt["local_model_response_sha256"])
                 or vision_receipt.get("decision") != "REJECT"
                 or vision_receipt.get("review_scope")
                     != "LOCAL_VISUAL_SAFETY_ONLY_FOUR_AXES_UNVERIFIED"
