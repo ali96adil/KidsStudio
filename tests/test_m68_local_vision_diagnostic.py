@@ -52,7 +52,7 @@ class VisionDiagnosticTests(unittest.TestCase):
                 frame = root / "frame.png"
                 frame.write_bytes(b"png-bytes")
                 manifest = root / "manifest.json"
-                manifest.write_text(json.dumps({"frames": [{"file": str(frame)}]}))
+                manifest.write_text(json.dumps({"a2v_sha256": "a" * 64, "frames": [{"file": str(frame), "sha256": "a" * 64}] * 5}))
                 capture.return_value = {"frames_manifest_file": str(manifest)}
                 model.return_value.run.return_value = (answers, "b" * 64)
                 def evaluate(root_arg, handoff_arg, *, infer, reviewer_id):
