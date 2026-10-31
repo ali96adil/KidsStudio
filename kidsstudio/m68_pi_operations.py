@@ -14,6 +14,14 @@ from .m68_short_review_report import inspect
 
 def snapshot(queue):
     with queue._connection() as db:
+        required = {"studio_derived_shorts", "studio_short_reviews",
+                    "studio_short_upload_attempts",
+                    "studio_short_quota_reservations"}
+        present = {row[0] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        if not required.issubset(present):
+            raise ValueError("M68 Pi database not initialized: "
+                             + ", ".join(sorted(required - present)))
         shorts = db.execute(
             """SELECT short_id,source_episode_id,media_sha256,state
                FROM studio_derived_shorts ORDER BY short_id""").fetchall()
