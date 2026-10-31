@@ -55,6 +55,13 @@ def bind(queue, *, short_id, series_id, source_episode_id, source_ordinal,
                 or not job or job["state"] != "COMPLETED"
                 or job["kind"] not in ("episode_assemble", "godot_render")):
             raise ShortAttemptError("approved source episode and completed render required")
+        from .private_upload_policy import PrivateUploadPolicy
+        try:
+            PrivateUploadPolicy._approved(
+                db, series_id, source_ordinal, source_render_job_id,
+                source_master_sha256)
+        except Exception as exc:
+            raise ShortAttemptError("source master receipt and QA not approved") from exc
         existing = db.execute(
             "SELECT * FROM studio_short_source_bindings WHERE short_id=?",
             (short_id,)).fetchone()
@@ -93,4 +100,11 @@ def verify_current(db, *, short_id, series_id):
             or row["job_state"] != "COMPLETED"
             or row["job_kind"] not in ("episode_assemble", "godot_render")):
         raise ShortAttemptError("current approved source provenance required")
+    from .private_upload_policy import PrivateUploadPolicy
+    try:
+        PrivateUploadPolicy._approved(
+            db, series_id, row["source_ordinal"],
+            row["source_render_job_id"], row["source_master_sha256"])
+    except Exception as exc:
+        raise ShortAttemptError("current approved master receipt and QA required") from exc
     return row["source_master_sha256"]
