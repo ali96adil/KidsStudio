@@ -97,6 +97,13 @@ def review_lesson(handoff, *, script_path, lesson_path, first, second):
     script = Path(script_path).read_text(encoding="utf-8")
     lesson = json.loads(Path(lesson_path).read_text(encoding="utf-8"))
     results = [runner.run(script=script, lesson=lesson) for runner in (first, second)]
+    # Reject concurrent edits while local models were running. The receipt
+    # must describe the same source bytes that remain on disk afterward.
+    after = audit_lesson(handoff, script_path=script_path, lesson_path=lesson_path)
+    if after["reasons"] or after["script_sha256"] != evidence["script_sha256"]:
+        raise LessonModelError("lesson source changed during model review")
+    if json.loads(Path(lesson_path).read_text(encoding="utf-8")) != lesson:
+        raise LessonModelError("lesson plan changed during model review")
     checks = {
         axis: all(answer["checks"][axis]["decision"] == "PASS"
                   for answer, _ in results)
