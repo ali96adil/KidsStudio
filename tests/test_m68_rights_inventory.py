@@ -47,3 +47,14 @@ class RightsInventoryTests(unittest.TestCase):
             result = audit(manifest, expected_video_sha256="b" * 64)
             self.assertEqual(result["status"], "BLOCKED_RIGHTS_INVENTORY")
             self.assertIn("sound:asset_file_missing", result["reasons"])
+
+    def test_invalid_video_sha_is_rejected_before_read(self):
+        with self.assertRaises(ValueError):
+            audit("/does/not/exist", expected_video_sha256="not-a-sha")
+
+    def test_oversized_manifest_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rights.json"
+            path.write_bytes(b" " * 2_000_001)
+            with self.assertRaises(ValueError):
+                audit(path, expected_video_sha256="a" * 64)
