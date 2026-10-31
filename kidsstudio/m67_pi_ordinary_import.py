@@ -41,6 +41,12 @@ def import_transferred(queue, inbox_root, *, render_job_id, transferred_master,
                               expected_sha256=expected_sha256)
     if receipt_check["status"] != "M67_PI_RECEIPTS_CONSISTENT_NEEDS_M65_APPROVAL":
         raise PiImportError("M65 upload plan or readiness receipt mismatch")
+    # Refuse any pre-existing staged data before attempting M65 prepare.
+    staging = Path(inbox_root) / render_job_id
+    if staging.is_symlink():
+        raise PiImportError("symlink staging directory rejected")
+    if staging.is_dir() and any(staging.iterdir()):
+        raise PiImportError("existing staged data require reconciliation")
     inbox.prepare(render_job_id)
     video_target, plan_target, ready_target = inbox._files(render_job_id, True)
     for target in (video_target, plan_target, ready_target):
