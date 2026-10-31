@@ -82,6 +82,10 @@ def upload_short_private(queue, *, short_id, series_id, media_sha256,
     }
     try:
         size = path.stat().st_size
+        # Recheck bytes immediately before contacting Google. If a producer
+        # replaced the file after the journal write, quarantine without upload.
+        if file_sha256(path) != media_sha256:
+            raise ShortAttemptError("staged media changed before Google request")
         session = transport.start(token, metadata, size)
         offset = 0
         video_id = None
