@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 import json
 from kidsstudio.m68_short_content_review import CHECKS
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from kidsstudio.studio_queue import StudioQueue
 from kidsstudio.m68_short_quota_reservation import ShortQuotaReservations, ShortQuotaError
@@ -57,6 +57,10 @@ class ShortAttemptTests(unittest.TestCase):
                 VALUES (?,?,?,?,?,1,?,?,?)""",
                 ("a" * 32, "source-render", "episode_assemble", "{}", "COMPLETED",
                  0, 0, 0))
+        # Unit fixture isolates source receipt; real M26 receipt is tested separately.
+        approval = patch("kidsstudio.private_upload_policy.PrivateUploadPolicy._approved")
+        approval.start()
+        self.addCleanup(approval.stop)
         bind(self.queue, short_id="colors-short-01", series_id="colors",
              source_episode_id="colors-ep-01", source_ordinal=1,
              source_render_job_id="a" * 32, source_master_sha256="c" * 64)
