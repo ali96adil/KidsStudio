@@ -30,3 +30,20 @@ class PiPreflightTests(PiShortUploadTests):
         result = assess(self.queue, short_id="colors-short-01",
                         series_id="colors", media_path=self.media)
         self.assertIn("STAGED_MEDIA_SHA_MISMATCH", result["reasons"])
+
+    def test_preflight_rejects_malformed_channel_id(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_youtube_private_policies
+                SET channel_id='UCbad' WHERE series_id='colors'""")
+        result = assess(self.queue, short_id="colors-short-01",
+                        series_id="colors", media_path=self.media)
+        self.assertIn("OWNER_CHANNEL_INVALID", result["reasons"])
+
+    def test_preflight_rejects_expired_reservation(self):
+        with self.queue._connection(write=True) as db:
+            db.execute("""UPDATE studio_short_quota_reservations
+                SET created_at=? WHERE short_id='colors-short-01'""",
+                (self.queue.clock() - 86401,))
+        result = assess(self.queue, short_id="colors-short-01",
+                        series_id="colors", media_path=self.media)
+        self.assertIn("QUOTA_RESERVATION_EXPIRED", result["reasons"])
