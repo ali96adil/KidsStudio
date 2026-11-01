@@ -14,8 +14,8 @@ from .m68_local_dependencies import inspect_ollama
 def qualify(*, first_endpoint, first_model, second_endpoint, second_model,
             inspector=inspect_ollama):
     pairs = ((first_endpoint, first_model), (second_endpoint, second_model))
-    if (first_endpoint == second_endpoint or first_model == second_model):
-        raise ValueError("two distinct endpoints and model names required")
+    if first_model == second_model:
+        raise ValueError("two distinct model names required")
     for endpoint, model in pairs:
         if not isinstance(model, str) or not MODEL.fullmatch(model):
             raise ValueError("invalid model name")
