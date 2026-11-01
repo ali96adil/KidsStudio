@@ -28,8 +28,7 @@ class CloudflareImageTests(unittest.TestCase):
             headers = {"Content-Type": "image/png"}
             def __enter__(self): return self
             def __exit__(self, *args): pass
-            def read(self, count): return b"\\x89PNG\\r\\n\\x1a\\n" + b"fake"
-        # Use a byte-valid header; image decoding/visual QA belongs to the media pipeline.
+        # This test verifies transport framing, not full image decoding.
         Response.read = lambda self, count: bytes.fromhex("89504e470d0a1a0a") + b"data"
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "image.png"
