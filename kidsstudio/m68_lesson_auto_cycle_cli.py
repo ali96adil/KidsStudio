@@ -60,10 +60,20 @@ def main(argv=None):
             output_dir=args.output_dir, first=first, second=second,
             rewriter=rewriter, max_attempts=args.max_attempts)
     except (ValueError, OSError, UnicodeError, KeyError, TypeError) as exc:
-        print(json.dumps({"status": "LESSON_AUTO_CYCLE_FAILED",
-                          "error": str(exc),
-                          "youtube_upload_authorized": False,
-                          "public_release_authorized": False}))
+        failure = {"status": "LESSON_AUTO_CYCLE_FAILED",
+                   "error_type": type(exc).__name__,
+                   "attempts": [],
+                   "youtube_upload_authorized": False,
+                   "public_release_authorized": False}
+        if args.dashboard_records is not None and args.series_id is not None \
+                and "handoff" in locals():
+            try:
+                failure["dashboard_record"] = record_cycle(
+                    args.dashboard_records, series_id=args.series_id,
+                    handoff=handoff, cycle=failure)
+            except (ValueError, OSError, UnicodeError, KeyError, TypeError):
+                failure["dashboard_record_status"] = "NOT_RECORDED"
+        print(json.dumps(failure, ensure_ascii=False))
         return 2
     if args.dashboard_records is not None:
         try:
