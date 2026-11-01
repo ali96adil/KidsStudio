@@ -1,34 +1,50 @@
-"""Read-only, bounded owner dashboard snapshot; no job dispatch or remote calls."""
+"""Read-only, bounded owner dashboard snapshot; never expose job payloads."""
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 from pathlib import Path
 from .studio_queue import StudioQueue
 
+# Fixed allowlist: no payload, result_json, worker credentials or arbitrary error text.
+JOB_FIELDS = ("job_id", "kind", "state", "attempts", "created_at", "updated_at")
+ATTENTION_STATES = frozenset({"FAILED"})
+
 def snapshot(database: str | Path, limit: int = 25) -> dict:
-    """Expose only aggregate counts and minimal job metadata, never payloads."""
+    """Expose aggregates and sanitized job metadata without mutating the queue."""
     if type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError("limit must be between 1 and 100")
     queue = StudioQueue(database)
     status = queue.status()
     jobs = queue.list_jobs(limit=limit)
-    safe = []
+    safe = [{field: job[field] for field in JOB_FIELDS} for job in jobs]
+    by_kind = Counter(job["kind"] for job in jobs)
+    by_state_and_kind = {}
     for job in jobs:
-        safe.append({
-            "job_id": job["job_id"],
-            "kind": job["kind"],
-            "state": job["state"],
-            "attempts": job["attempts"],
-            "created_at": job["created_at"],
-            "updated_at": job["updated_at"],
-        })
+        by_state_and_kind.setdefault(job["kind"], Counter())[job["state"]] += 1
+    attention = [job for job in safe if job["state"] in ATTENTION_STATES]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "read_only": True,
         "paused": status["paused"],
         "counts": status["counts"],
         "recent_jobs": safe,
+        "recent_window": {
+            "limit": limit,
+            "returned": len(safe),
+            "truncated": sum(status["counts"].values()) > len(safe),
+            "by_kind": dict(sorted(by_kind.items())),
+            "by_kind_and_state": {
+                kind: dict(sorted(states.items()))
+                for kind, states in sorted(by_state_and_kind.items())
+            },
+        },
+        "attention": {
+            "failed_in_recent_window": len(attention),
+            "recent_failed_jobs": attention,
+            "queue_paused": status["paused"],
+        },
     }
 
 def main() -> None:
