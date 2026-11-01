@@ -12,6 +12,7 @@ from .m68_lesson_auto_cycle import run_cycle
 from .m68_local_lesson_review import OllamaLesson
 from .m68_local_script_rewriter import OllamaScriptRewriter
 from .m68_educational_dashboard_store import record_cycle
+from .m68_lesson_model_readiness import qualify
 
 
 def main(argv=None):
@@ -38,6 +39,16 @@ def main(argv=None):
         handoff = json.loads(args.handoff.read_text(encoding="utf-8"))
         if not isinstance(handoff, dict):
             raise ValueError("handoff object required")
+        readiness = qualify(first_endpoint=args.first_endpoint,
+                            first_model=args.first_model,
+                            second_endpoint=args.second_endpoint,
+                            second_model=args.second_model)
+        if not readiness["ready_for_inference_attempt"]:
+            print(json.dumps({"status": "LESSON_AUTO_CYCLE_BLOCKED_MODELS_NOT_READY",
+                              "readiness": readiness,
+                              "youtube_upload_authorized": False,
+                              "public_release_authorized": False}, ensure_ascii=False))
+            return 2
         first = OllamaLesson(args.first_endpoint, args.first_model)
         second = OllamaLesson(args.second_endpoint, args.second_model)
         rewriter = OllamaScriptRewriter(args.rewriter_endpoint,
