@@ -10,17 +10,17 @@ cd ~/KidsStudio
 python3 -m kidsstudio.m68_mac_qualification \
   --inventory-only \
   --first-endpoint http://127.0.0.1:11434/api/chat \
-  --second-endpoint http://127.0.0.1:11435/api/chat
+  --second-endpoint http://127.0.0.1:11434/api/chat
 ```
 
 The output reports local binary paths, reachable Ollama services and installed
-model names. **A second Ollama service on port 11435 is not assumed to exist.**
-If it is absent, the command reports a blocker rather than silently passing.
+model names. **Both distinct models can use one Ollama service on port 11434.**
+A second service is optional, not required.
 
 ## 2. Qualify two real installed models
 
 Replace `MODEL_A` and `MODEL_B` with names actually shown by the inventory
-and use the correct loopback ports for each service:
+and use the correct loopback endpoint for each model (one service is enough):
 
 ```bash
 python3 -m kidsstudio.m68_mac_qualification \
