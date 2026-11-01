@@ -35,8 +35,8 @@ class LessonModelReadinessTests(unittest.TestCase):
             qualify(**self.args, inspector=lambda _: {
                 "reachable": True, "models": ["model-a"]})
 
-    def test_same_endpoint_rejected(self):
+    def test_same_endpoint_distinct_models_allowed(self):
         self.args["second_endpoint"] = self.args["first_endpoint"]
-        with self.assertRaises(ValueError):
-            qualify(**self.args, inspector=lambda _: {
-                "reachable": True, "models": ["model-a", "model-b"]})
+        result = qualify(**self.args, inspector=lambda _: {
+            "reachable": True, "models": ["model-a", "model-b"]})
+        self.assertTrue(result["ready_for_inference_attempt"])
