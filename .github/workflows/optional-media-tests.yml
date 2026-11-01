@@ -1,0 +1,54 @@
+name: Optional media providers smoke tests
+
+on:
+  push:
+    branches:
+      - feature/optional-ai-media-providers
+  pull_request:
+    paths:
+      - 'kidsstudio/cloudflare_images.py'
+      - 'kidsstudio/transcript_qa.py'
+      - 'kidsstudio/whisper_adapter.py'
+      - 'tests/test_cloudflare_images.py'
+      - 'tests/test_transcript_qa.py'
+      - 'tests/test_whisper_adapter.py'
+      - 'remotion/**'
+      - '.github/workflows/optional-media-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test offline optional media modules
+        run: python -m unittest discover -s tests -p 'test_*qa.py' -v
+      - name: Test Cloudflare and Whisper offline adapters
+        run: |
+          python -m unittest discover -s tests -p 'test_cloudflare_images.py' -v
+          python -m unittest discover -s tests -p 'test_whisper_adapter.py' -v
+  remotion:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: remotion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Remotion packages
+        run: npm install --no-audit --no-fund
+      - name: Render ten-second color card
+        run: npm run render
+      - name: Verify nonempty MP4
+        run: test -s out/colors.mp4
+      - name: Upload smoke test video
+        uses: actions/upload-artifact@v4
+        with:
+          name: colors-lesson-smoke
+          path: remotion/out/colors.mp4
+          retention-days: 3
