@@ -58,3 +58,27 @@ class EducationalDashboardStoreTests(unittest.TestCase):
             with ThreadPoolExecutor(max_workers=5) as pool:
                 list(pool.map(write, range(12)))
             self.assertEqual(load_educational_dashboard(target)["total_episodes"], 12)
+
+    def test_transient_failure_does_not_erase_prior_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "dashboard.json"
+            handoff = {"short_id": "s", "source_episode_id": "episode-1",
+                       "sha256": "a" * 64}
+            review = {"short_id": "s", "source_episode_id": "episode-1",
+                      "video_sha256": "a" * 64,
+                      "checks": {"pedagogy": True, "source_consistency": True},
+                      "youtube_upload_authorized": False,
+                      "public_release_authorized": False}
+            passed = {"status": "LESSON_MODEL_PASS_NOT_VIDEO_APPROVAL",
+                      "review": review, "attempts": []}
+            record_cycle(target, series_id="colors", handoff=handoff, cycle=passed)
+            outcome = record_cycle(target, series_id="colors", handoff=handoff,
+                                   cycle={"status": "LESSON_AUTO_CYCLE_FAILED",
+                                          "attempts": [],
+                                          "youtube_upload_authorized": False,
+                                          "public_release_authorized": False})
+            self.assertEqual(outcome["status"],
+                             "EDUCATIONAL_DASHBOARD_PRESERVED_PRIOR_PASS")
+            summary = load_educational_dashboard(target)
+            self.assertEqual(summary["series"][0]["educational_script_pass"], 1)
+            self.assertEqual(summary["series"][0]["technical_failures"], 0)
