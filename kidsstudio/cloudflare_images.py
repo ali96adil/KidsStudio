@@ -28,6 +28,9 @@ def generate_image(
     The caller must verify model support, license and quota beforehand.
     Never log the bearer token. Does not implement automatic paid fallback.
     """
+    destination = Path(destination)
+    if destination.exists():
+        raise FileExistsError(destination)
     if not enabled:
         raise CloudflareImageError("Cloudflare image generation is disabled")
     account_id = account_id or os.environ.get("CLOUDFLARE_ACCOUNT_ID")
