@@ -34,7 +34,20 @@ def record_cycle(path, *, series_id, handoff, cycle):
             existing = json.loads(target.read_text(encoding="utf-8"))
             if not isinstance(existing, list):
                 raise ValueError("existing dashboard file must contain list")
+        build_educational_dashboard(existing)
         key = (series_id, handoff["source_episode_id"])
+        previous = next((row for row in existing if
+                         (row["series_id"], row["handoff"]["source_episode_id"]) == key), None)
+        if (previous is not None
+                and previous["handoff"].get("sha256") == handoff.get("sha256")
+                and previous["cycle"].get("status") == "LESSON_MODEL_PASS_NOT_VIDEO_APPROVAL"
+                and cycle.get("status") == "LESSON_AUTO_CYCLE_FAILED"):
+            return {"status": "EDUCATIONAL_DASHBOARD_PRESERVED_PRIOR_PASS",
+                    "series_id": series_id,
+                    "source_episode_id": handoff["source_episode_id"],
+                    "total_episodes": len(existing),
+                    "youtube_upload_authorized": False,
+                    "public_release_authorized": False}
         updated = [row for row in existing if
                    (row.get("series_id"), row.get("handoff", {}).get("source_episode_id")) != key]
         updated.append(entry)
