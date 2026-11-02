@@ -24,6 +24,21 @@ class CombinedDashboardTests(unittest.TestCase):
         self.assertNotIn("<script>alert(1)</script>", page)
         self.assertIn("&lt;script&gt;", page)
 
+    def test_owner_review_status_visible_and_escaped(self):
+        queue = {
+            "paused": False, "counts": {}, "attention": {"failed_in_recent_window": 0},
+            "recent_window": {"truncated": False}, "recent_jobs": [],
+        }
+        series = summarize({"schema_version": 1, "series": [{
+            "id": "colors", "title": "Colors",
+            "episodes": [{"id": "red", "title": "Red", "stage": "owner_review"}]
+        }]})
+        page = render_combined(queue, series, {
+            "red": {"state": "changes_requested", "note": "<private>"}
+        })
+        self.assertIn("owner: changes_requested", page)
+        self.assertNotIn("<private>", page)
+
     def test_empty_series(self):
         queue = {
             "paused": False, "counts": {}, "attention": {"failed_in_recent_window": 0},
