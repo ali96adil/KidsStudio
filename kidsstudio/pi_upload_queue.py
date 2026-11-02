@@ -26,6 +26,9 @@ class PiUploadQueue:
                 updated_at TEXT NOT NULL
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS idx_pi_jobs_state ON pi_upload_jobs(state,id)")
+            # Fail closed on pre-existing duplicates; never silently delete jobs.
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pi_jobs_session_unique "
+                       "ON pi_upload_jobs(session_path)")
 
     def enqueue(self, episode_id: str, session_path: str | Path, channel_id: str) -> int:
         from .owner_video_reviews import _validate_id
@@ -33,6 +36,15 @@ class PiUploadQueue:
         if not channel_id or not str(session_path):
             raise ValueError("channel and session path required")
         with sqlite3.connect(self.path, timeout=10) as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute(
+                "SELECT id,episode_id,channel_id FROM pi_upload_jobs WHERE session_path=?",
+                (str(session_path),),
+            ).fetchone()
+            if existing is not None:
+                if existing[1:] != (episode_id, channel_id):
+                    raise ValueError("session already assigned to different episode or channel")
+                return int(existing[0])
             cur = db.execute(
                 "INSERT INTO pi_upload_jobs (episode_id,session_path,channel_id,state,created_at,updated_at) VALUES (?,?,?,?,?,?)",
                 (episode_id, str(session_path), channel_id, "pending", _now(), _now()),
