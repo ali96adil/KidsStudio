@@ -11,6 +11,7 @@ from typing import Callable
 
 from .pi_media_inbox import EPISODE_RE
 from .pi_staging_handoff import prepare_private_upload
+from .pi_upload_queue_repair import recover_orphaned_sessions
 
 
 def scan_once(
@@ -52,6 +53,11 @@ def scan_once(
                 continue
             title = title_for_episode(episode_id)
             if not isinstance(title, str) or not title.strip():
+                continue
+            # A saved session already has a resumable URL; do not refresh
+            # OAuth merely to rediscover a previously queued transfer.
+            session_file = Path(session_dir) / (episode_id + "-" + manifest["sha256"][:16] + ".json")
+            if session_file.exists():
                 continue
             result = prepare_private_upload(
                 staged_video=source,
