@@ -15,12 +15,12 @@ class ReleaseCLITests(unittest.TestCase):
             reviews.initialize()
             gate.initialize()
             self.assertFalse(status(reviews, gate, "red")["eligible"])
-            reviews.record("red", "approved", "looks good")
+            reviews.record(episode_id="red", state="approved", note="looks good")
             self.assertFalse(status(reviews, gate, "red")["eligible"])
             gate.record("red", "release_authorized", "owner")
             self.assertTrue(status(reviews, gate, "red")["eligible"])
             self.assertFalse(status(reviews, gate, "red")["youtube_visibility_changed"])
-            reviews.record("red", "changes_requested", "audio issue")
+            reviews.record(episode_id="red", state="changes_requested", note="audio issue")
             self.assertFalse(status(reviews, gate, "red")["eligible"])
 
 
