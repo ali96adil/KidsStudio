@@ -40,6 +40,9 @@ def scan_once(
                 continue
             if not isinstance(filename, str) or Path(filename).name != filename or filename in (".", "..") or not filename.lower().endswith(".mp4"):
                 continue
+            expected_filename = episode_id + "-" + str(manifest.get("sha256", ""))[:16] + ".mp4"
+            if filename != expected_filename or manifest_path.name != expected_filename[:-4] + ".json":
+                continue
             source = staging / filename
             if source.is_symlink() or not source.is_file():
                 continue
