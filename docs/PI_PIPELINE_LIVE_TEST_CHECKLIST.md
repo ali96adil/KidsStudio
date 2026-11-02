@@ -29,3 +29,35 @@ Do not enable unattended production until every step is confirmed.
 still need live validation; no Mac/Pi hardware or YouTube account is
 accessible in this CI environment. A successful CI run is not evidence
 of a real upload.
+
+## Automated local checks before hardware acceptance
+
+Run these commands from the repository root, in the Python environment used
+for Kids Studio:
+
+```bash
+python -m unittest discover -s tests -p 'test_pi_*.py'
+python -m kidsstudio.pi_offline_trial
+python -m kidsstudio.pi_live_readiness \\
+  --state-dir /path/to/private-upload \\
+  --credentials /path/to/private/youtube.json \\
+  --titles-file /path/to/private/titles.json
+```
+
+The offline trial uses temporary fake credentials and mocks the processing
+tick. It **never** tests real network transfer or a YouTube upload.
+The readiness command is read-only and reports `network_checked=false`,
+`youtube_upload_tested=false`, and `public_release_enabled=false`.
+It requires an initialized local queue and private media directories.
+
+**Missing session safety:** if a queue job refers to a missing resumable
+session, the worker marks the job failed and does not request OAuth or
+create another upload. Reconcile the channel's private videos and local
+binding ledger manually before considering any retry. Do not create a
+fresh session merely to make the warning disappear: a previous upload
+may have completed remotely.
+
+Record the result of each real hardware step (Mac hostname, Pi service
+status, video ID stored privately, channel privacy verified, and owner
+review decision) in a private operator log, **not** in the repository.
+Never commit OAuth credentials, resumable session URLs, or local media.
