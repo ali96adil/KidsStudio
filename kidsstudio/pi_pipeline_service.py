@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .pi_staging_watcher import scan_once
 from .pi_upload_queue import PiUploadQueue
+from .pi_upload_queue_repair import recover_orphaned_sessions
 from .pi_upload_token_provider import FileTokenProvider
 from .pi_upload_worker import process_one
 from .pi_youtube_release_check import load_credentials
@@ -69,8 +70,15 @@ def run_pipeline(*, state_dir: str | Path, credentials: str | Path,
         bindings = UploadBindingStore(root / "bindings.sqlite")
         bindings.initialize()
         queue.recover_interrupted()
+        # Crash-safe recovery: a session can be persisted before its queue
+        # INSERT. Restore only missing jobs, preserving existing job states.
+        session_dir = root / "sessions"
+        session_dir.mkdir(mode=0o700, exist_ok=True)
+        if session_dir.is_symlink() or session_dir.stat().st_mode & 0o077:
+            raise ValueError("session directory must be private")
         token_provider = FileTokenProvider(credentials)
         channel_id = load_credentials(Path(credentials))["channel_id"]
+        recover_orphaned_sessions(queue, session_dir, channel_id)
         while True:
             try:
                 pipeline_tick(
