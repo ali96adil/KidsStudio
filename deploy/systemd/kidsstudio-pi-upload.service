@@ -1,0 +1,23 @@
+[Unit]
+Description=Kids Studio Pi private YouTube upload recovery worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kidsstudio
+Group=kidsstudio
+WorkingDirectory=/opt/kidsstudio
+ExecStart=/opt/kidsstudio/.venv/bin/python -m kidsstudio.pi_upload_service --state-dir /var/lib/kidsstudio/private-upload --credentials /var/lib/kidsstudio/secrets/youtube.json
+Restart=on-failure
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/kidsstudio
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
