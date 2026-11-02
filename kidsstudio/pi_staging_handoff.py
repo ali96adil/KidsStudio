@@ -9,6 +9,7 @@ import json
 import sqlite3
 import fcntl
 import os
+import hashlib
 from pathlib import Path
 
 from .pi_media_inbox import ingest_media
@@ -72,6 +73,34 @@ def prepare_private_upload(
             ).fetchone()
         if existing:
             raise ValueError("episode already has an upload job; manual reconciliation required")
+        # Durable intent is written BEFORE the external request. A crash or
+        # timeout may leave a remote session we cannot safely rediscover.
+        # Never automatically create another one without operator review.
+        intent_folder = session_folder / ".session-intents"
+        intent_folder.mkdir(mode=0o700, exist_ok=True)
+        if intent_folder.is_symlink() or intent_folder.stat().st_mode & 0o077:
+            raise ValueError("invalid intent directory")
+        intent_name = hashlib.sha256((episode_id + "\\0" + expected_channel_id).encode()).hexdigest() + ".intent"
+        intent_file = intent_folder / intent_name
+        if intent_file.exists() or intent_file.is_symlink():
+            raise ValueError("previous upload session attempt requires manual reconciliation")
+        intent_fd = os.open(intent_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(intent_fd, "w", encoding="utf-8") as stream:
+                json.dump({"version": 1, "episode_id": episode_id,
+                           "channel_id": expected_channel_id,
+                           "media_sha256": manifest["sha256"],
+                           "state": "manual_reconcile_if_session_missing"}, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            directory_fd = os.open(intent_folder, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except BaseException:
+            # Keep the marker even on ambiguous write failures: fail closed.
+            raise
         session_url = start_session(access_token, video.stat().st_size, title, description)
         save_session(session_file, session_url=session_url, video_path=video)
         job_id = queue.enqueue(episode_id, session_file, expected_channel_id)
