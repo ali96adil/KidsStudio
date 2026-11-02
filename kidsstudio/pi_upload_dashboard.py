@@ -24,7 +24,7 @@ def upload_snapshot(queue: PiUploadQueue, session_dir: str | Path) -> dict:
             counts[state] = int(count)
     return {"read_only": True, "queue": counts,
             "sessions": audit_sessions(queue, session_dir),
-            "session_intents": audit_session_intents(session_dir)}
+            "session_intents": audit_session_intents(session_dir, queue.path)}
 
 
 def render_upload_dashboard(data: dict) -> str:
