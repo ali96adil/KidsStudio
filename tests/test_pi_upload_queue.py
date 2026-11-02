@@ -45,7 +45,8 @@ class PiQueueTests(unittest.TestCase):
             session = Path(root) / "session.json"
             session.write_text("mocked session")
             queue.enqueue("red", session, "channel")
-            with patch("kidsstudio.pi_upload_worker.supervise_resume", side_effect=RuntimeError("secret")):
+            with patch("kidsstudio.pi_upload_worker.load_session", return_value={}), \
+                 patch("kidsstudio.pi_upload_worker.supervise_resume", side_effect=RuntimeError("secret")):
                 with self.assertRaises(RuntimeError):
                     process_one(queue, object(), lambda: "token")
             self.assertIsNone(queue.claim())
