@@ -46,9 +46,15 @@ def audit_sessions(queue: PiUploadQueue, session_dir: str | Path) -> dict:
         else:
             counts["queued"] += 1
     missing = sum(1 for path in jobs if path not in seen and not Path(path).is_file())
+    invalid_referenced = sum(
+        1 for path in jobs if path not in seen and Path(path).is_file()
+    )
     counts["missing"] = missing
+    counts["invalid_referenced"] = invalid_referenced
     if missing:
         problems.append("missing_queued_session")
-    return {"healthy": counts["corrupt"] == 0 and counts["orphaned"] == 0 and missing == 0,
+    if invalid_referenced:
+        problems.append("invalid_referenced_session")
+    return {"healthy": counts["corrupt"] == 0 and counts["orphaned"] == 0 and missing == 0 and invalid_referenced == 0,
             "counts": counts, "problems": problems,
             "network_checked": False, "youtube_upload_tested": False}
