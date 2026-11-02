@@ -27,20 +27,30 @@ def run_offline_trial() -> dict:
         titles = root / "titles.json"
         titles.write_text(json.dumps({"colors-red-ar": "Learn Red"}), encoding="utf-8")
         titles.chmod(0o600)
-        # Mock the entire processing tick: no external provider is contacted.
-        with patch("kidsstudio.pi_pipeline_service.pipeline_tick") as tick:
+        # Exercise the real tick, staging scan and empty queue. Block network
+        # boundaries; no token refresh or YouTube request is permitted.
+        with patch("kidsstudio.pi_pipeline_service.FileTokenProvider") as token_class, \
+             patch("kidsstudio.pi_staging_watcher.prepare_private_upload") as upload, \
+             patch("kidsstudio.pi_upload_worker.supervise_resume") as resume:
             exit_code = run_pipeline(
                 state_dir=state, credentials=credentials,
                 titles_file=titles, once=True,
             )
+            token_calls = token_class.return_value.mock_calls
+            upload_calls = upload.call_count
+            resume_calls = resume.call_count
         readiness = inspect_live_readiness(
             state_dir=state, credentials=credentials, titles_file=titles,
         )
         return {
-            "passed": exit_code == 0 and tick.call_count == 1
+            "passed": exit_code == 0 and not token_calls
+                      and upload_calls == 0 and resume_calls == 0
                       and readiness["ready_for_hardware_test"],
             "first_boot_exit_code": exit_code,
-            "tick_invocations": tick.call_count,
+            "real_pipeline_tick": True,
+            "oauth_calls": len(token_calls),
+            "upload_calls": upload_calls,
+            "resume_calls": resume_calls,
             "readiness": readiness,
             "offline_only": True,
             "youtube_upload_tested": False,
