@@ -29,6 +29,7 @@ def render_unified(production: dict, series: dict, reviews: dict,
         ("Upload failures", counts["failed"]),
         ("Corrupt sessions", sessions["corrupt"]),
         ("Orphaned sessions", sessions["orphaned"]),
+        ("Missing sessions", sessions.get("missing", 0)),
     )
     cards = "".join(
         '<div class="metric"><span>' + escape(label) + '</span><strong>' +
