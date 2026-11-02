@@ -6,6 +6,7 @@ manifest's declared size and SHA-256. Never publishes a video.
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Callable
 
@@ -56,7 +57,16 @@ def scan_once(
             # A saved session already has a resumable URL; do not refresh
             # OAuth merely to rediscover a previously queued transfer.
             session_file = Path(session_dir) / (episode_id + "-" + manifest["sha256"][:16] + ".json")
-            if session_file.exists():
+            if session_file.exists() or session_file.is_symlink():
+                continue
+            # Never start a second resumable upload for the same episode,
+            # even when the new media hash gives it a different filename.
+            with sqlite3.connect(queue.path, timeout=10) as db:
+                existing = db.execute(
+                    "SELECT 1 FROM pi_upload_jobs WHERE episode_id=? AND channel_id=? LIMIT 1",
+                    (episode_id, expected_channel_id),
+                ).fetchone()
+            if existing:
                 continue
             result = prepare_private_upload(
                 staged_video=source,
