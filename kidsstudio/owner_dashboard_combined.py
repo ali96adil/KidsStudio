@@ -9,6 +9,7 @@ from .owner_dashboard_html import render as render_queue
 from .owner_dashboard_snapshot import snapshot
 from .owner_series_board import load as load_series
 from .owner_video_reviews import latest_reviews, read_journal
+from .owner_review_store import OwnerReviewStore
 
 def render_combined(queue_data: dict, series_data: dict, reviews: dict | None = None) -> str:
     """Insert escaped series summary into the local read-only queue dashboard."""
@@ -44,14 +45,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Export local owner overview with series")
     parser.add_argument("--db", required=True)
     parser.add_argument("--series", required=True, help="Local JSON series manifest")
-    parser.add_argument("--reviews", help="Optional local owner review journal")
+    sources = parser.add_mutually_exclusive_group()
+    sources.add_argument("--reviews", help="Optional legacy owner review JSON")
+    sources.add_argument("--review-db", help="Optional SQLite owner review database")
     parser.add_argument("--out", required=True)
     parser.add_argument("--limit", type=int, default=25)
     args = parser.parse_args()
     output = Path(args.out).expanduser().resolve()
     if output.suffix.lower() != ".html" or output.exists():
         parser.error("--out must be a new .html path")
-    reviews = latest_reviews(read_journal(args.reviews)) if args.reviews else {}
+    reviews = (OwnerReviewStore(args.review_db).latest() if args.review_db else
+               latest_reviews(read_journal(args.reviews)) if args.reviews else {})
     page = render_combined(snapshot(args.db, args.limit), load_series(args.series), reviews)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
