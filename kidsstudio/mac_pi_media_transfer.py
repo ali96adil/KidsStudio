@@ -1,12 +1,20 @@
-"""Mac-side local media transfer over SSH/rsync with manifest verification."""
+"""Mac-side SSH transfer with matching manifest and media filenames.
+
+The manifest is transferred last, after rsync has completed the MP4.
+"""
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from .pi_media_inbox import build_manifest
+
+TARGET_RE = re.compile(r"[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+")
+REMOTE_RE = re.compile(r"/[A-Za-z0-9_./-]+")
 
 
 def transfer_to_pi(
@@ -17,28 +25,31 @@ def transfer_to_pi(
     remote_staging_dir: str,
     dry_run: bool = True,
 ) -> dict:
-    """Transfer to a Pi-owned staging directory, never directly to YouTube.
-
-    SSH target and remote directory are administrator-controlled settings,
-    not user-submitted episode metadata.
-    """
+    """Transfer MP4 first, then publish its matching manifest via SSH."""
     manifest = build_manifest(video_path, episode_id)
-    if not ssh_target or ssh_target.startswith("-") or any(c.isspace() for c in ssh_target):
-        raise ValueError("invalid SSH target")
-    if not remote_staging_dir.startswith("/") or any(c in remote_staging_dir for c in "\r\n\x00'\""):
-        raise ValueError("invalid remote staging directory")
-    remote_name = episode_id + "-" + manifest["sha256"][:16]
+    if not TARGET_RE.fullmatch(ssh_target):
+        raise ValueError("expected user@host SSH target")
+    if not REMOTE_RE.fullmatch(remote_staging_dir) or ".." in Path(remote_staging_dir).parts:
+        raise ValueError("unsafe remote staging path")
+    prefix = episode_id + "-" + manifest["sha256"][:16]
+    remote_video = prefix + ".mp4"
+    manifest["filename"] = remote_video
     if dry_run:
-        return {"manifest": manifest, "remote_prefix": remote_name, "transferred": False}
+        return {"manifest": manifest, "remote_prefix": prefix, "transferred": False}
     with tempfile.TemporaryDirectory() as folder:
-        metadata = Path(folder) / (remote_name + ".json")
+        staged = Path(folder)
+        video_copy = staged / remote_video
+        metadata = staged / (prefix + ".json")
+        # Copy into a stable local snapshot, so both files describe exactly
+        # the bytes rsync transfers even if the original render changes.
+        shutil.copyfile(video_path, video_copy)
+        from .pi_media_inbox import file_digest
+        if video_copy.stat().st_size != manifest["size"] or file_digest(video_copy) != manifest["sha256"]:
+            raise ValueError("source video changed during transfer preparation")
         metadata.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
-        # Avoid invoking a shell on the Mac. SSH/rsync still interpret the
-        # remote destination; caller must use a trusted, fixed remote path.
-        subprocess.run([
-            "rsync", "-av", "--protect-args", "--",
-            str(Path(video_path).resolve()),
-            str(metadata),
-            f"{ssh_target}:{remote_staging_dir.rstrip('/')}/",
-        ], check=True, timeout=3600)
-    return {"manifest": manifest, "remote_prefix": remote_name, "transferred": True}
+        destination = f"{ssh_target}:{remote_staging_dir.rstrip('/')}/"
+        subprocess.run(["rsync", "-av", "--protect-args", "--",
+                        str(video_copy), destination], check=True, timeout=3600)
+        subprocess.run(["rsync", "-av", "--protect-args", "--",
+                        str(metadata), destination], check=True, timeout=120)
+    return {"manifest": manifest, "remote_prefix": prefix, "transferred": True}
