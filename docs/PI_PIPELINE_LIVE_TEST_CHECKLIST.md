@@ -61,3 +61,13 @@ Record the result of each real hardware step (Mac hostname, Pi service
 status, video ID stored privately, channel privacy verified, and owner
 review decision) in a private operator log, **not** in the repository.
 Never commit OAuth credentials, resumable session URLs, or local media.
+
+## One-command offline acceptance evidence
+
+Run `python -m kidsstudio.pi_acceptance_report --out pi-acceptance.json`.
+The report is a new JSON file and refuses to overwrite an existing file.
+A passing offline report only proves first-boot and empty-pipeline checks;
+its `evidence` explicitly leaves Mac-to-Pi transfer, real YouTube upload,
+and owner review **untested**. Keep the report private if adding local
+operational details later. The real acceptance procedure above is still
+required before production is enabled.
