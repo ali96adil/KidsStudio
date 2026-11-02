@@ -9,6 +9,7 @@ import sqlite3
 from pathlib import Path
 
 from .pi_upload_queue import PiUploadQueue
+from .youtube_upload_session import load_session
 
 
 def missing_session_actions(queue: PiUploadQueue) -> list[dict]:
@@ -21,7 +22,15 @@ def missing_session_actions(queue: PiUploadQueue) -> list[dict]:
     actions = []
     for job_id, episode_id, state, session_path in rows:
         path = Path(session_path)
+        reason = None
         if path.is_symlink() or not path.is_file():
+            reason = "resumable_session_missing"
+        else:
+            try:
+                load_session(path)
+            except (OSError, ValueError, KeyError, TypeError):
+                reason = "resumable_session_invalid"
+        if reason is not None:
             actions.append({
                 "job_id": job_id,
                 "episode_id": episode_id,
@@ -29,6 +38,6 @@ def missing_session_actions(queue: PiUploadQueue) -> list[dict]:
                 "action": "manual_reconcile_youtube_before_retry",
                 "automatic_retry_allowed": False,
                 "new_upload_allowed": False,
-                "reason": "resumable_session_missing",
+                "reason": reason,
             })
     return actions
