@@ -29,6 +29,7 @@ def render_unified(production: dict, series: dict, reviews: dict,
         ("Upload failures", counts["failed"]),
         ("Corrupt sessions", sessions["corrupt"]),
         ("Orphaned sessions", sessions["orphaned"]),
+        ("Invalid referenced sessions", sessions.get("invalid_referenced", 0)),
         ("Missing sessions", sessions.get("missing", 0)),
     )
     cards = "".join(
