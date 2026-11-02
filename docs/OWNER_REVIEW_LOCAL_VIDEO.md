@@ -22,7 +22,7 @@ notes are stored separately in SQLite. No video is uploaded or published.
 Security and production limitations:
 - Do **not** port-forward or bind this test server to a public interface.
 - No phone login, authentication, TLS or multi-user permissions exist yet.
-- Video response currently streams entire files without HTTP byte ranges;
-  seeking in large videos may be limited.
+- Video preview supports single HTTP byte ranges capped at 8 MiB per response;
+  multi-range requests are not supported.
 - The page does not import YouTube private videos; it plays local media only.
 - Real Mac-to-Pi delivery and owner approval still need integration testing.
