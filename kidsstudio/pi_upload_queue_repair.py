@@ -5,6 +5,7 @@ Never creates a new YouTube session or starts a public release.
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .pi_upload_queue import PiUploadQueue
@@ -53,8 +54,7 @@ def recover_orphaned_sessions(queue: PiUploadQueue, session_dir: str | Path,
                 if existing:
                     skipped += 1
                     continue
-                now = __import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc).isoformat()
+                now = datetime.now(timezone.utc).isoformat()
                 db.execute(
                     "INSERT INTO pi_upload_jobs "
                     "(episode_id,session_path,channel_id,state,created_at,updated_at) "
@@ -84,7 +84,6 @@ def requeue_failed_job(queue: PiUploadQueue, job_id: int) -> bool:
         cur = db.execute(
             "UPDATE pi_upload_jobs SET state='pending',last_error=NULL,"
             "updated_at=? WHERE id=? AND state='failed'",
-            (__import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc).isoformat(), job_id),
+            (datetime.now(timezone.utc).isoformat(), job_id),
         )
         return cur.rowcount == 1
