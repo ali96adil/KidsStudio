@@ -25,7 +25,7 @@ class OwnerReviewStore:
                 note TEXT NOT NULL,
                 recorded_at TEXT NOT NULL
             )""")
-            db.execute("CREATE INDEX IF NOT EXISTS idx_owner_reviews_episode ON owner_reviews(episode_id, rowid)" .replace(", rowid", ""))
+            db.execute("CREATE INDEX IF NOT EXISTS idx_owner_reviews_episode ON owner_reviews(episode_id)")
 
     def record(self, *, episode_id: str, state: str, note: str = "") -> dict:
         _validate_id(episode_id)
