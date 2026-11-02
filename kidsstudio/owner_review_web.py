@@ -10,6 +10,7 @@ from urllib.parse import parse_qs
 
 from .owner_review_store import OwnerReviewStore
 from .owner_review_media import load_registry, video_mime
+from .owner_video_range import parse_range
 from .owner_video_reviews import STATES, _validate_id, _validate_note
 
 MAX_BODY = 4096
@@ -56,18 +57,32 @@ def make_handler(store: OwnerReviewStore, token: str, episode: str, media: Path 
         def do_GET(self) -> None:
             if self.path == "/video" and media is not None:
                 size = media.stat().st_size
-                self.send_response(200)
+                try:
+                    start, end, partial = parse_range(self.headers.get("Range"), size)
+                except ValueError:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                self.send_response(206 if partial else 200)
                 self.send_header("Content-Type", video_mime(media))
-                self.send_header("Content-Length", str(size))
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", str(end - start + 1))
+                if partial:
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.end_headers()
                 with media.open("rb") as stream:
-                    while True:
-                        chunk = stream.read(1024 * 1024)
+                    stream.seek(start)
+                    remaining = end - start + 1
+                    while remaining:
+                        chunk = stream.read(min(1024 * 1024, remaining))
                         if not chunk:
                             break
                         self.wfile.write(chunk)
+                        remaining -= len(chunk)
                 return
             if self.path != "/":
                 self._send(404, b"Not found")
