@@ -77,7 +77,11 @@ class PiUploadQueue:
                 raise ValueError("job not running")
 
     def recover_interrupted(self) -> int:
-        """Call once at worker startup; running jobs are safely requeued."""
+        """Requeue interrupted jobs only while all workers are stopped.
+
+        Never invoke this concurrently with a live worker: the database alone
+        cannot distinguish a crashed worker from one still uploading.
+        """
         with sqlite3.connect(self.path, timeout=10) as db:
             cur = db.execute(
                 "UPDATE pi_upload_jobs SET state='pending',updated_at=? WHERE state='running'",
