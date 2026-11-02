@@ -39,15 +39,22 @@ def pipeline_tick(*, queue, bindings, staging_dir, inbox_dir, session_dir,
                   token_provider, channel_id, titles) -> dict:
     # The worker is independent of the watcher: an incomplete staging
     # transfer cannot block already queued recovery jobs.
-    new_jobs = scan_once(
-        staging_dir=staging_dir, inbox_dir=inbox_dir,
-        session_dir=session_dir, queue=queue,
-        token_provider=token_provider,
-        expected_channel_id=channel_id,
-        title_for_episode=lambda episode: titles.get(episode, ""),
-    )
+    watcher_error = False
+    try:
+        new_jobs = scan_once(
+            staging_dir=staging_dir, inbox_dir=inbox_dir,
+            session_dir=session_dir, queue=queue,
+            token_provider=token_provider,
+            expected_channel_id=channel_id,
+            title_for_episode=lambda episode: titles.get(episode, ""),
+        )
+    except (OSError, ValueError):
+        # Keep draining previously queued work even when staging is broken.
+        new_jobs = []
+        watcher_error = True
     completed = process_one(queue, bindings, token_provider)
-    return {"queued": len(new_jobs), "processed": completed is not None}
+    return {"queued": len(new_jobs), "processed": completed is not None,
+            "watcher_error": watcher_error}
 
 
 def run_pipeline(*, state_dir: str | Path, credentials: str | Path,
@@ -76,6 +83,10 @@ def run_pipeline(*, state_dir: str | Path, credentials: str | Path,
         session_dir.mkdir(mode=0o700, exist_ok=True)
         if session_dir.is_symlink() or session_dir.stat().st_mode & 0o077:
             raise ValueError("session directory must be private")
+        for directory in (root / "staging", root / "inbox"):
+            directory.mkdir(mode=0o700, exist_ok=True)
+            if directory.is_symlink() or directory.stat().st_mode & 0o077:
+                raise ValueError("media directory must be private")
         token_provider = FileTokenProvider(credentials)
         channel_id = load_credentials(Path(credentials))["channel_id"]
         recover_orphaned_sessions(queue, session_dir, channel_id)
