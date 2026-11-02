@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "series": [
+    {
+      "id": "colors-ar",
+      "title": "سلسلة تعليم الألوان",
+      "episodes": [
+        {"id": "red-ar", "title": "اللون الأحمر", "stage": "idea"},
+        {"id": "blue-ar", "title": "اللون الأزرق", "stage": "idea"},
+        {"id": "yellow-ar", "title": "اللون الأصفر", "stage": "idea"}
+      ]
+    },
+    {
+      "id": "colors-en",
+      "title": "Learn Colors",
+      "episodes": [
+        {"id": "red-en", "title": "Red", "stage": "idea"},
+        {"id": "blue-en", "title": "Blue", "stage": "idea"}
+      ]
+    }
+  ]
+}
