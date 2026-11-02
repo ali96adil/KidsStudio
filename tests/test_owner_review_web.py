@@ -10,7 +10,7 @@ class OwnerReviewWebTests(unittest.TestCase):
         self.assertIn('name="state"', content)
         self.assertIn('action="/review"', content)
         self.assertNotIn("publish", content.lower())
-        self.assertIn('form-action &#x27;self&#x27;' if False else "form-action 'self'", content)
+        self.assertIn("form-action 'self'", content)
 
     def test_reject_invalid_episode_and_state(self):
         with self.assertRaises(ValueError):
