@@ -37,7 +37,7 @@ def recover_orphaned_sessions(queue: PiUploadQueue, session_dir: str | Path,
                 skipped += 1
                 continue
             name = path.stem
-            suffix = "-" + session["sha256"][:16]
+            suffix = "-" + session["media_sha256"][:16]
             if not name.endswith(suffix):
                 skipped += 1
                 continue
