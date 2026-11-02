@@ -18,7 +18,10 @@ class StagingWatcherTests(unittest.TestCase):
             video = staging / "red.mp4"
             video.write_bytes(b"rendered video")
             manifest = build_manifest(video, "red-ar")
-            (staging / "red.json").write_text(json.dumps(manifest))
+            target = staging / ("red-ar-" + manifest["sha256"][:16] + ".mp4")
+            video.rename(target)
+            manifest["filename"] = target.name
+            (staging / (target.stem + ".json")).write_text(json.dumps(manifest))
             queue = PiUploadQueue(base / "queue.sqlite")
             queue.initialize()
             params = dict(
@@ -41,8 +44,12 @@ class StagingWatcherTests(unittest.TestCase):
             staging.mkdir()
             video = staging / "red.mp4"
             video.write_bytes(b"original")
-            (staging / "red.json").write_text(json.dumps(build_manifest(video, "red-ar")))
-            video.write_bytes(b"partial")
+            manifest = build_manifest(video, "red-ar")
+            target = staging / ("red-ar-" + manifest["sha256"][:16] + ".mp4")
+            video.rename(target)
+            manifest["filename"] = target.name
+            (staging / (target.stem + ".json")).write_text(json.dumps(manifest))
+            target.write_bytes(b"partial")
             queue = PiUploadQueue(base / "queue.sqlite")
             queue.initialize()
             called = []
