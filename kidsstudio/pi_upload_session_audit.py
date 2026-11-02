@@ -20,7 +20,8 @@ def audit_sessions(queue: PiUploadQueue, session_dir: str | Path) -> dict:
     problems = []
     with sqlite3.connect(queue.path, timeout=10) as db:
         rows = db.execute("SELECT session_path,state FROM pi_upload_jobs").fetchall()
-    jobs = {str(Path(path)): state for path, state in rows}
+    jobs = {str(Path(path).absolute()): state for path, state in rows}
+    seen = set()
     for path in sorted(root.glob("*.json")):
         # Report only a safe count, not untrusted filenames or secret URLs.
         if path.is_symlink():
@@ -34,7 +35,8 @@ def audit_sessions(queue: PiUploadQueue, session_dir: str | Path) -> dict:
             problems.append("invalid_session")
             continue
         counts["valid"] += 1
-        state = jobs.get(str(path))
+        seen.add(str(path.absolute()))
+        state = jobs.get(str(path.absolute()))
         if state is None:
             counts["orphaned"] += 1
         elif state == "failed":
@@ -43,6 +45,10 @@ def audit_sessions(queue: PiUploadQueue, session_dir: str | Path) -> dict:
             counts["completed"] += 1
         else:
             counts["queued"] += 1
-    return {"healthy": counts["corrupt"] == 0 and counts["orphaned"] == 0,
+    missing = sum(1 for path in jobs if path not in seen and not Path(path).is_file())
+    counts["missing"] = missing
+    if missing:
+        problems.append("missing_queued_session")
+    return {"healthy": counts["corrupt"] == 0 and counts["orphaned"] == 0 and missing == 0,
             "counts": counts, "problems": problems,
             "network_checked": False, "youtube_upload_tested": False}
