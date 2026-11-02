@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "episodes": {
+    "red-ar": "colors/ar/red.mp4",
+    "blue-ar": "colors/ar/blue.mp4"
+  }
+}
