@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .pi_upload_queue import PiUploadQueue
 from .pi_upload_session_audit import audit_sessions
+from .pi_session_intent_audit import audit_session_intents
 
 STATES = ("pending", "running", "completed", "failed")
 
@@ -22,7 +23,8 @@ def upload_snapshot(queue: PiUploadQueue, session_dir: str | Path) -> dict:
         if state in counts:
             counts[state] = int(count)
     return {"read_only": True, "queue": counts,
-            "sessions": audit_sessions(queue, session_dir)}
+            "sessions": audit_sessions(queue, session_dir),
+            "session_intents": audit_session_intents(session_dir)}
 
 
 def render_upload_dashboard(data: dict) -> str:
@@ -35,13 +37,17 @@ def render_upload_dashboard(data: dict) -> str:
         ("Orphaned sessions", audit["counts"]["orphaned"]),
         ("Invalid referenced sessions", audit["counts"].get("invalid_referenced", 0)),
         ("Missing sessions", audit["counts"].get("missing", 0)),
+        ("Session intents to review", data.get("session_intents", {}).get("pending_reconciliation", 0)),
+        ("Invalid session intents", data.get("session_intents", {}).get("invalid_intents", 0)),
     ]
     cards = "".join(
         '<div class="metric"><span>' + escape(label) + '</span><strong>' +
         str(int(value)) + '</strong></div>'
         for label, value in metrics
     )
-    status = "Attention required" if queue["failed"] or not audit["healthy"] else "No detected upload issues"
+    intents = data.get("session_intents", {})
+    status = "Attention required" if (queue["failed"] or not audit["healthy"] or
+              intents.get("pending_reconciliation", 0) or intents.get("invalid_intents", 0)) else "No detected upload issues"
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
