@@ -8,10 +8,12 @@ from pathlib import Path
 from .owner_dashboard_html import render as render_queue
 from .owner_dashboard_snapshot import snapshot
 from .owner_series_board import load as load_series
+from .owner_video_reviews import latest_reviews, read_journal
 
-def render_combined(queue_data: dict, series_data: dict) -> str:
+def render_combined(queue_data: dict, series_data: dict, reviews: dict | None = None) -> str:
     """Insert escaped series summary into the local read-only queue dashboard."""
     html = render_queue(queue_data)
+    reviews = reviews or {}
     blocks = []
     for series in series_data["series"]:
         counts = ", ".join(
@@ -19,7 +21,8 @@ def render_combined(queue_data: dict, series_data: dict) -> str:
             for stage, count in series["stage_counts"].items() if count
         ) or "No episodes"
         rows = "".join(
-            "<li>" + escape(ep["title"]) + " — " + escape(ep["stage"]) + "</li>"
+            "<li>" + escape(ep["title"]) + " — " + escape(ep["stage"]) +
+            " · owner: " + escape(reviews.get(ep["id"], {}).get("state", "needs_review")) + "</li>"
             for ep in series["episodes"]
         )
         blocks.append(
@@ -41,13 +44,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Export local owner overview with series")
     parser.add_argument("--db", required=True)
     parser.add_argument("--series", required=True, help="Local JSON series manifest")
+    parser.add_argument("--reviews", help="Optional local owner review journal")
     parser.add_argument("--out", required=True)
     parser.add_argument("--limit", type=int, default=25)
     args = parser.parse_args()
     output = Path(args.out).expanduser().resolve()
     if output.suffix.lower() != ".html" or output.exists():
         parser.error("--out must be a new .html path")
-    page = render_combined(snapshot(args.db, args.limit), load_series(args.series))
+    reviews = latest_reviews(read_journal(args.reviews)) if args.reviews else {}
+    page = render_combined(snapshot(args.db, args.limit), load_series(args.series), reviews)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
 
