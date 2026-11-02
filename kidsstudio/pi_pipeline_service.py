@@ -102,7 +102,7 @@ def run_pipeline(*, state_dir: str | Path, credentials: str | Path,
                     channel_id=channel_id,
                     titles=read_titles(titles_file),
                 )
-                tick_failed = bool(outcome and outcome.get("watcher_error"))
+                tick_failed = isinstance(outcome, dict) and outcome.get("watcher_error") is True
             except Exception:
                 # Do not expose OAuth secrets or resumable session URLs.
                 print("Pi pipeline tick failed; inspect private queue state", file=sys.stderr)
