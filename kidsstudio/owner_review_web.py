@@ -9,11 +9,12 @@ import secrets
 from urllib.parse import parse_qs
 
 from .owner_review_store import OwnerReviewStore
+from .owner_review_media import load_registry, video_mime
 from .owner_video_reviews import STATES, _validate_id, _validate_note
 
 MAX_BODY = 4096
 
-def page(episode: str, token: str, state: str = "needs_review", message: str = "") -> bytes:
+def page(episode: str, token: str, state: str = "needs_review", message: str = "", has_video: bool = False) -> bytes:
     _validate_id(episode)
     if state not in STATES:
         raise ValueError("invalid review state")
@@ -22,6 +23,7 @@ def page(episode: str, token: str, state: str = "needs_review", message: str = "
         (' selected' if value == state else '') + '>' + escape(value) + '</option>'
         for value in sorted(STATES)
     )
+    video = ('<video controls playsinline preload="metadata" src="/video" style="width:100%;max-width:100%"></video>' if has_video else '')
     return ('''<!doctype html><html lang="ar" dir="rtl"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'">
@@ -29,7 +31,7 @@ def page(episode: str, token: str, state: str = "needs_review", message: str = "
 <style>body{font-family:system-ui;max-width:600px;margin:2rem auto;padding:1rem}
 label{display:block;margin:1rem 0}textarea,select,button{box-sizing:border-box;width:100%;padding:.8rem;font:inherit}
 textarea{min-height:8rem}button{margin-top:1rem}small{display:block;margin-top:1rem}</style></head><body>
-<h1>مراجعة الحلقة</h1><p>''' + escape(episode) + '''</p><p role="status">''' + escape(message) + '''</p>
+<h1>مراجعة الحلقة</h1><p>''' + escape(episode) + '''</p>''' + video + '''<p role="status">''' + escape(message) + '''</p>
 <form method="post" action="/review">
 <input type="hidden" name="token" value="''' + escape(token, quote=True) + '''">
 <input type="hidden" name="episode" value="''' + escape(episode, quote=True) + '''">
@@ -39,7 +41,7 @@ textarea{min-height:8rem}button{margin-top:1rem}small{display:block;margin-top:1
 <small>هذه الصفحة تحفظ المراجعة فقط. لا ترفع الفيديو ولا تنشره.</small>
 </body></html>''').encode("utf-8")
 
-def make_handler(store: OwnerReviewStore, token: str, episode: str):
+def make_handler(store: OwnerReviewStore, token: str, episode: str, media: Path | None = None):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code: int, content: bytes) -> None:
             self.send_response(code)
@@ -52,11 +54,26 @@ def make_handler(store: OwnerReviewStore, token: str, episode: str):
             self.wfile.write(content)
 
         def do_GET(self) -> None:
+            if self.path == "/video" and media is not None:
+                size = media.stat().st_size
+                self.send_response(200)
+                self.send_header("Content-Type", video_mime(media))
+                self.send_header("Content-Length", str(size))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                with media.open("rb") as stream:
+                    while True:
+                        chunk = stream.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                return
             if self.path != "/":
                 self._send(404, b"Not found")
                 return
             latest = store.latest().get(episode, {})
-            self._send(200, page(episode, token, latest.get("state", "needs_review")))
+            self._send(200, page(episode, token, latest.get("state", "needs_review"), has_video=media is not None))
 
         def do_POST(self) -> None:
             if self.path != "/review":
@@ -82,7 +99,7 @@ def make_handler(store: OwnerReviewStore, token: str, episode: str):
             except (ValueError, KeyError, UnicodeDecodeError):
                 self._send(400, b"Invalid request")
                 return
-            self._send(200, page(episode, token, state, "تم حفظ قرار المراجعة"))
+            self._send(200, page(episode, token, state, "تم حفظ قرار المراجعة", has_video=media is not None))
 
     return Handler
 
@@ -91,12 +108,17 @@ def main() -> None:
     parser.add_argument("--db", required=True)
     parser.add_argument("--episode", required=True)
     parser.add_argument("--port", type=int, default=8768)
+    parser.add_argument("--media-root")
+    parser.add_argument("--media-registry")
     args = parser.parse_args()
     _validate_id(args.episode)
     store = OwnerReviewStore(Path(args.db))
     store.initialize()
+    if bool(args.media_root) != bool(args.media_registry):
+        parser.error("--media-root and --media-registry must be supplied together")
+    media = load_registry(args.media_registry, args.media_root).get(args.episode) if args.media_root else None
     token = secrets.token_urlsafe(32)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(store, token, args.episode))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(store, token, args.episode, media))
     print(f"Open on this computer only: http://127.0.0.1:{server.server_port}/", flush=True)
     server.serve_forever()
 
