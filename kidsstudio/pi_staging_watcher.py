@@ -11,7 +11,6 @@ from typing import Callable
 
 from .pi_media_inbox import EPISODE_RE
 from .pi_staging_handoff import prepare_private_upload
-from .pi_upload_queue_repair import recover_orphaned_sessions
 
 
 def scan_once(
