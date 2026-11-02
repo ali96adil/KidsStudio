@@ -48,8 +48,9 @@ def recover_orphaned_sessions(queue: PiUploadQueue, session_dir: str | Path,
             with sqlite3.connect(queue.path, timeout=10) as db:
                 db.execute("BEGIN IMMEDIATE")
                 existing = db.execute(
-                    "SELECT id FROM pi_upload_jobs WHERE session_path=?",
-                    (str(path),),
+                    "SELECT id FROM pi_upload_jobs WHERE session_path=? OR "
+                    "(episode_id=? AND channel_id=?)",
+                    (str(path), episode_id, expected_channel_id),
                 ).fetchone()
                 if existing:
                     skipped += 1
