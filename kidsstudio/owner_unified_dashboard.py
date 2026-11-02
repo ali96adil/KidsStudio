@@ -14,10 +14,11 @@ from .owner_series_board import load as load_series
 from .owner_review_store import OwnerReviewStore
 from .pi_upload_dashboard import upload_snapshot
 from .pi_upload_queue import PiUploadQueue
+from .owner_episode_status import episode_statuses
 
 
 def render_unified(production: dict, series: dict, reviews: dict,
-                   uploads: dict) -> str:
+                   uploads: dict, episodes: list[dict] | None = None) -> str:
     html = render_combined(production, series, reviews)
     counts = uploads["queue"]
     sessions = uploads["sessions"]["counts"]
@@ -39,6 +40,19 @@ def render_unified(production: dict, series: dict, reviews: dict,
         '<p>Read-only Pi status; completed means private upload only, not public release.</p>'
         '<div class="metrics">' + cards + '</div></section>'
     )
+    if episodes is not None:
+        rows = "".join(
+            "<tr>" + "".join("<td>" + escape(str(item[key])) + "</td>"
+            for key in ("series", "title", "production_stage", "review_state", "upload_state", "next_step")) + "</tr>"
+            for item in episodes
+        )
+        section += (
+            '<section aria-label="Episode progress"><h2>Episode progress</h2>'
+            '<div class="table-wrap"><table><thead><tr><th>Series</th><th>Episode</th>'
+            '<th>Production</th><th>Review</th><th>Private upload</th><th>Next step</th>'
+            '</tr></thead><tbody>' + (rows or '<tr><td colspan="6">No episodes yet</td></tr>') +
+            '</tbody></table></div></section>'
+        )
     marker = "<footer>Local snapshot only."
     if marker not in html:
         raise ValueError("owner dashboard template marker missing")
@@ -52,11 +66,12 @@ def export_unified(*, production_db: str | Path, series_file: str | Path,
     if dest.suffix.lower() != ".html" or dest.exists() or dest.is_symlink():
         raise ValueError("output must be a new HTML file")
     pi = Path(pi_state_dir)
+    series_data = load_series(series_file)
+    reviews = OwnerReviewStore(review_db).latest()
     page = render_unified(
-        snapshot(production_db, limit),
-        load_series(series_file),
-        OwnerReviewStore(review_db).latest(),
+        snapshot(production_db, limit), series_data, reviews,
         upload_snapshot(PiUploadQueue(pi / "queue.sqlite"), pi / "sessions"),
+        episode_statuses(series_data, reviews, pi / "queue.sqlite"),
     )
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("x", encoding="utf-8") as stream:
