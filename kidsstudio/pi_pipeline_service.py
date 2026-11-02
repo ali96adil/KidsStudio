@@ -91,6 +91,7 @@ def run_pipeline(*, state_dir: str | Path, credentials: str | Path,
         channel_id = load_credentials(Path(credentials))["channel_id"]
         recover_orphaned_sessions(queue, session_dir, channel_id)
         while True:
+            tick_failed = False
             try:
                 pipeline_tick(
                     queue=queue, bindings=bindings,
@@ -104,8 +105,9 @@ def run_pipeline(*, state_dir: str | Path, credentials: str | Path,
             except Exception:
                 # Do not expose OAuth secrets or resumable session URLs.
                 print("Pi pipeline tick failed; inspect private queue state", file=sys.stderr)
+                tick_failed = True
             if once:
-                return 0
+                return 2 if tick_failed else 0
             time.sleep(poll_seconds)
     finally:
         os.close(fd)
