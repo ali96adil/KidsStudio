@@ -31,6 +31,8 @@ def render_unified(production: dict, series: dict, reviews: dict,
         ("Orphaned sessions", sessions["orphaned"]),
         ("Invalid referenced sessions", sessions.get("invalid_referenced", 0)),
         ("Missing sessions", sessions.get("missing", 0)),
+        ("Session intents to review", uploads.get("session_intents", {}).get("pending_reconciliation", 0)),
+        ("Invalid session intents", uploads.get("session_intents", {}).get("invalid_intents", 0)),
     )
     cards = "".join(
         '<div class="metric"><span>' + escape(label) + '</span><strong>' +
