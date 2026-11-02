@@ -33,6 +33,7 @@ def render_upload_dashboard(data: dict) -> str:
         ("Completed", queue["completed"]), ("Failed", queue["failed"]),
         ("Corrupt sessions", audit["counts"]["corrupt"]),
         ("Orphaned sessions", audit["counts"]["orphaned"]),
+        ("Missing sessions", audit["counts"].get("missing", 0)),
     ]
     cards = "".join(
         '<div class="metric"><span>' + escape(label) + '</span><strong>' +
