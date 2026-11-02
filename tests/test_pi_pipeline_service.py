@@ -18,7 +18,7 @@ class PipelineServiceTests(unittest.TestCase):
                     token_provider=lambda: "token", channel_id="channel",
                     titles={"red-ar": "Learn Red"},
                 )
-        self.assertEqual(result, {"queued": 1, "processed": True})
+        self.assertEqual(result, {"queued": 1, "processed": True, "watcher_error": False})
         self.assertEqual(watcher.call_args.kwargs["title_for_episode"]("red-ar"), "Learn Red")
         self.assertEqual(watcher.call_args.kwargs["title_for_episode"]("unknown"), "")
         worker.assert_called_once()
