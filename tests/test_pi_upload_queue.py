@@ -27,7 +27,9 @@ class PiQueueTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             queue = PiUploadQueue(Path(root) / "queue.db")
             queue.initialize()
-            queue.enqueue("red", "/tmp/session.json", "channel")
+            session = Path(root) / "session.json"
+            session.write_text("mocked session")
+            queue.enqueue("red", session, "channel")
             with patch("kidsstudio.pi_upload_worker.supervise_resume",
                        return_value={"recorded_private_upload": True}) as supervisor:
                 result = process_one(queue, object(), lambda: "token")
