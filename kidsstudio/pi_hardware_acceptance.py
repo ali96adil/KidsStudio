@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--status", choices=sorted(_ALLOWED))
     args = parser.parse_args(argv)
     if args.init is not None:
-        if args.evidence is not None or args.out is not None:
+        if args.evidence is not None or args.out is not None or args.step is not None or args.status is not None:
             parser.error("--init cannot be combined with --evidence or --out")
         data = {"version": 1, "steps": {name: "not_tested" for name in REQUIRED_STEPS}}
         fd = os.open(args.init, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -105,6 +105,12 @@ def main(argv: list[str] | None = None) -> int:
                 stream.write(chr(10))
                 stream.flush()
                 os.fsync(stream.fileno())
+            current_stat = args.evidence.lstat()
+            if (current_stat.st_ino != evidence_stat.st_ino or
+                    current_stat.st_dev != evidence_stat.st_dev or
+                    current_stat.st_mtime_ns != evidence_stat.st_mtime_ns or
+                    current_stat.st_size != evidence_stat.st_size):
+                raise ValueError("evidence changed during update; retry with latest file")
             os.replace(temporary, args.evidence)
         finally:
             if os.path.exists(temporary):
