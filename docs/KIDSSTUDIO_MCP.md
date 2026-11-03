@@ -14,7 +14,7 @@ package in the client's Python environment).
 
 Current tools:
 - `kidsstudio_capabilities`: read-only capability and safety report.
-- `mac_pi_transfer_precheck`: hashes a local MP4 and checks safe naming
+- `pi_received_media_precheck`: checks a received MP4 and matching JSON manifest in a local Pi staging directory (SHA-256, size and naming); read-only and never queues uploads. Requires staging_dir and manifest_name.\n- `mac_pi_transfer_precheck`: hashes a local MP4 and checks safe naming
   for Mac-to-Pi transfer. Requires video, episode_id, ssh_target,
   remote_staging_dir. **Does not contact SSH or transfer files.**
 
