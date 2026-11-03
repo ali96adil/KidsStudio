@@ -10,6 +10,7 @@ import sys
 
 from .mac_pi_transfer_precheck import precheck
 from .pi_received_media_precheck import verify_received
+from .mac_pi_integrity_compare import compare_reports
 
 PROTOCOL_VERSION = "2025-03-26"
 TOOLS = [
@@ -17,6 +18,19 @@ TOOLS = [
         "name": "kidsstudio_capabilities",
         "description": "Read supported KidsStudio MCP capabilities and safety restrictions.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "mac_pi_compare_reports",
+        "description": "Compare offline Mac and Pi media verification reports. Does not access the network.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mac_report": {"type": "object"},
+                "pi_report": {"type": "object"},
+            },
+            "required": ["mac_report", "pi_report"],
+            "additionalProperties": False,
+        },
     },
     {
         "name": "pi_received_media_precheck",
@@ -80,6 +94,18 @@ def handle(message: dict) -> dict | None:
                               "ssh_transfer": False, "youtube_upload": False,
                               "public_release_authorized": False,
                               "tools": [item["name"] for item in TOOLS]})
+        elif params.get("name") == "mac_pi_compare_reports":
+            args = params.get("arguments", {})
+            if (not isinstance(args, dict) or set(args) != {"mac_report", "pi_report"}
+                    or not isinstance(args["mac_report"], dict)
+                    or not isinstance(args["pi_report"], dict)):
+                result = _result({"error": "expected mac_report and pi_report objects"}, error=True)
+            else:
+                try:
+                    result = _result(compare_reports(args["mac_report"], args["pi_report"]))
+                except (ValueError, TypeError) as exc:
+                    result = _result({"error": type(exc).__name__,
+                                      "message": str(exc)}, error=True)
         elif params.get("name") == "pi_received_media_precheck":
             args = params.get("arguments", {})
             required = {"staging_dir", "manifest_name"}
