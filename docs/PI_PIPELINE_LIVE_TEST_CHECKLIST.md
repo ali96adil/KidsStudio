@@ -146,3 +146,18 @@ python -m kidsstudio.pi_hardware_acceptance --evidence /path/outside/repo/pi-har
 ```
 
 Use `--status fail` or `--status not_tested` when appropriate. The update replaces the private file atomically and does not accept free-form secrets or upload session URLs. Re-run the read-only `--evidence` report to evaluate all seven steps.
+
+
+### Mac render offline precheck (no SSH or YouTube)
+
+Run on the Mac before any live transfer:
+
+```sh
+python -m kidsstudio.mac_pi_transfer_precheck \\
+  --video /path/to/export.mp4 \\
+  --episode-id colors_001 \\
+  --ssh-target pi@raspberrypi.local \\
+  --remote-staging-dir /home/pi/staging
+```
+
+The JSON response reports SHA-256, byte size, the exact matching remote MP4 and manifest filenames, and `READY_FOR_TRANSFER_NOT_TRANSFERRED`. It never sends media or validates Pi/YouTube availability. Only mark `mac_video_export` passed after checking the actual render, and mark transfer/integrity/upload steps only after their respective live checks.
