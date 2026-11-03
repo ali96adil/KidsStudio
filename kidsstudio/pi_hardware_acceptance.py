@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--init", type=Path, help="create new private not-tested evidence file")
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--step", choices=REQUIRED_STEPS)
+    parser.add_argument("--status", choices=sorted(_ALLOWED))
     args = parser.parse_args(argv)
     if args.init is not None:
         if args.evidence is not None or args.out is not None:
@@ -70,7 +72,31 @@ def main(argv: list[str] | None = None) -> int:
     evidence_stat = args.evidence.stat()
     if stat.S_IMODE(evidence_stat.st_mode) & 0o077 or evidence_stat.st_size > 16384:
         raise ValueError("evidence file must be private and at most 16 KiB")
-    report = evaluate_evidence(json.loads(args.evidence.read_text(encoding="utf-8")))
+    evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
+    if (args.step is None) != (args.status is None):
+        parser.error("--step and --status must be used together")
+    if args.step is not None:
+        if args.out is not None:
+            parser.error("--out cannot be used with --step")
+        evaluate_evidence(evidence)
+        evidence["steps"][args.step] = args.status
+        # Write a new file, fsync, then atomically replace the original.
+        # No free-form notes or URLs are accepted by this command.
+        import tempfile
+        fd, temporary = tempfile.mkstemp(prefix=".acceptance-", dir=args.evidence.parent)
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(evidence, stream, indent=2)
+                stream.write(chr(10))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, args.evidence)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        return 0
+    report = evaluate_evidence(evidence)
     output = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.out:
         with args.out.open("x", encoding="utf-8") as stream:
