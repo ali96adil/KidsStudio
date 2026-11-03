@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from .pi_media_inbox import EPISODE_RE
+from .pi_session_intent_names import intent_filenames
 from .pi_staging_handoff import prepare_private_upload
 
 
@@ -71,11 +72,9 @@ def scan_once(
                 continue
             # An earlier session-creation request may have reached YouTube
             # before its response was lost. Do not even request OAuth again.
-            intent_name = hashlib.sha256(
-                (episode_id + chr(0) + expected_channel_id).encode()
-            ).hexdigest() + ".intent"
-            intent = Path(session_dir) / ".session-intents" / intent_name
-            if intent.exists() or intent.is_symlink():
+            intent_folder = Path(session_dir) / ".session-intents"
+            if any((intent_folder / name).exists() or (intent_folder / name).is_symlink()
+                   for name in intent_filenames(episode_id, expected_channel_id)):
                 continue
             result = prepare_private_upload(
                 staged_video=source,
