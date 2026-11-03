@@ -1,4 +1,5 @@
 import tempfile
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -26,6 +27,39 @@ class TransferContractTests(unittest.TestCase):
             self.assertEqual([x[0] for x in calls], [".mp4", ".json"])
             self.assertEqual(calls[0][1], result["manifest"]["filename"])
             self.assertEqual(calls[1][1], calls[0][1][:-4] + ".json")
+
+    def test_failed_media_rsync_never_publishes_manifest(self):
+        with tempfile.TemporaryDirectory() as root:
+            video = Path(root) / "render.mp4"
+            video.write_bytes(b"test render")
+            calls = []
+            def fail_first(args, **kwargs):
+                calls.append(Path(args[-2]).suffix)
+                raise subprocess.CalledProcessError(23, args)
+            with patch("kidsstudio.mac_pi_media_transfer.subprocess.run", side_effect=fail_first):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    transfer_to_pi(video, episode_id="colors-red",
+                                   ssh_target="kidsstudio@pi.local",
+                                   remote_staging_dir="/var/lib/kidsstudio/staging",
+                                   dry_run=False)
+            self.assertEqual(calls, [".mp4"])
+
+    def test_failed_manifest_rsync_does_not_report_transfer_success(self):
+        with tempfile.TemporaryDirectory() as root:
+            video = Path(root) / "render.mp4"
+            video.write_bytes(b"test render")
+            calls = []
+            def fail_manifest(args, **kwargs):
+                calls.append(Path(args[-2]).suffix)
+                if len(calls) == 2:
+                    raise subprocess.CalledProcessError(23, args)
+            with patch("kidsstudio.mac_pi_media_transfer.subprocess.run", side_effect=fail_manifest):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    transfer_to_pi(video, episode_id="colors-red",
+                                   ssh_target="kidsstudio@pi.local",
+                                   remote_staging_dir="/var/lib/kidsstudio/staging",
+                                   dry_run=False)
+            self.assertEqual(calls, [".mp4", ".json"])
 
     def test_rejects_unsafe_remote_path(self):
         with tempfile.TemporaryDirectory() as root:
