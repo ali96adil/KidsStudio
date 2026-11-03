@@ -9,6 +9,7 @@ from pathlib import Path
 from .pi_upload_queue import PiUploadQueue
 from .pi_upload_session_audit import audit_sessions
 from .pi_session_intent_audit import audit_session_intents
+from .pi_session_reconciliation import reconciliation_report
 
 STATES = ("pending", "running", "completed", "failed")
 
@@ -24,7 +25,8 @@ def upload_snapshot(queue: PiUploadQueue, session_dir: str | Path) -> dict:
             counts[state] = int(count)
     return {"read_only": True, "queue": counts,
             "sessions": audit_sessions(queue, session_dir),
-            "session_intents": audit_session_intents(session_dir, queue.path)}
+            "session_intents": audit_session_intents(session_dir, queue.path),
+            "reconciliation": reconciliation_report(Path(session_dir).parent)}
 
 
 def render_upload_dashboard(data: dict) -> str:
@@ -39,6 +41,10 @@ def render_upload_dashboard(data: dict) -> str:
         ("Missing sessions", audit["counts"].get("missing", 0)),
         ("Session intents to review", data.get("session_intents", {}).get("pending_reconciliation", 0)),
         ("Invalid session intents", data.get("session_intents", {}).get("invalid_intents", 0)),
+        ("Sessions requiring review", sum(
+            1 for item in data.get("reconciliation", {}).get("episodes", [])
+            if item["action"] == "manual_reconcile_youtube_before_retry"
+        )),
     ]
     cards = "".join(
         '<div class="metric"><span>' + escape(label) + '</span><strong>' +
