@@ -33,6 +33,10 @@ def render_unified(production: dict, series: dict, reviews: dict,
         ("Missing sessions", sessions.get("missing", 0)),
         ("Session intents to review", uploads.get("session_intents", {}).get("pending_reconciliation", 0)),
         ("Invalid session intents", uploads.get("session_intents", {}).get("invalid_intents", 0)),
+        ("Sessions requiring review", sum(
+            1 for item in uploads.get("reconciliation", {}).get("episodes", [])
+            if item["action"] == "manual_reconcile_youtube_before_retry"
+        )),
     )
     cards = "".join(
         '<div class="metric"><span>' + escape(label) + '</span><strong>' +
