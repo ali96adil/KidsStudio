@@ -70,12 +70,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.evidence is None:
         parser.error("--evidence is required unless --init is used")
-    if args.evidence.is_symlink() or not args.evidence.is_file():
-        raise ValueError("evidence must be a regular file, not a symlink")
-    evidence_stat = args.evidence.stat()
-    if stat.S_IMODE(evidence_stat.st_mode) & 0o077 or evidence_stat.st_size > 16384:
-        raise ValueError("evidence file must be private and at most 16 KiB")
-    evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
+    fd = os.open(args.evidence, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        evidence_stat = os.fstat(stream.fileno())
+        if not stat.S_ISREG(evidence_stat.st_mode):
+            raise ValueError("evidence must be a regular file")
+        if stat.S_IMODE(evidence_stat.st_mode) & 0o077 or evidence_stat.st_size > 16384:
+            raise ValueError("evidence file must be private and at most 16 KiB")
+        raw = stream.read(16385)
+        if len(raw) > 16384:
+            raise ValueError("evidence exceeds 16 KiB")
+        evidence = json.loads(raw.decode("utf-8"))
     if (args.step is None) != (args.status is None):
         parser.error("--step and --status must be used together")
     if args.step is not None:
