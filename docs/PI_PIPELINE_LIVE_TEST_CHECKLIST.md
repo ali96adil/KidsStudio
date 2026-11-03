@@ -102,3 +102,16 @@ operator decisions and video IDs in a private record outside the repository.
 **Hardware acceptance remains pending:** CI cannot verify SSH transfer,
 YouTube OAuth, remote private visibility, real interruption recovery or
 owner iPhone review. Never enable unattended public release.
+
+
+## Session privacy and legacy-marker upgrade acceptance
+
+Before attempting any real YouTube session creation on the Pi:
+
+1. Run the read-only Pi live readiness report and require `private_session_directories=true`, `private_session_files=true`, and `no_ambiguous_session_intents=true`.
+2. Session and intent directories must be owner-only (`0700`); session `.json` and intent `.intent` files must be owner-only (`0600`). Do not paste their contents into logs or tickets: resumable URLs are credentials.
+3. An unresolved session intent with either the current NUL-delimited filename hash or the legacy literal-backslash-zero hash must block a new YouTube session. Inspect the operator reconciliation report before any manual action.
+4. If a queued session is missing, corrupt, or outside the trusted sessions directory, stop automatic retries and reconcile the remote YouTube state with the owner. Never delete an intent merely to unblock an upload.
+5. Confirm the uploaded video remains **Private** and can be reviewed from the owner's iPhone before considering the live test passed. No automatic Public transition is authorized.
+
+Record actual evidence from the Mac, Pi and YouTube during hardware acceptance; passing GitHub CI alone is not hardware acceptance.
