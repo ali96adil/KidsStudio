@@ -16,7 +16,7 @@ class SessionIntentAuditTests(unittest.TestCase):
             sessions = state / "sessions"
             folder = sessions / ".session-intents"
             folder.mkdir(parents=True)
-            marker = folder / (hashlib.sha256(b"red-ar\\0secret-channel").hexdigest() + ".intent")
+            marker = folder / (hashlib.sha256(("red-ar" + chr(0) + "secret-channel").encode()).hexdigest() + ".intent")
             marker.write_text(json.dumps({
                 "version": 1, "episode_id": "red-ar", "channel_id": "secret-channel",
                 "media_sha256": "a" * 64,
