@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import hashlib
 from pathlib import Path
 from typing import Callable
 
@@ -67,6 +68,14 @@ def scan_once(
                     (episode_id, expected_channel_id),
                 ).fetchone()
             if existing:
+                continue
+            # An earlier session-creation request may have reached YouTube
+            # before its response was lost. Do not even request OAuth again.
+            intent_name = hashlib.sha256(
+                (episode_id + chr(0) + expected_channel_id).encode()
+            ).hexdigest() + ".intent"
+            intent = Path(session_dir) / ".session-intents" / intent_name
+            if intent.exists() or intent.is_symlink():
                 continue
             result = prepare_private_upload(
                 staged_video=source,
