@@ -10,6 +10,8 @@ import sqlite3
 import hashlib
 from pathlib import Path
 
+from .pi_session_intent_names import intent_filenames
+
 
 def audit_session_intents(session_dir: str | Path, queue_path: str | Path | None = None) -> dict:
     folder = Path(session_dir) / ".session-intents"
@@ -46,8 +48,7 @@ def audit_session_intents(session_dir: str | Path, queue_path: str | Path | None
             from .pi_media_inbox import EPISODE_RE
             if not EPISODE_RE.fullmatch(episode) or not channel or len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
                 raise ValueError("invalid intent values")
-            expected_name = hashlib.sha256((episode + chr(0) + channel).encode()).hexdigest() + ".intent"
-            if path.name != expected_name:
+            if path.name not in intent_filenames(episode, channel):
                 raise ValueError("unexpected intent filename")
             if (episode, channel) in known_jobs:
                 continue
