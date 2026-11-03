@@ -5,6 +5,7 @@ This tool never accesses credentials, the network or YouTube.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 import stat
@@ -70,7 +71,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.evidence is None:
         parser.error("--evidence is required unless --init is used")
-    fd = os.open(args.evidence, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        fd = os.open(args.evidence, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ValueError("evidence must not be a symlink") from exc
+        raise
     with os.fdopen(fd, "rb") as stream:
         evidence_stat = os.fstat(stream.fileno())
         if not stat.S_ISREG(evidence_stat.st_mode):
