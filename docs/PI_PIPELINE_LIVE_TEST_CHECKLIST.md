@@ -71,3 +71,34 @@ its `evidence` explicitly leaves Mac-to-Pi transfer, real YouTube upload,
 and owner review **untested**. Keep the report private if adding local
 operational details later. The real acceptance procedure above is still
 required before production is enabled.
+
+## Ambiguous YouTube session creation: operator reconciliation
+
+A durable `.session-intents/*.intent` marker is written **before** a
+resumable-session request is sent. A network timeout cannot prove whether
+YouTube created the session. The Pi watcher therefore refuses to create
+another session or request OAuth for that episode/channel when a marker
+exists without a queued job. Do **not** delete the marker to force retry.
+
+Generate a private read-only report on the Pi (replace the state directory):
+
+```bash
+python3 -m kidsstudio.pi_session_reconciliation \\
+  --state-dir /path/to/private-upload \\
+  --out /path/to/private/reconciliation-001.json
+```
+
+The report has no YouTube access, does not verify remote videos, and does
+not expose session URLs, tokens or local media paths. Inspect the actual
+YouTube Studio account and channel, the local private upload binding ledger,
+and any saved resumable session before choosing a manual recovery action.
+Never infer that an absent local file means the remote video is absent.
+
+Run `python3 -m kidsstudio.pi_live_readiness` again after review. Its
+`no_ambiguous_session_intents` check is false when an unresolved or invalid
+marker exists. It does not remove markers or authorize publishing. Keep
+operator decisions and video IDs in a private record outside the repository.
+
+**Hardware acceptance remains pending:** CI cannot verify SSH transfer,
+YouTube OAuth, remote private visibility, real interruption recovery or
+owner iPhone review. Never enable unattended public release.
