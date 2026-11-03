@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 REQUIRED_STEPS = (
@@ -46,9 +47,23 @@ def evaluate_evidence(data: dict) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--init", type=Path, help="create new private not-tested evidence file")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
+    if args.init is not None:
+        if args.evidence is not None or args.out is not None:
+            parser.error("--init cannot be combined with --evidence or --out")
+        data = {"version": 1, "steps": {name: "not_tested" for name in REQUIRED_STEPS}}
+        fd = os.open(args.init, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(data, stream, indent=2)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        return 0
+    if args.evidence is None:
+        parser.error("--evidence is required unless --init is used")
     report = evaluate_evidence(json.loads(args.evidence.read_text(encoding="utf-8")))
     output = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.out:
