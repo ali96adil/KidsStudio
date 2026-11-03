@@ -115,3 +115,16 @@ Before attempting any real YouTube session creation on the Pi:
 5. Confirm the uploaded video remains **Private** and can be reviewed from the owner's iPhone before considering the live test passed. No automatic Public transition is authorized.
 
 Record actual evidence from the Mac, Pi and YouTube during hardware acceptance; passing GitHub CI alone is not hardware acceptance.
+
+
+## Structured hardware evidence (offline)
+
+Copy `docs/pi_hardware_acceptance_template.json` to a local evidence file **outside the repository**. Mark each of the seven steps `pass`, `fail`, or `not_tested` only after observing it on real hardware. Do not include credentials, session URLs, private video links, or user information in evidence.
+
+Run from the project root:
+
+```sh
+python -m kidsstudio.pi_hardware_acceptance --evidence /path/to/local-evidence.json
+```
+
+Exit code 0 requires all seven steps to pass; exit code 2 means incomplete/failed acceptance. The report does not check hardware or YouTube on its own, and never authorizes public release.
