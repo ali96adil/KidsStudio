@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         fd = os.open(args.init, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(data, stream, indent=2)
-            stream.write("\\n")
+            stream.write(chr(10))
             stream.flush()
             os.fsync(stream.fileno())
         return 0
