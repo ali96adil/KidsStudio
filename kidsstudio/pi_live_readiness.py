@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import stat
 from pathlib import Path
 
 from .pi_pipeline_preflight import inspect_pi_pipeline
@@ -27,6 +28,7 @@ def inspect_live_readiness(*, state_dir: str | Path,
     checks["sessions_healthy"] = False
     checks["no_failed_upload_jobs"] = False
     checks["no_ambiguous_session_intents"] = False
+    checks["private_session_directories"] = False
     try:
         queue = PiUploadQueue(root / "queue.sqlite")
         # Read-only connection: preflight must not create a missing database.
@@ -41,7 +43,17 @@ def inspect_live_readiness(*, state_dir: str | Path,
         )
         session_health = audit_sessions(queue, root / "sessions")
         checks["sessions_healthy"] = bool(session_health["healthy"])
-        intent_health = audit_session_intents(root / "sessions", queue.path)
+        sessions = root / "sessions"
+        intent_dir = sessions / ".session-intents"
+        checks["private_session_directories"] = (
+            not sessions.is_symlink() and sessions.is_dir() and
+            stat.S_IMODE(sessions.stat().st_mode) & 0o077 == 0 and
+            (not intent_dir.exists() or (
+                not intent_dir.is_symlink() and intent_dir.is_dir() and
+                stat.S_IMODE(intent_dir.stat().st_mode) & 0o077 == 0
+            ))
+        )
+        intent_health = audit_session_intents(sessions, queue.path)
         checks["no_ambiguous_session_intents"] = (
             intent_health["pending_reconciliation"] == 0 and
             intent_health["invalid_intents"] == 0
