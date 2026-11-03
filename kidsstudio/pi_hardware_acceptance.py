@@ -23,8 +23,9 @@ _ALLOWED = {"pass", "fail", "not_tested"}
 
 
 def evaluate_evidence(data: dict) -> dict:
-    if not isinstance(data, dict) or data.get("version") != 1:
-        raise ValueError("expected version 1 acceptance evidence")
+    if (not isinstance(data, dict) or data.get("version") != 1 or
+            set(data) != {"version", "steps"}):
+        raise ValueError("expected version 1 acceptance evidence with no extra fields")
     steps = data.get("steps")
     if not isinstance(steps, dict) or set(steps) != set(REQUIRED_STEPS):
         raise ValueError("all required acceptance steps must be present")
