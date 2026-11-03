@@ -174,3 +174,16 @@ python -m kidsstudio.pi_received_media_precheck \\
 ```
 
 Use the exact manifest filename from the Mac precheck output. The Pi verifier checks the matching MP4 filename, size and full SHA-256; it never uploads or queues anything. A passing result is `PI_MEDIA_VERIFIED_NOT_QUEUED`. Only record `pi_media_integrity=pass` after verifying the actual received file on the Pi.
+
+
+### Compare Mac and Pi integrity reports
+
+Save the JSON output of each offline precheck to separate local files. Copy the Pi report back to the Mac, then run:
+
+```sh
+python -m kidsstudio.mac_pi_integrity_compare \\
+  --mac-report /path/to/mac-precheck.json \\
+  --pi-report /path/to/pi-precheck.json
+```
+
+Exit code 0 and `MAC_PI_INTEGRITY_MATCH` mean the reports agree on episode ID, byte size, and full SHA-256. Exit code 2 means mismatch. This comparison is offline and does not itself prove that SSH transfer or YouTube upload succeeded; those require separate live evidence.
