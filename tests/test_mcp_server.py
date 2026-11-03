@@ -19,7 +19,7 @@ class MCPServerTests(unittest.TestCase):
         init = rpc("initialize", {"protocolVersion": "2025-03-26"})["result"]
         self.assertEqual(init["serverInfo"]["name"], "kidsstudio-readonly")
         names = [tool["name"] for tool in rpc("tools/list")["result"]["tools"]]
-        self.assertEqual(names, ["kidsstudio_capabilities", "pi_received_media_precheck", "mac_pi_transfer_precheck"])
+        self.assertEqual(names, ["kidsstudio_capabilities", "mac_pi_compare_reports", "pi_received_media_precheck", "mac_pi_transfer_precheck"])
         self.assertIsNone(handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
 
     def test_capabilities_are_read_only(self):
@@ -63,6 +63,28 @@ class MCPServerTests(unittest.TestCase):
             target.write_bytes(b"corrupted")
             response = rpc("tools/call", args)
             self.assertTrue(response["result"]["isError"])
+
+    def test_compare_matching_and_mismatching_reports(self):
+        mac = {"status": "READY_FOR_TRANSFER_NOT_TRANSFERRED",
+               "episode_id": "colors_001", "size": 7, "sha256": "a" * 64,
+               "network_checked": False, "youtube_uploaded": False,
+               "public_release_authorized": False}
+        pi = {"status": "PI_MEDIA_VERIFIED_NOT_QUEUED",
+              "episode_id": "colors_001", "size": 7, "sha256": "a" * 64,
+              "network_checked": False, "youtube_uploaded": False,
+              "public_release_authorized": False}
+        params = {"name": "mac_pi_compare_reports",
+                  "arguments": {"mac_report": mac, "pi_report": pi}}
+        good = rpc("tools/call", params)
+        self.assertFalse(good["result"]["isError"])
+        self.assertTrue(json.loads(good["result"]["content"][0]["text"])["matching"])
+        pi["sha256"] = "b" * 64
+        mismatch = rpc("tools/call", params)
+        self.assertFalse(mismatch["result"]["isError"])
+        self.assertFalse(json.loads(mismatch["result"]["content"][0]["text"])["matching"])
+        pi["public_release_authorized"] = True
+        rejected = rpc("tools/call", params)
+        self.assertTrue(rejected["result"]["isError"])
 
     def test_unknown_tool_and_invalid_arguments_fail_closed(self):
         for params in ({"name": "upload_public", "arguments": {}},
