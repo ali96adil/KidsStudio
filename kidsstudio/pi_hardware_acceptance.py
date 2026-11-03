@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 from pathlib import Path
 
 REQUIRED_STEPS = (
@@ -64,6 +65,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.evidence is None:
         parser.error("--evidence is required unless --init is used")
+    if args.evidence.is_symlink() or not args.evidence.is_file():
+        raise ValueError("evidence must be a regular file, not a symlink")
+    evidence_stat = args.evidence.stat()
+    if stat.S_IMODE(evidence_stat.st_mode) & 0o077 or evidence_stat.st_size > 16384:
+        raise ValueError("evidence file must be private and at most 16 KiB")
     report = evaluate_evidence(json.loads(args.evidence.read_text(encoding="utf-8")))
     output = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.out:
