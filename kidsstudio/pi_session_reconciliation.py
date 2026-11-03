@@ -24,7 +24,12 @@ def reconciliation_report(state_dir: str | Path) -> dict:
     entries = []
     for episode, channel, session_path, job_state in jobs:
         path = Path(session_path)
-        exists = path.is_file() and not path.is_symlink()
+        # Queue rows are not permission to inspect arbitrary filesystem paths.
+        # Only direct children of the trusted session directory are readable.
+        trusted = (path.is_absolute() and path.parent == sessions.absolute()
+                   and path.suffix == ".json" and not path.is_symlink()
+                   and not sessions.is_symlink())
+        exists = trusted and path.is_file()
         valid = False
         if exists:
             try:
