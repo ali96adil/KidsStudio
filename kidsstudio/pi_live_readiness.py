@@ -29,6 +29,7 @@ def inspect_live_readiness(*, state_dir: str | Path,
     checks["no_failed_upload_jobs"] = False
     checks["no_ambiguous_session_intents"] = False
     checks["private_session_directories"] = False
+    checks["private_session_files"] = False
     try:
         queue = PiUploadQueue(root / "queue.sqlite")
         # Read-only connection: preflight must not create a missing database.
@@ -53,6 +54,16 @@ def inspect_live_readiness(*, state_dir: str | Path,
                 stat.S_IMODE(intent_dir.stat().st_mode) & 0o077 == 0
             ))
         )
+        # Read metadata only; never open or print private resumable URLs.
+        private_files = True
+        for directory, suffix in ((sessions, ".json"), (intent_dir, ".intent")):
+            if directory.exists() and directory.is_dir() and not directory.is_symlink():
+                for item in directory.iterdir():
+                    if item.suffix == suffix:
+                        if (item.is_symlink() or not item.is_file() or
+                                stat.S_IMODE(item.stat().st_mode) & 0o077):
+                            private_files = False
+        checks["private_session_files"] = private_files
         intent_health = audit_session_intents(sessions, queue.path)
         checks["no_ambiguous_session_intents"] = (
             intent_health["pending_reconciliation"] == 0 and
