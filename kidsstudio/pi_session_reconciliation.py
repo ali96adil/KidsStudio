@@ -32,13 +32,20 @@ def reconciliation_report(state_dir: str | Path) -> dict:
                 valid = True
             except (OSError, ValueError, KeyError, TypeError):
                 pass
+        if valid and job_state == "completed":
+            action = "review_private_youtube_upload"
+        elif valid and job_state in ("pending", "running"):
+            action = "resume_existing_session_only"
+        elif valid and job_state == "failed":
+            action = "operator_review_existing_session_before_retry"
+        else:
+            action = "manual_reconcile_youtube_before_retry"
         entries.append({
             "episode_id": episode,
             "queue_state": job_state,
             "session_saved": bool(exists),
             "session_valid": valid,
-            "action": ("review_private_youtube_upload" if valid
-                       else "manual_reconcile_youtube_before_retry"),
+            "action": action,
             "automatic_new_upload_allowed": False,
         })
     for item in intents["items"]:
