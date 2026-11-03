@@ -9,6 +9,7 @@ import json
 import sys
 
 from .mac_pi_transfer_precheck import precheck
+from .pi_received_media_precheck import verify_received
 
 PROTOCOL_VERSION = "2025-03-26"
 TOOLS = [
@@ -16,6 +17,19 @@ TOOLS = [
         "name": "kidsstudio_capabilities",
         "description": "Read supported KidsStudio MCP capabilities and safety restrictions.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "pi_received_media_precheck",
+        "description": "Read-only SHA-256 and schema verification of a received Pi staging manifest and MP4. No queue or upload.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "staging_dir": {"type": "string"},
+                "manifest_name": {"type": "string"},
+            },
+            "required": ["staging_dir", "manifest_name"],
+            "additionalProperties": False,
+        },
     },
     {
         "name": "mac_pi_transfer_precheck",
@@ -66,6 +80,18 @@ def handle(message: dict) -> dict | None:
                               "ssh_transfer": False, "youtube_upload": False,
                               "public_release_authorized": False,
                               "tools": [item["name"] for item in TOOLS]})
+        elif params.get("name") == "pi_received_media_precheck":
+            args = params.get("arguments", {})
+            required = {"staging_dir", "manifest_name"}
+            if not isinstance(args, dict) or set(args) != required or any(
+                    not isinstance(v, str) or not v for v in args.values()):
+                result = _result({"error": "expected two nonempty string arguments"}, error=True)
+            else:
+                try:
+                    result = _result(verify_received(args["staging_dir"], args["manifest_name"]))
+                except (ValueError, OSError) as exc:
+                    result = _result({"error": type(exc).__name__,
+                                      "message": str(exc)}, error=True)
         elif params.get("name") == "mac_pi_transfer_precheck":
             args = params.get("arguments", {})
             required = {"video", "episode_id", "ssh_target", "remote_staging_dir"}
