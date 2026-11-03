@@ -107,8 +107,11 @@ def main(argv: list[str] | None = None) -> int:
     report = evaluate_evidence(evidence)
     output = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.out:
-        with args.out.open("x", encoding="utf-8") as stream:
+        fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(output)
+            stream.flush()
+            os.fsync(stream.fileno())
     else:
         print(output, end="")
     return 0 if report["ready_for_live_operation"] else 2
