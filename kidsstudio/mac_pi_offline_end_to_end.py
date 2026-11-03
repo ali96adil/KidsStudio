@@ -18,6 +18,9 @@ def run_offline_trial(video: str | Path, episode_id: str) -> dict:
         staging = Path(folder)
         received = staging / mac["remote_video_filename"]
         shutil.copyfile(video, received)
+        from .pi_media_inbox import file_digest
+        if received.stat().st_size != mac["size"] or file_digest(received) != mac["sha256"]:
+            raise ValueError("source changed or copy corrupted during offline trial")
         manifest = {
             "version": 1,
             "episode_id": mac["episode_id"],
