@@ -49,6 +49,9 @@ def reconciliation_report(state_dir: str | Path) -> dict:
             "episode_id": episode,
             "queue_state": job_state,
             "session_saved": bool(exists),
+            "session_condition": ("untrusted_path" if not trusted else
+                                  "missing" if not exists else
+                                  "valid" if valid else "corrupt"),
             "session_valid": valid,
             "action": action,
             "automatic_new_upload_allowed": False,
