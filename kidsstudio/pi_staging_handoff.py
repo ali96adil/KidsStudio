@@ -80,7 +80,7 @@ def prepare_private_upload(
         intent_folder.mkdir(mode=0o700, exist_ok=True)
         if intent_folder.is_symlink() or intent_folder.stat().st_mode & 0o077:
             raise ValueError("invalid intent directory")
-        intent_name = hashlib.sha256((episode_id + "\\0" + expected_channel_id).encode()).hexdigest() + ".intent"
+        intent_name = hashlib.sha256((episode_id + chr(0) + expected_channel_id).encode()).hexdigest() + ".intent"
         intent_file = intent_folder / intent_name
         if intent_file.exists() or intent_file.is_symlink():
             raise ValueError("previous upload session attempt requires manual reconciliation")
