@@ -50,5 +50,13 @@ def transfer_to_pi(
         destination = f"{ssh_target}:{remote_staging_dir.rstrip('/')}/"
         subprocess.run(["rsync", "-av", "--protect-args", "--",
                         str(video_copy), destination], check=True, timeout=3600)
-        # Publish the manifest only after the full temporary file arrives.\n        # The Pi watcher ignores dot-prefixed files until the atomic rename.\n        remote_tmp = "." + metadata.name + ".incoming"\n        subprocess.run(["rsync", "-av", "--protect-args", "--",\n                        str(metadata), destination + remote_tmp], check=True, timeout=120)\n        subprocess.run(["ssh", "--", ssh_target,\n                        "mv -- " + remote_staging_dir.rstrip("/") + "/" + remote_tmp +\n                        " " + remote_staging_dir.rstrip("/") + "/" + metadata.name],\n                       check=True, timeout=30)
+        # Publish the manifest only after the full temporary file arrives.
+        # The Pi watcher ignores dot-prefixed files until the atomic rename.
+        remote_tmp = "." + metadata.name + ".incoming"
+        subprocess.run(["rsync", "-av", "--protect-args", "--",
+                        str(metadata), destination + remote_tmp], check=True, timeout=120)
+        subprocess.run(["ssh", "--", ssh_target,
+                        "mv -- " + remote_staging_dir.rstrip("/") + "/" + remote_tmp +
+                        " " + remote_staging_dir.rstrip("/") + "/" + metadata.name],
+                       check=True, timeout=30)
     return {"manifest": manifest, "remote_prefix": prefix, "transferred": True}
