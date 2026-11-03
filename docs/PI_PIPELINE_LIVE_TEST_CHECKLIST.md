@@ -161,3 +161,16 @@ python -m kidsstudio.mac_pi_transfer_precheck \\
 ```
 
 The JSON response reports SHA-256, byte size, the exact matching remote MP4 and manifest filenames, and `READY_FOR_TRANSFER_NOT_TRANSFERRED`. It never sends media or validates Pi/YouTube availability. Only mark `mac_video_export` passed after checking the actual render, and mark transfer/integrity/upload steps only after their respective live checks.
+
+
+### Raspberry Pi received media verification (offline)
+
+After the actual SSH/rsync transfer, run on the Pi before queueing the video:
+
+```sh
+python -m kidsstudio.pi_received_media_precheck \\
+  --staging-dir /home/pi/staging \\
+  --manifest colors_001-REPLACE_WITH_REAL_SHA_PREFIX.json
+```
+
+Use the exact manifest filename from the Mac precheck output. The Pi verifier checks the matching MP4 filename, size and full SHA-256; it never uploads or queues anything. A passing result is `PI_MEDIA_VERIFIED_NOT_QUEUED`. Only record `pi_media_integrity=pass` after verifying the actual received file on the Pi.
