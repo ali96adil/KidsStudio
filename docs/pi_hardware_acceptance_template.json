@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "steps": {
+    "mac_video_export": "not_tested",
+    "mac_to_pi_transfer": "not_tested",
+    "pi_media_integrity": "not_tested",
+    "pi_private_upload": "not_tested",
+    "youtube_private_visibility": "not_tested",
+    "iphone_owner_review": "not_tested",
+    "owner_notes_recorded": "not_tested"
+  }
+}
