@@ -187,3 +187,16 @@ python -m kidsstudio.mac_pi_integrity_compare \\
 ```
 
 Exit code 0 and `MAC_PI_INTEGRITY_MATCH` mean the reports agree on episode ID, byte size, and full SHA-256. Exit code 2 means mismatch. This comparison is offline and does not itself prove that SSH transfer or YouTube upload succeeded; those require separate live evidence.
+
+
+### End-to-end offline staging simulation
+
+Before testing with the physical Pi, run the complete local staging/integrity chain on the Mac:
+
+```sh
+python -m kidsstudio.mac_pi_offline_end_to_end \\
+  --video /path/to/export.mp4 \\
+  --episode-id colors_001
+```
+
+The command copies the video to a temporary local directory simulating the Pi staging area, creates the matching manifest, verifies the received bytes and compares Mac/Pi SHA-256 reports. It cleans up its temporary files. A passing `OFFLINE_MAC_PI_TRIAL_PASSED` result **does not** establish real SSH transfer, Pi hardware readiness, YouTube upload or owner review. Keep all seven hardware acceptance steps `not_tested` until real-world evidence is available.
