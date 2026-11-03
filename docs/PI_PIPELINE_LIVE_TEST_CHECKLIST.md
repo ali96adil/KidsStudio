@@ -137,3 +137,12 @@ python -m kidsstudio.pi_hardware_acceptance --init /path/outside/repo/pi-hardwar
 ```
 
 The new file starts with all steps `not_tested`, has permissions `0600`, and is never overwritten by `--init`. Update only after observing each hardware step, then run the `--evidence` check above.
+
+
+After verifying a real hardware step, record its status without editing JSON manually:
+
+```sh
+python -m kidsstudio.pi_hardware_acceptance --evidence /path/outside/repo/pi-hardware-evidence.json --step mac_video_export --status pass
+```
+
+Use `--status fail` or `--status not_tested` when appropriate. The update replaces the private file atomically and does not accept free-form secrets or upload session URLs. Re-run the read-only `--evidence` report to evaluate all seven steps.
