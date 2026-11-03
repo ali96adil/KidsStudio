@@ -128,3 +128,12 @@ python -m kidsstudio.pi_hardware_acceptance --evidence /path/to/local-evidence.j
 ```
 
 Exit code 0 requires all seven steps to pass; exit code 2 means incomplete/failed acceptance. The report does not check hardware or YouTube on its own, and never authorizes public release.
+
+
+Create a fresh owner-only local evidence file without copying the template manually:
+
+```sh
+python -m kidsstudio.pi_hardware_acceptance --init /path/outside/repo/pi-hardware-evidence.json
+```
+
+The new file starts with all steps `not_tested`, has permissions `0600`, and is never overwritten by `--init`. Update only after observing each hardware step, then run the `--evidence` check above.
