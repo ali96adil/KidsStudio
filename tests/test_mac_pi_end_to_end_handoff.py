@@ -25,8 +25,13 @@ class MacPiIntegrationTests(unittest.TestCase):
             render.write_bytes(b"original kids studio episode")
 
             def fake_rsync(argv, **kwargs):
-                source = Path(argv[-2])
-                shutil.copy2(source, staging / source.name)
+                if argv[0] == "ssh":
+                    command = argv[-1].split(" ")
+                    (staging / Path(command[2]).name).rename(staging / Path(command[3]).name)
+                else:
+                    source = Path(argv[-2])
+                    remote_name = Path(argv[-1].split(":")[-1]).name or source.name
+                    shutil.copy2(source, staging / remote_name)
 
             with patch("kidsstudio.mac_pi_media_transfer.subprocess.run",
                        side_effect=fake_rsync):
@@ -77,8 +82,13 @@ class MacPiIntegrationTests(unittest.TestCase):
             render = base / "render.mp4"
             render.write_bytes(b"original")
             def fake_rsync(argv, **kwargs):
-                source = Path(argv[-2])
-                shutil.copy2(source, staging / source.name)
+                if argv[0] == "ssh":
+                    command = argv[-1].split(" ")
+                    (staging / Path(command[2]).name).rename(staging / Path(command[3]).name)
+                else:
+                    source = Path(argv[-2])
+                    remote_name = Path(argv[-1].split(":")[-1]).name or source.name
+                    shutil.copy2(source, staging / remote_name)
             with patch("kidsstudio.mac_pi_media_transfer.subprocess.run",
                        side_effect=fake_rsync):
                 transfer_to_pi(
