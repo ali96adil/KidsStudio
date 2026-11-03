@@ -33,6 +33,27 @@ class MacPiOfflineEndToEndTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     run_offline_trial(video, "colors_001")
 
+    def test_temporary_staging_removed_after_failure(self):
+        import shutil
+        original_copy = shutil.copyfile
+        with tempfile.TemporaryDirectory() as tmp:
+            video = Path(tmp) / "colors.mp4"
+            video.write_bytes(b"original bytes")
+            staging_root = Path(tmp) / "scratch"
+            staging_root.mkdir()
+            original_tempdir = tempfile.TemporaryDirectory
+            def controlled_tempdir(*args, **kwargs):
+                kwargs["dir"] = staging_root
+                return original_tempdir(*args, **kwargs)
+            def tamper_copy(src, dst):
+                result = original_copy(src, dst)
+                Path(dst).write_bytes(b"corrupted copy")
+                return result
+            with patch("kidsstudio.mac_pi_offline_end_to_end.tempfile.TemporaryDirectory", side_effect=controlled_tempdir), patch("kidsstudio.mac_pi_offline_end_to_end.shutil.copyfile", side_effect=tamper_copy):
+                with self.assertRaises(ValueError):
+                    run_offline_trial(video, "colors_001")
+            self.assertEqual(list(staging_root.iterdir()), [])
+
     def test_empty_video_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             video = Path(tmp) / "empty.mp4"
