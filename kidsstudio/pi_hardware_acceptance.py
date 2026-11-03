@@ -42,6 +42,8 @@ def evaluate_evidence(data: dict) -> dict:
         "failed": sum(v == "fail" for v in statuses.values()),
         "not_tested": sum(v == "not_tested" for v in statuses.values()),
         "steps": statuses,
+        "remaining_steps": [name for name in REQUIRED_STEPS if statuses[name] != "pass"],
+        "next_step": next((name for name in REQUIRED_STEPS if statuses[name] != "pass"), None),
         "youtube_public_release_authorized": False,
         "network_checked": False,
     }
