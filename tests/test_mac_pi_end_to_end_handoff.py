@@ -30,7 +30,8 @@ class MacPiIntegrationTests(unittest.TestCase):
                     (staging / Path(command[2]).name).rename(staging / Path(command[3]).name)
                 else:
                     source = Path(argv[-2])
-                    remote_name = Path(argv[-1].split(":")[-1]).name or source.name
+                    remote_destination = argv[-1].split(":")[-1]
+                    remote_name = source.name if remote_destination.endswith("/") else Path(remote_destination).name
                     shutil.copy2(source, staging / remote_name)
 
             with patch("kidsstudio.mac_pi_media_transfer.subprocess.run",
@@ -87,7 +88,8 @@ class MacPiIntegrationTests(unittest.TestCase):
                     (staging / Path(command[2]).name).rename(staging / Path(command[3]).name)
                 else:
                     source = Path(argv[-2])
-                    remote_name = Path(argv[-1].split(":")[-1]).name or source.name
+                    remote_destination = argv[-1].split(":")[-1]
+                    remote_name = source.name if remote_destination.endswith("/") else Path(remote_destination).name
                     shutil.copy2(source, staging / remote_name)
             with patch("kidsstudio.mac_pi_media_transfer.subprocess.run",
                        side_effect=fake_rsync):
