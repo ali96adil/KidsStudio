@@ -47,6 +47,7 @@ def verify_reserved_master(journal: Path, job: str, mp4: Path) -> dict:
         "render_job_id": job,
         "journal_state": rows[0][1],
         "size_bytes": check["size_bytes"],
+        "master_sha256": rows[0][0],
         "network_used": False,
         "upload_performed": False,
         "public_release_authorized": False,
