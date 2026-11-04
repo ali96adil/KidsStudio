@@ -15,11 +15,6 @@ and requires earlier stages to pass before advancing. The state is atomically
 replaced with fsync and 0600 permissions. No YouTube upload or public release
 is possible through these APIs.
 
-**Deployment restriction:** transition is designed for one trusted local
-writer only. Do not use concurrent workers against the same checkpoint file:
-atomic replace alone does not provide multi-writer locking. Do not store
-checkpoints in a directory writable by untrusted users. Production
-multi-agent writes require an exclusive lock and stale-write protection
-before enabling stage mutations through any agent API.
+**Concurrency:** transition now uses a per-episode advisory `flock` lock\nso cooperating local writers serialize read/validate/replace. The lock\nfile is private 0600 and remains for reuse. This is not a distributed\nlock: all writers must use this API and the same local filesystem. Do not\nstore checkpoints in a directory writable by untrusted users. Stage\nmutations remain unavailable through MCP; remote or distributed workers\nneed an additional coordination layer.
 
 Test: `python3 -m unittest tests.test_episode_stage_checkpoints -v`.
