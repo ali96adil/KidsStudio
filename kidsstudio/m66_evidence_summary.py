@@ -38,21 +38,24 @@ def summarize(acceptance: dict, before: dict, after: dict) -> dict:
         raise ValueError("Invalid journal reservation proof")
     reboot = compare(before, after)
     stable = reboot["pass"]
+    unresolved = before["requires_manual_reconciliation"]
+    clean = stable and not unresolved
     return {
         "status": ("M66_OFFLINE_EVIDENCE_COMPLETE_FIELD_PENDING"
-                   if stable else "M66_OFFLINE_EVIDENCE_BLOCKED"),
-        "pass": stable,
+                   if clean else "M66_OFFLINE_EVIDENCE_BLOCKED"),
+        "pass": clean,
         "checks": {
             "master_sha256": True,
             "reserved_journal_checked": reserved is not None,
             "journal_reboot_stable": stable,
+            "journal_unresolved_uploads_clear": not bool(unresolved),
             "physical_pi_verified": False,
             "mac_off_pi_only_upload_verified": False,
             "youtube_private_verified": False,
             "owner_review_verified": False,
         },
         "journal_requires_manual_reconciliation":
-            before["requires_manual_reconciliation"],
+            unresolved,
         "network_used": False,
         "upload_performed": False,
         "public_release_authorized": False,
