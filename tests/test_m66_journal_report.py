@@ -61,6 +61,28 @@ class JournalReportTests(unittest.TestCase):
         after = inspect_journal(self.path)["snapshot_sha256"]
         self.assertNotEqual(before, after)
 
+    def test_plan_sha_change_detected_with_same_state_and_video(self):
+        job = "a" * 32
+        self.journal.reserve(job, "b" * 64, "c" * 64)
+        before = inspect_journal(self.path)
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE attempts SET plan_sha256=? WHERE render_job_id=?",
+                       ("d" * 64, job))
+        after = inspect_journal(self.path)
+        self.assertEqual(before["states"], after["states"])
+        self.assertEqual(before["requires_manual_reconciliation"],
+                         after["requires_manual_reconciliation"])
+        self.assertNotEqual(before["snapshot_sha256"], after["snapshot_sha256"])
+
+    def test_master_sha_change_detected_with_same_state(self):
+        job = "a" * 32
+        self.journal.reserve(job, "b" * 64, "c" * 64)
+        before = inspect_journal(self.path)["snapshot_sha256"]
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE attempts SET master_sha256=? WHERE render_job_id=?",
+                       ("e" * 64, job))
+        self.assertNotEqual(before, inspect_journal(self.path)["snapshot_sha256"])
+
     def test_cli_report(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
