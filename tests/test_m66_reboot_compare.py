@@ -13,6 +13,7 @@ class RebootCompareTests(unittest.TestCase):
             "database_modified": False,
             "public_release_authorized": False,
             "total": 2,
+            "snapshot_sha256": "1" * 64,
             "states": {"STARTED": 1, "UPLOADED_UNVERIFIED": 0, "PRIVATE_VERIFIED": 1},
             "requires_manual_reconciliation": ["a" * 32],
         }
@@ -48,6 +49,17 @@ class RebootCompareTests(unittest.TestCase):
     def test_duplicate_jobs_rejected(self):
         after = copy.deepcopy(self.before)
         after["requires_manual_reconciliation"] = ["a" * 32, "a" * 32]
+        with self.assertRaises(ValueError):
+            compare(self.before, after)
+
+    def test_same_counts_but_different_verified_record_fails(self):
+        after = copy.deepcopy(self.before)
+        after["snapshot_sha256"] = "2" * 64
+        self.assertFalse(compare(self.before, after)["pass"])
+
+    def test_missing_fingerprint_rejected(self):
+        after = copy.deepcopy(self.before)
+        del after["snapshot_sha256"]
         with self.assertRaises(ValueError):
             compare(self.before, after)
 
