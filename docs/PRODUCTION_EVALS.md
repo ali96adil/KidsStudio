@@ -20,3 +20,6 @@ The checks are purely mechanical: text length, required phrases and nonempty lin
 2. Add synthetic failure fixtures and independently validated rubrics.
 3. Pilot with an opt-in local worker adapter; no automatic dispatch or release.
 4. Compare against baseline and require owner approval before enabling production use.
+
+## Verified local isolated tests (2026-11-04)
+Eight unit tests passed in a standalone Python harness reproducing the new module and tests, including Arabic NFKC matching, blank-line rejection and exact-byte SHA provenance. This is **not** a full-repository CI run or a Mac/Pi runtime qualification. The live GitHub workflow status is not established by this local test.
