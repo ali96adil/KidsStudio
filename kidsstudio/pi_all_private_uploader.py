@@ -25,6 +25,7 @@ from .recovery_private_upload_gate import (
     RecoveryPrivateUploadGate,RecoveryUploadError
 )
 from .youtube_private_upload import UploadJournal
+from .m66_pi_runner_lock import ExclusiveUploaderLock, UploaderAlreadyRunning
 
 class PiAllUploadError(ValueError):
     pass
@@ -124,15 +125,18 @@ def main(argv:list[str]|None=None)->int:
         service=PiAllPrivateUploadService(
             brain,root=args.inbox_root,
             journal=UploadJournal(args.journal),oauth=oauth)
-        while True:
-            result=service.poll_once()
-            print(json.dumps(result,sort_keys=True),flush=True)
-            if not args.loop:break
-            time.sleep(args.poll_seconds)
+        # M66: only one Pi uploader loop per durable journal.
+        # SQLite reservation still protects against duplicate insert attempts.
+        with ExclusiveUploaderLock(args.journal):
+            while True:
+                result=service.poll_once()
+                print(json.dumps(result,sort_keys=True),flush=True)
+                if not args.loop:break
+                time.sleep(args.poll_seconds)
         return 0
     except (InboxError,OrdinaryInboxError,PiUploaderError,
             OrdinaryPiUploaderError,RecoveryUploadError,
-            PiAllUploadError,OSError,ValueError,TypeError,sqlite3.Error):
+            PiAllUploadError,UploaderAlreadyRunning,OSError,ValueError,TypeError,sqlite3.Error):
         print("M65_PI_PRIVATE_UPLOAD_BLOCKED",file=sys.stderr)
         return 2
 
