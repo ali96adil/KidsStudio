@@ -45,6 +45,21 @@ python3 -m kidsstudio.m66_master_check \
   --expected-sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
+Alternatively, use the unified offline check (still **not** YouTube
+upload authorization):
+
+```bash
+python3 -m kidsstudio.m66_offline_acceptance \
+  --mp4 /ABSOLUTE/PI/PATH/episode_qa_master.mp4 \
+  --expected-sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+```
+
+Once the journal contains an actual reservation, the same command also
+accepts `--journal /ABSOLUTE/PI/PATH/upload.sqlite --job JOB_ID`.
+A reservation does not exist before the first upload attempt. This command
+only verifies local bytes and optional journal state; it does not validate
+Pi inbox policy, contact YouTube, or prove field readiness.
+
 Replace the example digest with the approved Mac-side SHA256. Record the
 returned `actual_sha256`, `size_bytes`, and exit code. Exit 0 and
 `pass=true` are required. Repeat with an intentionally altered *test*
