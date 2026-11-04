@@ -20,6 +20,37 @@ class M66PipelineCLITests(unittest.TestCase):
             text=True, capture_output=True, timeout=20,
         )
 
+    def test_clean_journal_passes_offline_but_never_field_qualified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mp4 = root / "master.mp4"
+            mp4.write_bytes(b"m66-clean-pipeline-content" * 100)
+            sha = hashlib.sha256(mp4.read_bytes()).hexdigest()
+            journal = root / "uploads.sqlite"
+            UploadJournal(journal)
+            accepted = self.run_cli(
+                "kidsstudio.m66_offline_acceptance", "--mp4", str(mp4),
+                "--expected-sha256", sha)
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            (root / "acceptance.json").write_text(accepted.stdout)
+            for name in ("before", "after"):
+                result = self.run_cli(
+                    "kidsstudio.m66_journal_report", "--journal", str(journal))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                (root / (name + ".json")).write_text(result.stdout)
+            bundle = self.run_cli(
+                "kidsstudio.m66_evidence_summary",
+                "--acceptance", str(root / "acceptance.json"),
+                "--before", str(root / "before.json"),
+                "--after", str(root / "after.json"))
+            self.assertEqual(bundle.returncode, 0, bundle.stderr)
+            report = json.loads(bundle.stdout)
+            self.assertTrue(report["pass"])
+            self.assertFalse(report["checks"]["reserved_journal_checked"])
+            self.assertFalse(report["field_qualified"])
+            self.assertFalse(report["checks"]["youtube_private_verified"])
+            self.assertFalse(report["public_release_authorized"])
+
     def test_unresolved_reservation_blocks_bundle_even_with_stable_reboot(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
