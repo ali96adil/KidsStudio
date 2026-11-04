@@ -37,7 +37,8 @@ def summarize(acceptance: dict, before: dict, after: dict) -> dict:
         or reserved.get("upload_performed") is not False):
         raise ValueError("Invalid journal reservation proof")
     if reserved is not None:
-        if (reserved.get("size_bytes") != master.get("size_bytes")
+        if (reserved.get("master_sha256") != master.get("actual_sha256")
+            or reserved.get("size_bytes") != master.get("size_bytes")
             or not isinstance(reserved.get("render_job_id"), str)
             or len(reserved["render_job_id"]) != 32):
             raise ValueError("Reservation does not match master receipt")
