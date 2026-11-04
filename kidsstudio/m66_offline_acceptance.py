@@ -33,6 +33,11 @@ def offline_acceptance(mp4: Path, expected_sha256: str, *,
                     "pass": False, "master": master, "reserved": reserved,
                     "network_used": False, "upload_performed": False,
                     "public_release_authorized": False}
+    if reserved is not None and (
+        reserved.get("master_sha256") != master.get("actual_sha256")
+        or reserved.get("size_bytes") != master.get("size_bytes")
+    ):
+        raise ValueError("Inconsistent master and journal verification")
     return {"status": "M66_OFFLINE_PI_MASTER_ACCEPTED",
             "pass": True, "master": master, "reserved": reserved,
             "network_used": False, "upload_performed": False,
