@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,6 +44,20 @@ class StageCheckpointTests(unittest.TestCase):
         path.write_text(json.dumps(payload))
         with self.assertRaises(ValueError):
             status(self.root, "colors_001")
+
+    def test_concurrent_transition_only_one_wins(self):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(transition, self.root, "colors_001",
+                                   "curriculum", "running") for _ in range(2)]
+            outcomes = []
+            for future in futures:
+                try:
+                    future.result()
+                    outcomes.append("passed")
+                except ValueError:
+                    outcomes.append("rejected")
+        self.assertCountEqual(outcomes, ["passed", "rejected"])
+        self.assertEqual(status(self.root, "colors_001")["stages"]["curriculum"], "running")
 
     def test_symlink_and_unsafe_episode_id_rejected(self):
         with self.assertRaises(ValueError):
