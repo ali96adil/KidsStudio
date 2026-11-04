@@ -32,6 +32,14 @@ def verify_reserved_master(journal: Path, job: str, mp4: Path) -> dict:
     ):
         raise ValueError("No valid reserved upload journal entry")
     check = verify_master(mp4, rows[0][0])
+    # Reject a stale acceptance if the reserved state changes during hashing.
+    with sqlite3.connect(f"{journal.resolve().as_uri()}?mode=ro", uri=True) as db:
+        current = db.execute(
+            "SELECT master_sha256, state FROM attempts WHERE render_job_id=?",
+            (job,),
+        ).fetchall()
+    if current != rows:
+        raise ValueError("Upload journal changed during media verification")
     return {
         "status": "M66_RESERVED_PI_MASTER_MATCH" if check["pass"]
                   else "M66_RESERVED_PI_MASTER_MISMATCH",
