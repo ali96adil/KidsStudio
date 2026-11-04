@@ -6,13 +6,15 @@ No network, OAuth, journal writes, upload, or public release is performed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import stat
 import sys
 
-from .youtube_private_upload import file_sha256, MAX_BYTES
+from .youtube_private_upload import MAX_BYTES
 
 SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -25,7 +27,14 @@ def verify_master(path: Path, expected_sha256: str) -> dict:
     before = path.stat()
     if not stat.S_ISREG(before.st_mode) or not 1000 <= before.st_size <= MAX_BYTES:
         raise ValueError("Unsafe or missing MP4")
-    digest = file_sha256(path)
+    with path.open('rb') as source:
+        digest_state = hashlib.sha256()
+        for block in iter(lambda: source.read(4 * 1024 * 1024), b''):
+            digest_state.update(block)
+        opened = os.fstat(source.fileno())
+    digest = digest_state.hexdigest()
+    if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+        raise ValueError('MP4 replaced before hashing')
     after = path.stat()
     if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
         after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
