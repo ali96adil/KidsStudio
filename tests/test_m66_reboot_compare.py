@@ -63,6 +63,12 @@ class RebootCompareTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare(self.before, after)
 
+    def test_public_release_claim_rejected(self):
+        after = copy.deepcopy(self.before)
+        after["public_release_authorized"] = True
+        with self.assertRaises(ValueError):
+            compare(self.before, after)
+
     def test_network_claim_rejected(self):
         after = copy.deepcopy(self.before)
         after["network_used"] = True
