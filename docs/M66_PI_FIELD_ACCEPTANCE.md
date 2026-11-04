@@ -99,6 +99,26 @@ Do **not** start an uploader during this snapshot comparison. Any
 `STARTED` or `UPLOADED_UNVERIFIED` entry requires manual reconciliation,
 not automatic re-upload.
 
+## 3A. Unified offline evidence report
+
+After saving a successful offline acceptance receipt to
+`/tmp/m66-acceptance.json` and capturing the before/after journal reports,
+generate a machine-readable summary:
+
+```bash
+python3 -m kidsstudio.m66_evidence_summary \
+  --acceptance /tmp/m66-acceptance.json \
+  --before /tmp/m66-before.json \
+  --after /tmp/m66-after.json
+```
+
+Exit 0 means only that the supplied **offline** receipts are internally
+consistent, the journal snapshot is unchanged, and no ambiguous upload
+attempts remain. Any `STARTED` or `UPLOADED_UNVERIFIED` row blocks
+completion even if the reboot snapshot is stable. This is not proof that
+the physical Pi, SSH transfer, Google OAuth, or PRIVATE upload succeeded.
+Never delete or retry an ambiguous journal entry merely to pass the check.
+
 ## 4. Mac-off / Pi-only upload
 
 Only after a human has checked OAuth scopes, channel identity, and
