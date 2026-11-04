@@ -86,6 +86,22 @@ class MasterCheckTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 verify_master(original, self.sha)
 
+    def test_in_place_mutation_during_read_rejected(self):
+        actual_fstat = os.fstat
+        calls = [0]
+
+        def changing_fstat(fd):
+            calls[0] += 1
+            if calls[0] == 2:
+                with self.path.open("r+b") as writer:
+                    writer.seek(0)
+                    writer.write(b"Z")
+            return actual_fstat(fd)
+
+        with patch("kidsstudio.m66_master_check.os.fstat", side_effect=changing_fstat):
+            with self.assertRaises(ValueError):
+                verify_master(self.path, self.sha)
+
     def test_invalid_digest_rejected(self):
         with self.assertRaises(ValueError):
             verify_master(self.path, "0" * 63)
