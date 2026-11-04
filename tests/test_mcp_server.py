@@ -19,7 +19,7 @@ class MCPServerTests(unittest.TestCase):
         init = rpc("initialize", {"protocolVersion": "2025-03-26"})["result"]
         self.assertEqual(init["serverInfo"]["name"], "kidsstudio-readonly")
         names = [tool["name"] for tool in rpc("tools/list")["result"]["tools"]]
-        self.assertEqual(names, ["kidsstudio_episode_checkpoint_status", "kidsstudio_plan_episode", "kidsstudio_capabilities", "mac_pi_compare_reports", "pi_received_media_precheck", "mac_pi_transfer_precheck"])
+        self.assertEqual(names, ["kidsstudio_agent_handoff_history", "kidsstudio_episode_checkpoint_status", "kidsstudio_plan_episode", "kidsstudio_capabilities", "mac_pi_compare_reports", "pi_received_media_precheck", "mac_pi_transfer_precheck"])
         self.assertIsNone(handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
 
     def test_capabilities_are_read_only(self):
