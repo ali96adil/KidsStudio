@@ -1,5 +1,7 @@
 """M66 transferred MP4 read-only SHA256 acceptance."""
 import hashlib
+import os
+from unittest.mock import patch
 from pathlib import Path
 import tempfile
 import unittest
@@ -40,6 +42,19 @@ class MasterCheckTests(unittest.TestCase):
         self.path.write_bytes(b"X" + original[1:])
         self.assertEqual(self.path.stat().st_size, len(original))
         self.assertFalse(verify_master(self.path, self.sha)["pass"])
+
+    def test_nofollow_flag_used_to_open_media(self):
+        actual_open = os.open
+        flags_seen = []
+
+        def checked_open(path, flags, *args, **kwargs):
+            flags_seen.append(flags)
+            return actual_open(path, flags, *args, **kwargs)
+
+        with patch("kidsstudio.m66_master_check.os.open", side_effect=checked_open):
+            self.assertTrue(verify_master(self.path, self.sha)["pass"])
+        if hasattr(os, "O_NOFOLLOW"):
+            self.assertTrue(flags_seen[0] & os.O_NOFOLLOW)
 
     def test_invalid_digest_rejected(self):
         with self.assertRaises(ValueError):
