@@ -12,9 +12,17 @@ from .mac_pi_transfer_precheck import precheck
 from .pi_received_media_precheck import verify_received
 from .mac_pi_integrity_compare import compare_reports
 from .openmontage_pipeline_bridge import plan_episode
+from .episode_stage_checkpoints import status as checkpoint_status
 
 PROTOCOL_VERSION = "2025-03-26"
 TOOLS = [
+    {
+        "name": "kidsstudio_episode_checkpoint_status",
+        "description": "Read private local checkpoint progress and next pending stage; never change stage state.",
+        "inputSchema": {"type": "object", "properties": {
+            "root": {"type": "string"}, "episode_id": {"type": "string"}},
+            "required": ["root", "episode_id"], "additionalProperties": False},
+    },
     {
         "name": "kidsstudio_plan_episode",
         "description": "Plan a child-safe animated, bilingual or printable production pipeline. No execution or upload.",
@@ -105,6 +113,16 @@ def handle(message: dict) -> dict | None:
                               "ssh_transfer": False, "youtube_upload": False,
                               "public_release_authorized": False,
                               "tools": [item["name"] for item in TOOLS]})
+        elif params.get("name") == "kidsstudio_episode_checkpoint_status":
+            args = params.get("arguments", {})
+            if (not isinstance(args, dict) or set(args) != {"root", "episode_id"}
+                    or any(not isinstance(v, str) or not v for v in args.values())):
+                result = _result({"error": "expected root and episode_id"}, error=True)
+            else:
+                try:
+                    result = _result(checkpoint_status(args["root"], args["episode_id"]))
+                except (ValueError, OSError) as exc:
+                    result = _result({"error": type(exc).__name__, "message": str(exc)}, error=True)
         elif params.get("name") == "kidsstudio_plan_episode":
             args = params.get("arguments", {})
             if (not isinstance(args, dict) or not {"episode_id", "topic"} <= set(args)
