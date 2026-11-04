@@ -43,7 +43,7 @@ def _read(path: Path) -> dict:
     expected = PIPELINES[data["pipeline"]]["stages"]
     if data.get("stages") != {stage: "pending" for stage in expected} and (
             not isinstance(data.get("stages"), dict)
-            or list(data["stages"]) != expected
+            or set(data["stages"]) != set(expected)
             or any(state not in STATES for state in data["stages"].values())):
         raise ValueError("invalid stage states")
     return data
@@ -76,7 +76,7 @@ def status(root: str | Path, episode_id: str) -> dict:
     if data.get("youtube_uploaded") is not False or data.get("public_release_authorized") is not False:
         raise ValueError("unsafe checkpoint flags")
     stages = data["stages"]
-    remaining = [stage for stage, state in stages.items() if state != "passed"]
+    remaining = [stage for stage in PIPELINES[data["pipeline"]]["stages"]\n                 if stages[stage] != "passed"]
     return {**data, "next_stage": remaining[0] if remaining else None,
             "completed": not remaining, "read_only": True}
 
@@ -89,7 +89,7 @@ def transition(root: str | Path, episode_id: str, stage: str, new_state: str) ->
     stages = data["stages"]
     if stage not in stages:
         raise ValueError("unknown stage")
-    order = list(stages)
+    order = PIPELINES[data["pipeline"]]["stages"]
     if any(stages[previous] != "passed" for previous in order[:order.index(stage)]):
         raise ValueError("previous stage not passed")
     current = stages[stage]
