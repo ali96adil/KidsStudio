@@ -11,9 +11,20 @@ import sys
 from .mac_pi_transfer_precheck import precheck
 from .pi_received_media_precheck import verify_received
 from .mac_pi_integrity_compare import compare_reports
+from .openmontage_pipeline_bridge import plan_episode
 
 PROTOCOL_VERSION = "2025-03-26"
 TOOLS = [
+    {
+        "name": "kidsstudio_plan_episode",
+        "description": "Plan a child-safe animated, bilingual or printable production pipeline. No execution or upload.",
+        "inputSchema": {"type": "object", "properties": {
+            "episode_id": {"type": "string"}, "topic": {"type": "string"},
+            "language": {"type": "string", "enum": ["ar", "en"]},
+            "kind": {"type": "string", "enum": ["animated_explainer", "bilingual_localization", "coloring_companion"]},
+            "available_engines": {"type": "array", "items": {"type": "string"}}},
+            "required": ["episode_id", "topic"], "additionalProperties": False},
+    },
     {
         "name": "kidsstudio_capabilities",
         "description": "Read supported KidsStudio MCP capabilities and safety restrictions.",
@@ -94,6 +105,16 @@ def handle(message: dict) -> dict | None:
                               "ssh_transfer": False, "youtube_upload": False,
                               "public_release_authorized": False,
                               "tools": [item["name"] for item in TOOLS]})
+        elif params.get("name") == "kidsstudio_plan_episode":
+            args = params.get("arguments", {})
+            if (not isinstance(args, dict) or not {"episode_id", "topic"} <= set(args)
+                    or set(args) - {"episode_id", "topic", "language", "kind", "available_engines"}):
+                result = _result({"error": "invalid episode plan arguments"}, error=True)
+            else:
+                try:
+                    result = _result(plan_episode(**args))
+                except (ValueError, TypeError) as exc:
+                    result = _result({"error": type(exc).__name__, "message": str(exc)}, error=True)
         elif params.get("name") == "mac_pi_compare_reports":
             args = params.get("arguments", {})
             if (not isinstance(args, dict) or set(args) != {"mac_report", "pi_report"}
