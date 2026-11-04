@@ -5,7 +5,7 @@ No network, paid inference, queue mutation or media publication.
 from __future__ import annotations
 
 import hashlib
-import json
+import unicodedata
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -36,9 +36,11 @@ def evaluate_script(text: str, *, language: str, required_terms: tuple[str, ...]
     ):
         raise ValueError("required_terms must contain nonempty strings")
     normalized = text.strip()
+    def fold(value: str) -> str:
+        return unicodedata.normalize('NFKC', value).casefold()
     checks = {
         "length": min_chars <= len(normalized) <= max_chars,
-        "required_terms": all(term.casefold() in normalized.casefold() for term in required_terms),
+        "required_terms": all(fold(term) in fold(normalized) for term in required_terms),
         "nonempty_lines": bool(normalized) and all(line.strip() for line in normalized.splitlines()),
     }
     score = sum(checks.values()) / len(checks)
