@@ -53,6 +53,7 @@ def summarize(acceptance: dict, before: dict, after: dict) -> dict:
         "checks": {
             "master_sha256": True,
             "reserved_journal_checked": reserved is not None,
+            "upload_attempt_linked_to_master": reserved is not None,
             "journal_reboot_stable": stable,
             "journal_unresolved_uploads_clear": not bool(unresolved),
             "physical_pi_verified": False,
@@ -66,6 +67,7 @@ def summarize(acceptance: dict, before: dict, after: dict) -> dict:
         "upload_performed": False,
         "public_release_authorized": False,
         "field_qualified": False,
+        "evidence_scope": "OFFLINE_ONLY_NOT_PI_OR_YOUTUBE_FIELD_PROOF",
     }
 
 
