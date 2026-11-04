@@ -10,11 +10,7 @@ is private 0600 JSON, updated under a local advisory flock.
 only for its owner. `read_claims(root, episode_id)` reports claims;
 the MCP tool `kidsstudio_agent_stage_claims` exposes **read-only** claims.
 
-A lease can be reclaimed after expiry. Expiry does not forcibly stop an
-old worker. Production workers must check their lease again before
-committing outputs and should use short-lived work units or renewals.
-This implementation has no lease renewal or fencing token yet; it is
-not sufficient for distributed multi-host Mac/Pi coordination.
+A lease can be reclaimed after expiry. Expiry does not forcibly stop an\nold worker. Claims now issue a private random fencing token; workers can\ncall `renew_claim(..., fencing_token, lease_seconds)` and\n`validate_claim(..., fencing_token)` before committing outputs. Expired\nor superseded tokens are rejected. Read-only MCP claim reports redact\nthe token. These checks are opt-in; they are not yet enforced by every\nasset writer. The local lease coordinator is not sufficient for\ndistributed multi-host Mac/Pi coordination.
 Claim/release are **not** exposed through MCP, and never trigger
 rendering, queueing, YouTube upload or public release.
 
