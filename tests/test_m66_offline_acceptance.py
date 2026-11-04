@@ -3,6 +3,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from kidsstudio.m66_offline_acceptance import offline_acceptance
 from kidsstudio.youtube_private_upload import UploadJournal
@@ -41,6 +42,19 @@ class OfflineAcceptanceTests(unittest.TestCase):
         result = offline_acceptance(
             self.mp4, self.sha, journal=self.journal_path, job=self.job)
         self.assertFalse(result["pass"])
+
+    def test_media_changed_between_independent_checks_blocked(self):
+        UploadJournal(self.journal_path).reserve(self.job, self.sha, "b" * 64)
+        from kidsstudio.m66_reserved_master_check import verify_reserved_master
+        def changed_receipt(*args):
+            result = verify_reserved_master(*args)
+            result["master_sha256"] = "c" * 64
+            return result
+        with patch("kidsstudio.m66_offline_acceptance.verify_reserved_master",
+                   side_effect=changed_receipt):
+            with self.assertRaises(ValueError):
+                offline_acceptance(
+                    self.mp4, self.sha, journal=self.journal_path, job=self.job)
 
     def test_incomplete_journal_arguments_blocked(self):
         with self.assertRaises(ValueError):
