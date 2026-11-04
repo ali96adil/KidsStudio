@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import stat
 from pathlib import Path
 
 
@@ -26,8 +27,11 @@ class ExclusiveUploaderLock:
         flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(self.path, flags, 0o600)
         try:
-            if not os.path.isfile(self.path):
-                raise UploaderAlreadyRunning("Uploader lock is not a regular file")
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise UploaderAlreadyRunning("Uploader lock must be a single-link regular file")
+            if info.st_uid != os.getuid() or (info.st_mode & 0o077):
+                raise UploaderAlreadyRunning("Uploader lock has unsafe ownership or permissions")
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (OSError, UploaderAlreadyRunning) as exc:
             os.close(fd)
