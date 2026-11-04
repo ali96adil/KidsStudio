@@ -56,6 +56,21 @@ class MasterCheckTests(unittest.TestCase):
         if hasattr(os, "O_NOFOLLOW"):
             self.assertTrue(flags_seen[0] & os.O_NOFOLLOW)
 
+    def test_symlink_swap_before_open_is_rejected(self):
+        original_open = os.open
+        original = self.path
+        replacement = original.with_name("replacement.mp4")
+        replacement.write_bytes(original.read_bytes())
+
+        def swap_then_open(path, flags, *args, **kwargs):
+            original.unlink()
+            original.symlink_to(replacement)
+            return original_open(path, flags, *args, **kwargs)
+
+        with patch("kidsstudio.m66_master_check.os.open", side_effect=swap_then_open):
+            with self.assertRaises((OSError, ValueError)):
+                verify_master(original, self.sha)
+
     def test_invalid_digest_rejected(self):
         with self.assertRaises(ValueError):
             verify_master(self.path, "0" * 63)
