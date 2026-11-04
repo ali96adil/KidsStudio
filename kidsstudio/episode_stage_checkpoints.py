@@ -76,7 +76,8 @@ def status(root: str | Path, episode_id: str) -> dict:
     if data.get("youtube_uploaded") is not False or data.get("public_release_authorized") is not False:
         raise ValueError("unsafe checkpoint flags")
     stages = data["stages"]
-    remaining = [stage for stage in PIPELINES[data["pipeline"]]["stages"]\n                 if stages[stage] != "passed"]
+    remaining = [stage for stage in PIPELINES[data["pipeline"]]["stages"]
+                 if stages[stage] != "passed"]
     return {**data, "next_stage": remaining[0] if remaining else None,
             "completed": not remaining, "read_only": True}
 
