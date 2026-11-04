@@ -19,6 +19,21 @@ class RunnerLockTests(unittest.TestCase):
                 with ExclusiveUploaderLock(self.journal):
                     pass
 
+    def test_relative_alias_cannot_bypass_same_journal_lock(self):
+        relative = Path(os.path.relpath(self.journal, Path.cwd()))
+        with ExclusiveUploaderLock(self.journal):
+            with self.assertRaises(UploaderAlreadyRunning):
+                with ExclusiveUploaderLock(relative):
+                    pass
+
+    def test_dotdot_alias_cannot_bypass_same_journal_lock(self):
+        alias = self.journal.parent / "nested" / ".." / self.journal.name
+        (self.journal.parent / "nested").mkdir()
+        with ExclusiveUploaderLock(self.journal):
+            with self.assertRaises(UploaderAlreadyRunning):
+                with ExclusiveUploaderLock(alias):
+                    pass
+
     def test_lock_released_on_exit(self):
         with ExclusiveUploaderLock(self.journal):
             pass
