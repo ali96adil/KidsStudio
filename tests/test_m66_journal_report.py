@@ -21,6 +21,7 @@ class JournalReportTests(unittest.TestCase):
         report = inspect_journal(self.path)
         self.assertEqual(report["total"], 0)
         self.assertFalse(report["network_used"])
+        self.assertEqual(len(report["snapshot_sha256"]), 64)
 
     def test_uncertain_state_reported_after_restart(self):
         job = "a" * 32
@@ -50,6 +51,15 @@ class JournalReportTests(unittest.TestCase):
         link.symlink_to(self.path)
         with self.assertRaises(ValueError):
             inspect_journal(link)
+
+    def test_verified_video_identity_changes_snapshot(self):
+        job = "a" * 32
+        self.journal.reserve(job, "b" * 64, "c" * 64)
+        self.journal.record_uploaded(job, "AbCdef12345")
+        before = inspect_journal(self.path)["snapshot_sha256"]
+        self.journal.record_verified(job, "AbCdef12345")
+        after = inspect_journal(self.path)["snapshot_sha256"]
+        self.assertNotEqual(before, after)
 
     def test_cli_report(self):
         out = io.StringIO()
