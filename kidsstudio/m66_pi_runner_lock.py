@@ -18,7 +18,8 @@ class UploaderAlreadyRunning(RuntimeError):
 
 class ExclusiveUploaderLock:
     def __init__(self, journal: Path):
-        self.path = Path(str(journal) + ".runner.lock")
+        # Canonical path matches UploadJournal; relative aliases share a lock.
+        self.path = Path(str(Path(journal).expanduser().resolve()) + ".runner.lock")
         self.fd: int | None = None
 
     def __enter__(self):
