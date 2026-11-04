@@ -56,6 +56,19 @@ class EditorialEvalAdapterTests(unittest.TestCase):
         with self.assertRaises(EditorialEvalError):
             self.evaluate(expected_sha256="invalid")
 
+    def test_invalid_manifest_json(self):
+        self.manifest.write_text("{invalid")
+        with self.assertRaises(EditorialEvalError):
+            self.evaluate()
+
+    def test_invalid_answer_encoding(self):
+        raw = b"\\xff" * 45
+        (self.attempt / "answer.txt").write_bytes(raw)
+        digest = hashlib.sha256(raw).hexdigest()
+        self.manifest.write_text(json.dumps({"answer_sha256": digest}))
+        with self.assertRaises(EditorialEvalError):
+            self.evaluate(expected_sha256=digest)
+
     def test_does_not_modify_artifacts(self):
         before = self.manifest.read_bytes(), (self.attempt / "answer.txt").read_bytes()
         self.evaluate()
