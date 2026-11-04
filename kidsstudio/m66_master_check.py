@@ -27,13 +27,15 @@ def verify_master(path: Path, expected_sha256: str) -> dict:
     before = path.stat()
     if not stat.S_ISREG(before.st_mode) or not 1000 <= before.st_size <= MAX_BYTES:
         raise ValueError("Unsafe or missing MP4")
-    with path.open('rb') as source:
+    flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
+    fd = os.open(path, flags)
+    with os.fdopen(fd, 'rb') as source:
         digest_state = hashlib.sha256()
         for block in iter(lambda: source.read(4 * 1024 * 1024), b''):
             digest_state.update(block)
         opened = os.fstat(source.fileno())
     digest = digest_state.hexdigest()
-    if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+    if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns) != (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns):
         raise ValueError('MP4 replaced before hashing')
     after = path.stat()
     if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
