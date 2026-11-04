@@ -9,6 +9,7 @@ import fcntl
 import json
 import os
 import re
+import secrets
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -99,7 +100,7 @@ def claim_stage(root: str | Path, episode_id: str, stage: str, agent_id: str,
                 raise ValueError("naive claim expiry")
             if expiry > now:
                 raise ValueError("stage already claimed")
-        claim = {"agent_id": agent_id, "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat()}
+        claim = {"agent_id": agent_id, "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat(), "fencing_token": secrets.token_hex(16)}
         claims[stage] = claim
         _save(path, claims)
         return {"episode_id": episode_id, "stage": stage, **claim,
@@ -129,3 +130,55 @@ def read_claims(root: str | Path, episode_id: str) -> dict:
         raise ValueError("unknown claimed stage")
     return {"episode_id": episode_id, "claims": claims, "read_only": True,
             "youtube_uploaded": False, "public_release_authorized": False}
+
+
+def validate_claim(root: str | Path, episode_id: str, stage: str,
+                   agent_id: str, fencing_token: str) -> bool:
+    """Verify a worker still owns an unexpired lease before accepting outputs."""
+    if not isinstance(agent_id, str) or not AGENT_RE.fullmatch(agent_id):
+        raise ValueError("invalid agent_id")
+    if not isinstance(fencing_token, str) or not re.fullmatch(r"[0-9a-f]{32}", fencing_token):
+        raise ValueError("invalid fencing token")
+    def check(path):
+        checkpoint = status(root, episode_id)
+        if stage not in checkpoint["stages"] or checkpoint["stages"][stage] == "passed":
+            raise ValueError("stage not active")
+        claim = _read(path).get(stage)
+        if not isinstance(claim, dict):
+            raise ValueError("stage not claimed")
+        if claim.get("agent_id") != agent_id or claim.get("fencing_token") != fencing_token:
+            raise ValueError("stale or foreign stage claim")
+        try:
+            expires = datetime.fromisoformat(claim["expires_at"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ValueError("invalid claim expiry") from exc
+        if expires.tzinfo is None or expires <= datetime.now(timezone.utc):
+            raise ValueError("expired stage claim")
+        return True
+    return _with_lock(root, episode_id, check)
+
+
+def renew_claim(root: str | Path, episode_id: str, stage: str, agent_id: str,
+                fencing_token: str, lease_seconds: int = 900) -> dict:
+    """Extend a valid claim; never resurrect an expired or superseded lease."""
+    if type(lease_seconds) is not int or not 1 <= lease_seconds <= MAX_LEASE_SECONDS:
+        raise ValueError("invalid lease duration")
+    def update(path):
+        checkpoint = status(root, episode_id)
+        if stage not in checkpoint["stages"] or checkpoint["stages"][stage] == "passed":
+            raise ValueError("stage not active")
+        claims = _read(path)
+        claim = claims.get(stage)
+        if not isinstance(claim, dict) or claim.get("agent_id") != agent_id or claim.get("fencing_token") != fencing_token:
+            raise ValueError("stale or foreign stage claim")
+        try:
+            expires = datetime.fromisoformat(claim["expires_at"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ValueError("invalid claim expiry") from exc
+        now = datetime.now(timezone.utc)
+        if expires.tzinfo is None or expires <= now:
+            raise ValueError("expired stage claim")
+        claim["expires_at"] = (now + timedelta(seconds=lease_seconds)).isoformat()
+        _save(path, claims)
+        return {"episode_id": episode_id, "stage": stage, **claim}
+    return _with_lock(root, episode_id, update)
