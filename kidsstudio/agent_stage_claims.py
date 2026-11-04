@@ -128,7 +128,7 @@ def read_claims(root: str | Path, episode_id: str) -> dict:
     claims = _read(_claim_path(root, episode_id))
     if any(stage not in checkpoint["stages"] for stage in claims):
         raise ValueError("unknown claimed stage")
-    return {"episode_id": episode_id, "claims": claims, "read_only": True,
+    return {"episode_id": episode_id, "claims": {stage: {"agent_id": value.get("agent_id"), "expires_at": value.get("expires_at")} for stage, value in claims.items() if isinstance(value, dict)}, "read_only": True,
             "youtube_uploaded": False, "public_release_authorized": False}
 
 
