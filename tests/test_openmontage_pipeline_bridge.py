@@ -26,7 +26,7 @@ class PipelinePlannerTests(unittest.TestCase):
         for kwargs in ({"kind": "public_upload"}, {"language": "xx"},
                        {"available_engines": ["godot", 1]}, {"topic": ""}):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
-                plan_episode(episode_id="test", topic="Numbers", **kwargs)
+                plan_episode(**{"episode_id": "test", "topic": "Numbers", **kwargs})
 
     def test_mcp_exposes_plan_and_rejects_execution(self):
         def call(name, arguments):
