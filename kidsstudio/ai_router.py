@@ -116,6 +116,7 @@ class ChatRouter:
         self, *, role: str, system_prompt: str, user_prompt: str,
         allow_paid: bool = False, allow_fallback: bool = False,
         different_from: str | None = None, max_output_tokens: int = 800,
+        exclude_providers: set[str] | None = None,
     ) -> dict[str, Any]:
         if role not in self.config.routes:
             raise AIRouterError("No approved provider route for this role.")
@@ -126,10 +127,16 @@ class ChatRouter:
         for prompt in (system_prompt, user_prompt):
             if not isinstance(prompt, str) or not 1 <= len(prompt) <= 12_000:
                 raise AIRouterError("Prompt must contain 1..12000 characters.")
+        if (exclude_providers is not None and
+            (not isinstance(exclude_providers,set) or
+             any(not isinstance(i,str) or not ID.fullmatch(i)
+                 for i in exclude_providers))):
+            raise AIRouterError("Explicit safe provider exclusion set required.")
+        excluded=exclude_providers or set()
         providers = [
             self.config.providers[choice]
             for choice in self.config.routes[role]
-            if choice != different_from
+            if choice != different_from and choice not in excluded
             and (allow_paid or self.config.providers[choice]["billing"] == "free")
         ]
         if not providers:

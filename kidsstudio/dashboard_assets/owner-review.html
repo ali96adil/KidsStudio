@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Kids Studio | مراجعة النسخ الخاصة</title>
+<link rel="stylesheet" href="/owner-review.css">
+<script src="/owner-review.js" defer></script>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div class="brand"><div class="mark" aria-hidden="true">✳</div><div>
+      <strong>Kids Studio</strong><span>OWNER REVIEW · PRIVATE VIDEO</span>
+    </div></div>
+    <div class="safety">PRIVATE فقط · لا نشر تلقائي</div>
+  </header>
+
+  <main>
+    <section class="intro">
+      <p class="eyebrow">POST-UPLOAD REVIEW</p>
+      <h1>شوف الحلقة، سجّل ملاحظاتك، وخذ القرار</h1>
+      <p>بعد رفع الفيديو إلى يوتيوب بوضع <b>Private</b>، تگدر تشوفه وتحدد أوقات الملاحظات.
+      المراجعة تخص نسخة محددة من الفيديو؛ قبولك هنا ما يغيّر خصوصيته وما ينشره للعامة.</p>
+    </section>
+
+    <section class="panel login" id="login-panel">
+      <div class="panel-title"><h2>فتح مراجعة المالك</h2><span class="hint">اتصال محلي محمي برمز خاص</span></div>
+      <div class="field"><label for="owner-token">رمز صلاحية المالك</label>
+        <input id="owner-token" type="password" autocomplete="off" placeholder="أدخل الرمز المحلي" spellcheck="false"></div>
+      <button id="unlock" type="button" class="primary">فتح المراجعات</button>
+      <p class="hint">الرمز يبقى بذاكرة الصفحة فقط؛ لا يُخزّن بالمتصفح ولا يُرسل إلى يوتيوب.</p>
+    </section>
+
+    <div id="workspace" hidden>
+      <div class="toolbar">
+        <span id="connection" aria-live="polite">لا توجد بيانات</span>
+        <button id="refresh" type="button" class="secondary">تحديث</button>
+        <button id="lock" type="button" class="secondary">قفل</button>
+      </div>
+      <section class="stats">
+        <div><span>بانتظار مراجعتك</span><strong id="pending-count">٠</strong></div>
+        <div><span>طلبت تعديلها</span><strong id="revision-count">٠</strong></div>
+        <div><span>النشر العام</span><strong>مغلق</strong></div>
+      </section>
+
+      <section class="panel" id="register-panel">
+        <div class="panel-title"><h2>تسجيل فيديو رُفع Private</h2><span class="hint">تسجيل فقط · لا يرفع فيديو</span></div>
+        <div class="field"><label for="candidate">اختَر الحلقة المعتمدة</label>
+          <select id="candidate"><option value="">اختَر الحلقة...</option></select></div>
+        <div class="field"><label for="video-id">معرّف فيديو YouTube (11 رمزاً)</label>
+          <input id="video-id" maxlength="11" autocomplete="off" placeholder="مثال: abcD_ef12-X" spellcheck="false" dir="ltr"></div>
+        <p class="hint">تأكد بنفسك أن خصوصية الفيديو على يوتيوب هي Private. هذا النظام ما يگدر يتحقق من إعداد يوتيوب حالياً.</p>
+        <button id="register" type="button" class="secondary">تسجيل النسخة الخاصة للمراجعة</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title"><h2>الفيديوهات والملاحظات</h2><span class="hint">آخر 50 نسخة</span></div>
+        <div id="previews" class="previews"></div>
+      </section>
+    </div>
+    <p id="notice" role="status" aria-live="polite"></p>
+    <footer>مراجعة محلية للمالك · الملاحظات محفوظة في Studio Brain · لا اتصال تلقائي بيوتيوب</footer>
+  </main>
+</div>
+</body>
+</html>

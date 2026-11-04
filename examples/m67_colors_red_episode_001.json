@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "series_id": "colors-ar",
+  "episode_number": 1,
+  "episode_id": "colors-ar-001",
+  "title": "الأرنب يتعلم اللون الأحمر",
+  "language": "ar-IQ",
+  "target_age": "3-5",
+  "learning_objective": "يتعرف الطفل على اللون الأحمر ويميزه من الأزرق في مثالين واضحين.",
+  "duration_seconds": 75,
+  "character": "bunny",
+  "review_state": "DRAFT_NOT_APPROVED",
+  "youtube_visibility": "PRIVATE_ONLY",
+  "beats": [
+    {"start": 0, "end": 10, "visual": "أرنب يلوّح أمام خلفية هادئة", "narration": "هلا يا أصدقائي! اليوم نتعلم لوناً جديداً.", "purpose": "greeting"},
+    {"start": 10, "end": 22, "visual": "كرة حمراء واحدة كبيرة على خلفية محايدة", "narration": "شوفوا هاي الكرة. لونها أحمر! أحمر.", "purpose": "teach"},
+    {"start": 22, "end": 35, "visual": "تفاحة حمراء واحدة بجانب الأرنب", "narration": "وهاي التفاحة هم حمراء. شنو لونها؟ أحمر!", "purpose": "transfer"},
+    {"start": 35, "end": 50, "visual": "كرة حمراء وكرة زرقاء متباعدتان، بلا مؤثرات مشتتة", "narration": "وين الكرة الحمراء؟ فكروا شويّة... إي، هاي الحمراء!", "purpose": "recall"},
+    {"start": 50, "end": 63, "visual": "الكرة الحمراء والتفاحة الحمراء تظهران معاً", "narration": "الكرة حمراء، والتفاحة حمراء. ممتاز!", "purpose": "reinforce"},
+    {"start": 63, "end": 75, "visual": "الأرنب يلوّح، مع نهاية بسيطة بدون روابط خارجية", "narration": "تعلمنا اليوم اللون الأحمر. أشوفكم بحلقة جديدة!", "purpose": "close"}
+  ],
+  "qa_requirements": {
+    "single_primary_concept": true,
+    "no_flashing": true,
+    "no_external_links_or_qr": true,
+    "audio_clear": true,
+    "color_contrast_checked": false,
+    "rights_checked": false,
+    "educational_review_passed": false
+  },
+  "production_notes": "Storyboard draft. Narration, animation, rights and learning value must pass AI QA and owner preview before publication."
+}

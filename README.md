@@ -4,6 +4,79 @@ AI-powered bilingual educational animation studio for children.
 
 **Status:** Early R&D. The Godot/ComfyUI experiments described below were run on a Mac outside this repository; production automation is not yet deployed.
 
+## Current draft implementation (M3–M49, unmerged)
+
+The connected GitHub draft branch now includes series-first bounded agents,
+scene-by-scene voice/LTX ownership and human QA, Mac source provenance,
+M14 frozen scene catalogue, and M16 Pi-to-Mac catalogue SHA matching.
+M47 adds an opt-in, read-only official YouTube Analytics data collector,
+with no OAuth account connected and no real metrics fetched. M48 fixes the
+circular production requirement by binding the final Mac montage catalogue
+only AFTER all scene QA is complete, still keeping the Pi/Mac SHA gate.
+M49 additionally requires the Pi operator to check the exact BYTES and
+structure of the frozen Mac catalogue JSON against the original M14 scene
+evidence before binding a final render job; a freehand SHA is not enough.
+M15 adds offline, owner-verified seven-day video performance analysis:
+compare comparable language/format/age cohorts, propose evidence-backed
+creative experiments, and use ONLY owner-adopted ideas in future original
+script drafts. The Arabic local dashboard shows learning proposals.
+
+**This is development code.** GitHub CI uses synthetic media and analytics.
+Real Chatterbox/LTX on the owner's Mac, actual video quality, commercial
+rights, independent backup and any YouTube upload remain unverified. M17 exercises
+real Linux FFmpeg for synthetic audiovisual assembly. M18 sends an actually
+assembled two-scene MP4 through M7's real full-decode checks and verifies
+that two distinct synthetic audio tones remain in the correct scene order.
+Neither test produces an educational episode or licenses any asset.
+No Mac/Pi deployment, live model calls, automatic publication or merge to
+main has been performed by this draft work.
+
+See [M49 actual frozen catalogue verification](docs/M49_PI_CATALOGUE_VERIFICATION.md),
+[M47 official read-only Analytics](docs/M47_OFFICIAL_READONLY_ANALYTICS.md),
+[M48 deferred assembly binding](docs/M48_DEFERRED_ASSEMBLY_CATALOGUE.md),
+and [M15/M16 launch and test pack](docs/M15_M16_TEST_PACK.md),
+[M14 scene provenance](docs/M14_FROZEN_MEDIA_CATALOGUE.md),
+and [M13 multi-scene pipeline](docs/M13_SCENE_PIPELINE.md),
+[M17 real assembly](docs/M17_REAL_FFMPEG_INTEGRATION.md),
+[M18 final-master QA](docs/M18_REAL_FINAL_MASTER_GATE.md),
+[M19 two-scene Mac voice preflight](docs/M19_TWO_SCENE_MAC_VOICE_PREFLIGHT.md),
+[M20 read-only offline M13 snapshot gate](docs/M20_OFFLINE_PI_SNAPSHOT_GATE.md),
+[M21 live authenticated Pi M13 readiness preflight](docs/M21_LIVE_M13_TLS_PREFLIGHT.md),
+[M22 one-scene owner voice lease](docs/M22_FIRST_SCENE_VOICE_LEASE.md),
+[M23 real WAV QA and owner listening](docs/M23_WAV_TECH_HUMAN_GATE.md),
+[M24 private video post-upload owner feedback](docs/M24_POST_UPLOAD_OWNER_FEEDBACK.md),
+[M25 authenticated YouTube PRIVATE uploader](docs/M25_YOUTUBE_PRIVATE_UPLOAD.md),
+[M26 owner policy and autonomous PRIVATE upload agent](docs/M26_OWNER_POLICY_AUTONOMOUS_PRIVATE_UPLOAD.md),
+[M27 two-agent internal final QA and post-PRIVATE owner review](docs/M27_INDEPENDENT_AI_INTERNAL_FINAL_QA.md),
+[M28 independent AI voice and scene animation QA](docs/M28_AI_SCENE_WAV_LTX_QA.md),
+[M29 real local ASR/frame extraction and visual-model bridge + integrated test entry gate](docs/M29_REAL_LOCAL_MEDIA_MODELS_AND_TEST_ENTRY.md),
+[M30 two-real-model script review and multi-scene WAV QA](docs/M30_AI_SCRIPT_AND_MULTISCENE_VOICE_QA.md),
+[M31 bounded scene repair with preserved voice and accepted clips](docs/M31_BOUNDED_SCENE_REPAIR.md),
+[M32 conservative one-job orchestrator and integrated device test gate](docs/M32_COORDINATOR_READINESS.md),
+[M33 authenticated AI pilot voice lease + bounded private production cycle](docs/M33_PI_MAC_AUTH_CYCLE.md),
+[M34 private WAV→Whisper→two pinned local audio-model CLI adapters→M23/M28 signed report](docs/M34_LOCAL_AUDIO_MODEL_QA.md),
+[M35 signed voice import](docs/M35_SIGNED_AUDIO_REVIEW_IMPORT.md),
+[M36 frame-only review and audio uncertainty](docs/M36_VISUAL_IMPORT_AUDIO_UNCERTAINTY.md),
+[M37 sound-bearing audiovisual model gate](docs/M37_SYNCHRONIZED_AV_MODEL_GATE.md),
+[M38 synthetic two-scene software acceptance](docs/M38_FULL_TWO_SCENE_SOFTWARE_ACCEPTANCE.md),
+[M39 real hardware pilot entry and four-case adversarial calibration](docs/M39_HARDWARE_PILOT_ENTRY_AND_AV_CALIBRATION.md),
+[M40 private SHA-pinned local model bundle](docs/M40_LOCAL_MODEL_BUNDLE_AND_REAL_MODEL_ENTRY.md),
+[M41 sharded HF/MLX checkpoint identity](docs/M41_SHARDED_MODEL_PACKAGES.md),
+[M42 opt-in local Omni diagnostic reviewer](docs/M42_QWEN_OMNI_LOCAL_DIAGNOSTIC.md),
+[M43 one-shot bounded Mac model pilot](docs/M43_BOUNDED_LOCAL_MODEL_PILOT.md),
+[M44 owner source/license claim and process-group cleanup](docs/M44_MODEL_ORIGIN_AND_PROCESS_SHUTDOWN.md), and
+[M45 offline evidence readiness inventory](docs/M45_MODEL_EVIDENCE_READINESS.md), and
+[M46 bounded Apple MPS/Torch/Transformers scalar compatibility probe](docs/M46_APPLE_MPS_RUNTIME_COMPAT.md).
+
+**Current qualification boundary (M45):** the models, AV reviewers,
+Mac/Pi device coordination, actual original educational scenes, and
+commercial source licensing are **not yet qualified on real owner devices**.
+Passing Python/Godot CI validates only software pathways with synthetic
+inputs and mock AI. `studio-model-readiness` is a read-only inventory
+of source-byte checks and remaining blockers; it cannot permit PRIVATE
+upload or any PUBLIC release. The final video review and publishing
+decision always remain with the owner.
+
 ## Production principle
 
 **Rig first, animate second.** Generate original, independently layered character assets with explicit pivots and hidden-body overlap. Assemble and animate them in Godot using structured scene instructions. Run technical checks, visual reviews and independent educational/safety checks before any public release.
