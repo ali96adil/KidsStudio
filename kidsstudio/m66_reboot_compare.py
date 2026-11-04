@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 import sys
 
@@ -20,6 +21,9 @@ def compare(before: dict, after: dict) -> dict:
             raise ValueError("Invalid M66 journal report")
         if report.get("network_used") is not False or report.get("database_modified") is not False:
             raise ValueError("Report must be read-only")
+        digest = report.get("snapshot_sha256")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("Missing or malformed full-journal snapshot")
         counts = report.get("states")
         if not isinstance(counts, dict) or set(counts) != set(STATES):
             raise ValueError("Invalid state counts")
@@ -37,7 +41,8 @@ def compare(before: dict, after: dict) -> dict:
     # Exact state counts and unresolved identities must remain stable across
     # a quiescent reboot. This is deliberately conservative: any background
     # upload activity between snapshots requires manual review.
-    stable = (before["states"] == after["states"] and
+    stable = (before["snapshot_sha256"] == after["snapshot_sha256"] and
+              before["states"] == after["states"] and
               before["total"] == after["total"] and
               before["requires_manual_reconciliation"] == after["requires_manual_reconciliation"])
     return {
