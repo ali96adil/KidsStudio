@@ -58,6 +58,7 @@ class EvidenceSummaryTests(unittest.TestCase):
             "status": "M66_RESERVED_PI_MASTER_MATCH", "pass": True,
             "network_used": False, "upload_performed": False,
             "render_job_id": "a" * 32, "size_bytes": 1300,
+            "master_sha256": "b" * 64,
         }
         with self.assertRaises(ValueError):
             summarize(a, journal(), journal())
@@ -69,10 +70,23 @@ class EvidenceSummaryTests(unittest.TestCase):
             "status": "M66_RESERVED_PI_MASTER_MATCH", "pass": True,
             "network_used": False, "upload_performed": False,
             "render_job_id": "a" * 32, "size_bytes": 1200,
+            "master_sha256": "b" * 64,
         }
         result = summarize(a, journal(), journal())
         self.assertTrue(result["checks"]["reserved_journal_checked"])
         self.assertFalse(result["field_qualified"])
+
+    def test_matching_size_wrong_reserved_digest_rejected(self):
+        a = acceptance()
+        a["master"]["size_bytes"] = 1200
+        a["reserved"] = {
+            "status": "M66_RESERVED_PI_MASTER_MATCH", "pass": True,
+            "network_used": False, "upload_performed": False,
+            "render_job_id": "a" * 32, "size_bytes": 1200,
+            "master_sha256": "c" * 64,
+        }
+        with self.assertRaises(ValueError):
+            summarize(a, journal(), journal())
 
     def test_changed_reboot_blocks(self):
         after = journal()
