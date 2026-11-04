@@ -25,7 +25,7 @@ class StageClaimTests(unittest.TestCase):
         self.assertEqual(claim_stage(self.root, "colors_001", "curriculum", "writer-b")["agent_id"], "writer-b")
         path = self.root / "colors_001.checkpoints.claims.json"
         self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-        self.assertFalse(read_claims(self.root, "colors_001")["public_release_authorized"])
+        self.assertFalse(read_claims(self.root, "colors_001")["public_release_authorized"])\n        self.assertNotIn("fencing_token", read_claims(self.root, "colors_001")["claims"]["curriculum"])
 
     def test_parallel_claim_only_one_wins(self):
         def attempt(i):
