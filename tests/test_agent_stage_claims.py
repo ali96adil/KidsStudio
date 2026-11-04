@@ -3,7 +3,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from kidsstudio.agent_stage_claims import claim_stage, read_claims, release_stage
+from kidsstudio.agent_stage_claims import claim_stage, read_claims, release_stage, validate_claim, renew_claim
 from kidsstudio.episode_stage_checkpoints import initialize, transition
 
 
@@ -47,6 +47,21 @@ class StageClaimTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             claim_stage(self.root, "colors_001", "curriculum", "writer-a")
         self.assertEqual(claim_stage(self.root, "colors_001", "script", "writer-a")["stage"], "script")
+
+    def test_fencing_token_and_renewal(self):
+        first = claim_stage(self.root, "colors_001", "curriculum", "writer-a")
+        token = first["fencing_token"]
+        self.assertTrue(validate_claim(self.root, "colors_001", "curriculum", "writer-a", token))
+        renewed = renew_claim(self.root, "colors_001", "curriculum", "writer-a", token, 1200)
+        self.assertEqual(renewed["fencing_token"], token)
+        with self.assertRaises(ValueError):
+            validate_claim(self.root, "colors_001", "curriculum", "writer-a", "0" * 32)
+        release_stage(self.root, "colors_001", "curriculum", "writer-a")
+        second = claim_stage(self.root, "colors_001", "curriculum", "writer-a")
+        self.assertNotEqual(second["fencing_token"], token)
+        with self.assertRaises(ValueError):
+            renew_claim(self.root, "colors_001", "curriculum", "writer-a", token)
+        self.assertTrue(validate_claim(self.root, "colors_001", "curriculum", "writer-a", second["fencing_token"]))
 
     def test_invalid_agent_duration_and_symlink(self):
         with self.assertRaises(ValueError):
