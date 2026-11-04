@@ -13,7 +13,7 @@ working directory set to the KidsStudio repository root (or install the
 package in the client's Python environment).
 
 Current tools:
-- `mac_pi_compare_reports`: compares Mac precheck and Pi received-media reports passed as JSON objects; checks episode, size, SHA-256, and offline-only safety flags. No filesystem or network access.\n- `kidsstudio_capabilities`: read-only capability and safety report.
+- `kidsstudio_plan_episode`: original OpenMontage-inspired manifest-first planning for child-safe animation, bilingual localization, or coloring companions; accepts episode_id and topic, optional language/kind/available_engines. Planning only; no render or uploads.\n- `mac_pi_compare_reports`: compares Mac precheck and Pi received-media reports passed as JSON objects; checks episode, size, SHA-256, and offline-only safety flags. No filesystem or network access.\n- `kidsstudio_capabilities`: read-only capability and safety report.
 - `pi_received_media_precheck`: checks a received MP4 and matching JSON manifest in a local Pi staging directory (SHA-256, size and naming); read-only and never queues uploads. Requires staging_dir and manifest_name.\n- `mac_pi_transfer_precheck`: hashes a local MP4 and checks safe naming
   for Mac-to-Pi transfer. Requires video, episode_id, ssh_target,
   remote_staging_dir. **Does not contact SSH or transfer files.**
