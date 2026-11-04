@@ -36,6 +36,11 @@ def summarize(acceptance: dict, before: dict, after: dict) -> dict:
         or reserved.get("network_used") is not False
         or reserved.get("upload_performed") is not False):
         raise ValueError("Invalid journal reservation proof")
+    if reserved is not None:
+        if (reserved.get("size_bytes") != master.get("size_bytes")
+            or not isinstance(reserved.get("render_job_id"), str)
+            or len(reserved["render_job_id"]) != 32):
+            raise ValueError("Reservation does not match master receipt")
     reboot = compare(before, after)
     stable = reboot["pass"]
     unresolved = before["requires_manual_reconciliation"]
