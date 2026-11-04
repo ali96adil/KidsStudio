@@ -39,6 +39,18 @@ class EvidenceSummaryTests(unittest.TestCase):
         self.assertFalse(result["checks"]["youtube_private_verified"])
         self.assertFalse(result["checks"]["physical_pi_verified"])
 
+    def test_stable_unresolved_started_upload_blocks_completion(self):
+        before = journal()
+        before["total"] = 1
+        before["states"]["STARTED"] = 1
+        before["requires_manual_reconciliation"] = ["a" * 32]
+        result = summarize(acceptance(), before, copy.deepcopy(before))
+        self.assertFalse(result["pass"])
+        self.assertTrue(result["checks"]["journal_reboot_stable"])
+        self.assertFalse(result["checks"]["journal_unresolved_uploads_clear"])
+        self.assertEqual(result["journal_requires_manual_reconciliation"],
+                         ["a" * 32])
+
     def test_changed_reboot_blocks(self):
         after = journal()
         after["snapshot_sha256"] = "c" * 64
