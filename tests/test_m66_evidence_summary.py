@@ -51,6 +51,29 @@ class EvidenceSummaryTests(unittest.TestCase):
         self.assertEqual(result["journal_requires_manual_reconciliation"],
                          ["a" * 32])
 
+    def test_reserved_receipt_must_match_master_size(self):
+        a = acceptance()
+        a["master"]["size_bytes"] = 1200
+        a["reserved"] = {
+            "status": "M66_RESERVED_PI_MASTER_MATCH", "pass": True,
+            "network_used": False, "upload_performed": False,
+            "render_job_id": "a" * 32, "size_bytes": 1300,
+        }
+        with self.assertRaises(ValueError):
+            summarize(a, journal(), journal())
+
+    def test_matching_reserved_receipt_accepted_offline_only(self):
+        a = acceptance()
+        a["master"]["size_bytes"] = 1200
+        a["reserved"] = {
+            "status": "M66_RESERVED_PI_MASTER_MATCH", "pass": True,
+            "network_used": False, "upload_performed": False,
+            "render_job_id": "a" * 32, "size_bytes": 1200,
+        }
+        result = summarize(a, journal(), journal())
+        self.assertTrue(result["checks"]["reserved_journal_checked"])
+        self.assertFalse(result["field_qualified"])
+
     def test_changed_reboot_blocks(self):
         after = journal()
         after["snapshot_sha256"] = "c" * 64
