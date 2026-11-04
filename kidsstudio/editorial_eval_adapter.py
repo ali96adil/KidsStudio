@@ -35,7 +35,10 @@ def evaluate_local_artifact(
         raise EditorialEvalError("Invalid expected SHA256") from exc
     if manifest.stat().st_size > 50_000:
         raise EditorialEvalError("Manifest exceeds limit")
-    metadata = json.loads(manifest.read_text(encoding="utf-8"))
+    try:
+        metadata = json.loads(manifest.read_text(encoding="utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise EditorialEvalError("Invalid manifest encoding or JSON") from exc
     if not isinstance(metadata, dict):
         raise EditorialEvalError("Manifest must be a JSON object")
     if metadata.get("answer_sha256") != expected_sha256:
@@ -49,7 +52,11 @@ def evaluate_local_artifact(
     digest = hashlib.sha256(raw).hexdigest()
     if digest != expected_sha256:
         raise EditorialEvalError("Artifact bytes differ from expected SHA256")
-    result = evaluate_script(raw.decode("utf-8"), language=language,
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise EditorialEvalError("Answer is not UTF-8") from exc
+    result = evaluate_script(text, language=language,
                              required_terms=required_terms,
                              min_chars=min_chars, max_chars=max_chars)
     return {
