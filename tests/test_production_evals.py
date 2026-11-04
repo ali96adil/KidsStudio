@@ -32,6 +32,19 @@ class ProductionEvalsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate_script("hello", language="ar", required_terms=("",))
 
+    def test_arabic_normalization(self):
+        self.assertTrue(evaluate_script("ﻣﺮﺣﺒﺎ " * 10, language="ar",
+                                        required_terms=("مرحبا",)).passed)
+
+    def test_blank_line_rejected(self):
+        self.assertFalse(evaluate_script("A" * 45 + "\\n\\n" + "B" * 10,
+                                         language="en").passed)
+
+    def test_unicode_hash_is_exact(self):
+        a = evaluate_script("ﻣﺮﺣﺒﺎ " * 10, language="ar")
+        b = evaluate_script("مرحبا " * 10, language="ar")
+        self.assertNotEqual(a.sha256, b.sha256)
+
     def test_fixture(self):
         result = evaluate_fixture({"text": "مرحبا " * 10, "language": "ar"})
         self.assertTrue(result["passed"])
