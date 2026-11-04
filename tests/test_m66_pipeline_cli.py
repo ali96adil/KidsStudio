@@ -20,6 +20,35 @@ class M66PipelineCLITests(unittest.TestCase):
             text=True, capture_output=True, timeout=20,
         )
 
+    def test_tampered_media_is_rejected_before_evidence_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mp4 = root / "master.mp4"
+            mp4.write_bytes(b"m66-original-master" * 100)
+            approved_sha = hashlib.sha256(mp4.read_bytes()).hexdigest()
+            mp4.write_bytes(b"m66-tampered-master" * 100)
+            result = self.run_cli(
+                "kidsstudio.m66_offline_acceptance", "--mp4", str(mp4),
+                "--expected-sha256", approved_sha)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            report = json.loads(result.stdout)
+            self.assertFalse(report["pass"])
+            self.assertFalse(report["upload_performed"])
+            self.assertFalse(report["public_release_authorized"])
+
+    def test_malformed_evidence_receipt_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("acceptance", "before", "after"):
+                (root / (name + ".json")).write_text("{}")
+            result = self.run_cli(
+                "kidsstudio.m66_evidence_summary",
+                "--acceptance", str(root / "acceptance.json"),
+                "--before", str(root / "before.json"),
+                "--after", str(root / "after.json"))
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("M66_EVIDENCE_SUMMARY_BLOCKED", result.stderr)
+
     def test_clean_journal_passes_offline_but_never_field_qualified(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
