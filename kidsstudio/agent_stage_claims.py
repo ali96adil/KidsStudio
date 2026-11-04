@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .episode_stage_checkpoints import _path, status
+from .openmontage_pipeline_bridge import PIPELINES
 
 AGENT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 MAX_LEASE_SECONDS = 3600
@@ -81,7 +82,7 @@ def claim_stage(root: str | Path, episode_id: str, stage: str, agent_id: str,
         stages = checkpoint["stages"]
         if stage not in stages:
             raise ValueError("unknown stage")
-        order = list(__import__("kidsstudio.openmontage_pipeline_bridge", fromlist=["PIPELINES"]).PIPELINES[checkpoint["pipeline"]]["stages"])
+        order = PIPELINES[checkpoint["pipeline"]]["stages"]
         if stages[stage] == "passed" or any(stages[s] != "passed" for s in order[:order.index(stage)]):
             raise ValueError("stage not ready")
         claims = _read(path)
