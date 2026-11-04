@@ -29,6 +29,7 @@ from .recovery_private_uploader import (
 )
 from .studio_queue import StudioQueue
 from .youtube_private_upload import UploadJournal,GoogleYouTubeTransport
+from .m66_pi_runner_lock import ExclusiveUploaderLock,UploaderAlreadyRunning
 
 
 class PiUploaderError(ValueError):
@@ -284,13 +285,16 @@ def main(argv:list[str]|None=None)->int:
         inbox=PiMediaInbox(queue,args.inbox_root)
         service=PiPrivateUploadService(queue,inbox,refresh,
             journal=UploadJournal(args.journal))
-        while True:
-            result=service.poll_once()
-            print(json.dumps(result,sort_keys=True),flush=True)
-            if not args.loop:break
-            time.sleep(args.poll_seconds)
+        # Share the same journal-scoped lock as the combined Pi uploader.
+        # Legacy recovery entry points must never run alongside it.
+        with ExclusiveUploaderLock(args.journal):
+            while True:
+                result=service.poll_once()
+                print(json.dumps(result,sort_keys=True),flush=True)
+                if not args.loop:break
+                time.sleep(args.poll_seconds)
         return 0
-    except (PiUploaderError,InboxError,ValueError,OSError,
+    except (PiUploaderError,InboxError,UploaderAlreadyRunning,ValueError,OSError,
             TypeError,sqlite3.Error):
         print("M64_PI_UPLOADER_BLOCKED",file=sys.stderr)
         return 2
