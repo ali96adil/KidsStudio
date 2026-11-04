@@ -23,7 +23,7 @@ def inspect_journal(path: Path) -> dict:
     with sqlite3.connect(uri, uri=True, timeout=3) as db:
         db.row_factory = sqlite3.Row
         rows = db.execute(
-            "SELECT render_job_id, state, video_id FROM attempts "
+            "SELECT render_job_id, master_sha256, plan_sha256, state, video_id, created_at, updated_at FROM attempts "
             "ORDER BY render_job_id"
         ).fetchall()
     counts = {state: 0 for state in sorted(VALID)}
@@ -35,7 +35,8 @@ def inspect_journal(path: Path) -> dict:
             raise ValueError("Unexpected journal state")
         counts[state] += 1
         snapshot.update(json.dumps(
-            [row["render_job_id"], state, row["video_id"]],
+            [row["render_job_id"], row["master_sha256"], row["plan_sha256"],
+             state, row["video_id"], row["created_at"], row["updated_at"]],
             ensure_ascii=True, separators=(",", ":"),
         ).encode("utf-8") + b"\\n")
         if state != "PRIVATE_VERIFIED":
