@@ -5,6 +5,8 @@ No render, network, queue or publishing. Uses atomic replace and rejects symlink
 from __future__ import annotations
 
 import json
+import contextlib
+import fcntl
 import os
 import re
 import tempfile
@@ -82,7 +84,31 @@ def status(root: str | Path, episode_id: str) -> dict:
             "completed": not remaining, "read_only": True}
 
 
+@contextlib.contextmanager
+def _episode_lock(path: Path):
+    lock_path = path.with_name(path.name + ".lock")
+    if lock_path.is_symlink():
+        raise ValueError("symlink checkpoint lock rejected")
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        if not os.path.isfile(lock_path):
+            raise ValueError("checkpoint lock must be regular file")
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def transition(root: str | Path, episode_id: str, stage: str, new_state: str) -> dict:
+    """Serialize writers with flock; delegate update to a locked helper."""
+    path = _path(root, episode_id)
+    with _episode_lock(path):
+        return _transition_locked(root, episode_id, stage, new_state)
+
+
+def _transition_locked(root: str | Path, episode_id: str, stage: str, new_state: str) -> dict:
     if new_state not in {"running", "passed", "failed"}:
         raise ValueError("unsupported transition")
     path = _path(root, episode_id)
@@ -112,7 +138,7 @@ def transition(root: str | Path, episode_id: str, stage: str, new_state: str) ->
             out.write(payload)
             out.flush()
             os.fsync(out.fileno())
-        # Caller must serialize concurrent writers; do not use for multi-writer deployments.
+        # Serialized by per-episode flock in transition().
         if path.is_symlink():
             raise ValueError("symlink checkpoint rejected")
         os.replace(tmp, path)
