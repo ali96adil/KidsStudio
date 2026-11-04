@@ -1,4 +1,5 @@
 """M66 Pi single-instance lock tests; no Pi or YouTube required."""
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,25 @@ class RunnerLockTests(unittest.TestCase):
                 raise ValueError("simulated crash")
         with ExclusiveUploaderLock(self.journal):
             pass
+
+    def test_world_readable_lock_rejected(self):
+        path = Path(str(self.journal) + ".runner.lock")
+        path.touch(mode=0o600)
+        os.chmod(path, 0o644)
+        with self.assertRaises(UploaderAlreadyRunning):
+            with ExclusiveUploaderLock(self.journal):
+                pass
+
+    def test_hardlinked_lock_rejected(self):
+        path = Path(str(self.journal) + ".runner.lock")
+        target = Path(self.temp.name) / "target"
+        target.write_text("safe")
+        os.chmod(target, 0o600)
+        os.link(target, path)
+        with self.assertRaises(UploaderAlreadyRunning):
+            with ExclusiveUploaderLock(self.journal):
+                pass
+        self.assertEqual(target.read_text(), "safe")
 
     def test_symlink_lock_rejected(self):
         target = Path(self.temp.name) / "target"
