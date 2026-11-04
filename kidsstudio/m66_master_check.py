@@ -30,17 +30,19 @@ def verify_master(path: Path, expected_sha256: str) -> dict:
     flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
     fd = os.open(path, flags)
     with os.fdopen(fd, 'rb') as source:
+        opened_before = os.fstat(source.fileno())
         digest_state = hashlib.sha256()
         for block in iter(lambda: source.read(4 * 1024 * 1024), b''):
             digest_state.update(block)
         opened = os.fstat(source.fileno())
     digest = digest_state.hexdigest()
-    if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns) != (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns):
+    def fingerprint(info):
+        return (info.st_dev, info.st_ino, info.st_size,
+                info.st_mtime_ns, info.st_ctime_ns)
+    if fingerprint(opened_before) != fingerprint(before) or fingerprint(opened) != fingerprint(before):
         raise ValueError('MP4 replaced before hashing')
     after = path.stat()
-    if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
-        after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
-    ):
+    if fingerprint(before) != fingerprint(after):
         raise ValueError("MP4 changed during verification")
     match = digest == expected_sha256
     return {
