@@ -35,6 +35,12 @@ class MasterCheckTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_master(link, self.sha)
 
+    def test_same_length_corruption_detected(self):
+        original = self.path.read_bytes()
+        self.path.write_bytes(b"X" + original[1:])
+        self.assertEqual(self.path.stat().st_size, len(original))
+        self.assertFalse(verify_master(self.path, self.sha)["pass"])
+
     def test_invalid_digest_rejected(self):
         with self.assertRaises(ValueError):
             verify_master(self.path, "0" * 63)
