@@ -19,7 +19,9 @@ def compare(before: dict, after: dict) -> dict:
     for report in (before, after):
         if not isinstance(report, dict) or report.get("status") != "M66_READ_ONLY_JOURNAL_REPORT":
             raise ValueError("Invalid M66 journal report")
-        if report.get("network_used") is not False or report.get("database_modified") is not False:
+        if (report.get("network_used") is not False or
+            report.get("database_modified") is not False or
+            report.get("public_release_authorized") is not False):
             raise ValueError("Report must be read-only")
         digest = report.get("snapshot_sha256")
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
