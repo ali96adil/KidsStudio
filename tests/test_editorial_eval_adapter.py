@@ -62,7 +62,7 @@ class EditorialEvalAdapterTests(unittest.TestCase):
             self.evaluate()
 
     def test_invalid_answer_encoding(self):
-        raw = b"\\xff" * 45
+        raw = bytes([255]) * 45
         (self.attempt / "answer.txt").write_bytes(raw)
         digest = hashlib.sha256(raw).hexdigest()
         self.manifest.write_text(json.dumps({"answer_sha256": digest}))
