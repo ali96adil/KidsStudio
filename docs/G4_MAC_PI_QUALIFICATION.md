@@ -169,3 +169,15 @@ python -m kidsstudio.youtube_private_dry_run \
 ```
 
 This prints a proposed YouTube `snippet` and `status` payload with `privacyStatus=private` and `selfDeclaredMadeForKids=true`, **not** an API request. The owner must verify whether each video should be designated made-for-kids before any real upload. No SDK/OAuth, network, YouTube ID, or upload is involved. The real uploader is a separate, not-yet-qualified component and must enforce privacy on the server side. Titles and descriptions are included in CLI stdout: treat output as private editorial metadata.
+
+## Read-only episode dashboard projection
+
+`kidsstudio.episode_lifecycle.project_episode` takes a trusted list of explicit episode state events and computes a **display-only** lifecycle status. A CLI is available:
+
+```bash
+python -m kidsstudio.episode_lifecycle \
+  --episode-id colors_ar_01 \
+  --events-json /path/to/private/episode_events.json
+```
+
+The JSON file must contain a list such as `[{"episode_id":"colors_ar_01","state":"SCRIPT_READY"}]`. This is a **projection**, not a durable event log, producer, or integration with the current SQLite queue. It rejects skipped transitions, other episode IDs and claimed publication approval unless the supplied event explicitly identifies the owner. It does not authenticate that claim, approve anything in production, or publish a video. Real dashboard integration must use authenticated provenance from trusted persisted events, not untrusted JSON.
