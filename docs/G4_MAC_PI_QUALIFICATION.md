@@ -154,3 +154,18 @@ python -m kidsstudio.private_handoff \
 ```
 
 Without the explicit flag the result is BLOCKED. Even when ready, the contract says `visibility=private`, `upload_submitted=false`, `publication_approved=false`, and `requires_owner_video_review=true`. This is **not** a YouTube upload or a credential/configuration workflow. No auto-publication is permitted.
+
+## YouTube PRIVATE request preview (offline, no OAuth)
+
+```bash
+python -m kidsstudio.youtube_private_dry_run \
+  --private-root "$HOME/kidsstudio-private/ready" \
+  --relative-path episode.mp4 \
+  --expected-sha256 EXPECTED_TRUSTED_MAC_SHA256 \
+  --episode-id colors_ar_01 \
+  --title "تعلم الألوان" \
+  --language ar \
+  --authorize-private-upload
+```
+
+This prints a proposed YouTube `snippet` and `status` payload with `privacyStatus=private` and `selfDeclaredMadeForKids=true`, **not** an API request. The owner must verify whether each video should be designated made-for-kids before any real upload. No SDK/OAuth, network, YouTube ID, or upload is involved. The real uploader is a separate, not-yet-qualified component and must enforce privacy on the server side. Titles and descriptions are included in CLI stdout: treat output as private editorial metadata.
