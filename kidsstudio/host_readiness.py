@@ -39,7 +39,7 @@ def inspect_host(*, artifact_root: str | Path, database: str | Path | None = Non
     if db is not None:
         checks["database_exists"] = db.is_file()
         checks["database_outside_git"] = not any(
-            (p / ".git").exists() for p in (db.parent, *db.parents))
+            (p / ".git").exists() for p in (db.parent, *db.parents)
         )
     return {
         "schema_version": 1,
