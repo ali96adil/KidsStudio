@@ -69,3 +69,36 @@ def evaluate_local_artifact(
         "score": result.score,
         "publication_approved": False,
     }
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Explicit one-shot inspection; output is metadata only, never script text."""
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Read-only SHA-verified editorial artifact evaluation")
+    parser.add_argument("--artifact-root", required=True)
+    parser.add_argument("--manifest", required=True)
+    parser.add_argument("--sha256", required=True)
+    parser.add_argument("--language", required=True, choices=("ar", "en"))
+    parser.add_argument("--required-term", action="append", default=[])
+    parser.add_argument("--min-chars", type=int, default=40)
+    parser.add_argument("--max-chars", type=int, default=6000)
+    args = parser.parse_args(argv)
+    try:
+        result = evaluate_local_artifact(
+            artifact_root=args.artifact_root, manifest_path=args.manifest,
+            expected_sha256=args.sha256, language=args.language,
+            required_terms=tuple(args.required_term),
+            min_chars=args.min_chars, max_chars=args.max_chars,
+        )
+    except (EditorialEvalError, OSError, ValueError, TypeError) as exc:
+        # Deliberately do not print file paths, source text or exception details.
+        print(json.dumps({"status": "EVALUATION_ERROR",
+                          "publication_approved": False}))
+        return 2
+    print(json.dumps(result, sort_keys=True, ensure_ascii=False))
+    return 0 if result["status"] == "MECHANICAL_PASS_REVIEW_REQUIRED" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
