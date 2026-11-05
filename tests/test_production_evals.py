@@ -37,7 +37,7 @@ class ProductionEvalsTests(unittest.TestCase):
                                         required_terms=("مرحبا",)).passed)
 
     def test_blank_line_rejected(self):
-        self.assertFalse(evaluate_script("A" * 45 + "\\n\\n" + "B" * 10,
+        self.assertFalse(evaluate_script("A" * 45 + "\n\n" + "B" * 10,
                                          language="en").passed)
 
     def test_unicode_hash_is_exact(self):
