@@ -139,3 +139,18 @@ python -m kidsstudio.private_upload_gate \
 ```
 
 Default result is BLOCKED even if the SHA matches. The optional `--authorize-private-upload` flag represents **explicit owner permission for a future, separate private-only upload**; it does not upload anything. The output remains `upload_submitted=false`, `publication_approved=false` and `required_youtube_visibility=private`. A separate uploader integration must enforce the actual YouTube API privacy setting and record the uploaded private video ID before owner review. Exit 0 means eligible for a later private-only upload, **not** uploaded or approved for public release; 1 blocked; 2 invalid input.
+
+## Offline uploader handoff contract
+
+The repository README describes Pi coordination and remote transport as prototypes; do not assume a production YouTube uploader exists. The following command emits only a metadata contract for a **separate future** uploader, with no paths or credentials in JSON:
+
+```bash
+python -m kidsstudio.private_handoff \
+  --private-root "$HOME/kidsstudio-private/ready" \
+  --relative-path episode.mp4 \
+  --expected-sha256 EXPECTED_TRUSTED_MAC_SHA256 \
+  --episode-id colors_ar_01 \
+  --authorize-private-upload
+```
+
+Without the explicit flag the result is BLOCKED. Even when ready, the contract says `visibility=private`, `upload_submitted=false`, `publication_approved=false`, and `requires_owner_video_review=true`. This is **not** a YouTube upload or a credential/configuration workflow. No auto-publication is permitted.
