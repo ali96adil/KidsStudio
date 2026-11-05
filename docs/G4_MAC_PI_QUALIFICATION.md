@@ -71,3 +71,18 @@ python -m kidsstudio.host_preflight \
 ```
 
 Exit code `0` means configured static checks passed; `1` means action required; `2` means invalid input or inspection error. This command does **not** open SQLite, validate database contents, invoke AI, check network TLS, or authorize production. Paths must already exist; the command does not create them. Optional Godot/FFmpeg presence is informational, not a readiness guarantee. Store the JSON report privately.
+
+## Offline preflight command (read-only)
+
+On each device, from an installed KidsStudio checkout, **only after creating the private directory yourself**:
+
+```bash
+python -m kidsstudio.host_readiness \
+  --artifact-root "$HOME/kidsstudio-private/artifacts" \
+  --db "$HOME/kidsstudio-private/state.sqlite" \
+  --min-free-gib 2
+```
+
+Omit `--db` if this device does not own a local SQLite queue. The probe never opens the DB, creates directories, or contacts any host. It emits non-sensitive JSON with machine/OS/Python information and Boolean checks. Exit 0 = ready for *supervised tests only*; 1 = one or more checks failed; 2 = probe input/error. No production approval is implied.
+
+The probe checks the artifact directory itself for POSIX private permissions; its parent directories, actual ownership, ACLs, encryption, TLS and remote transfer require separate manual inspection. A directory that does not exist is **NOT_READY**; the probe deliberately will not create it.
