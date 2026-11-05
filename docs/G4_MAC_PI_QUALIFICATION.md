@@ -126,3 +126,16 @@ python -m kidsstudio.private_upload_preflight \
 ```
 
 The `--owner-reviewed` flag is an **operator assertion only**, not authenticated approval. Without it, the preflight holds the file private. The check verifies the SHA256 and nonempty .mp4 filename, but **does not** decode the video, establish content rights, authenticate the operator, invoke YouTube, or authorize upload/publication. Even a `READY_FOR_MANUAL_PRIVATE_UPLOAD` report requires a separate authorized upload step with visibility PRIVATE and independent media/rights checks. Never treat this flag as permission to publish.
+
+## PRIVATE upload eligibility gate (offline only)
+
+To evaluate a file in the private ready directory **without** contacting YouTube:
+
+```bash
+python -m kidsstudio.private_upload_gate \
+  --private-root "$HOME/kidsstudio-private/ready" \
+  --relative-path episode.mp4 \
+  --expected-sha256 EXPECTED_TRUSTED_MAC_SHA256
+```
+
+Default result is BLOCKED even if the SHA matches. The optional `--authorize-private-upload` flag represents **explicit owner permission for a future, separate private-only upload**; it does not upload anything. The output remains `upload_submitted=false`, `publication_approved=false` and `required_youtube_visibility=private`. A separate uploader integration must enforce the actual YouTube API privacy setting and record the uploaded private video ID before owner review. Exit 0 means eligible for a later private-only upload, **not** uploaded or approved for public release; 1 blocked; 2 invalid input.
