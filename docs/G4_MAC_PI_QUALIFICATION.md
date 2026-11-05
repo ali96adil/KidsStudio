@@ -181,3 +181,12 @@ python -m kidsstudio.episode_lifecycle \
 ```
 
 The JSON file must contain a list such as `[{"episode_id":"colors_ar_01","state":"SCRIPT_READY"}]`. This is a **projection**, not a durable event log, producer, or integration with the current SQLite queue. It rejects skipped transitions, other episode IDs and claimed publication approval unless the supplied event explicitly identifies the owner. It does not authenticate that claim, approve anything in production, or publish a video. Real dashboard integration must use authenticated provenance from trusted persisted events, not untrusted JSON.
+
+## Actual StudioQueue read-only dashboard counts
+
+```bash
+python -m kidsstudio.queue_dashboard \
+  --db "$HOME/kidsstudio-private/state.sqlite"
+```
+
+This reads the **existing** local SQLite `jobs` and `settings` tables with `mode=ro` and `PRAGMA query_only=ON`. It outputs per-kind/per-state aggregate counts, total jobs and pause status, but **no** payloads, paths, job IDs, or secrets. It does not initialize a database, write queue state, claim a lease, or infer an episode's editorial/publication status. The separate `episode_lifecycle` projection remains unconnected until authenticated episode provenance is implemented. If the database is unavailable or schema differs, the command fails closed.
