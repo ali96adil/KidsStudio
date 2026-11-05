@@ -1,10 +1,12 @@
 import hashlib
+import contextlib
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
 
-from kidsstudio.editorial_eval_adapter import EditorialEvalError, evaluate_local_artifact
+from kidsstudio.editorial_eval_adapter import EditorialEvalError, evaluate_local_artifact, main
 
 
 class EditorialEvalAdapterTests(unittest.TestCase):
@@ -68,6 +70,36 @@ class EditorialEvalAdapterTests(unittest.TestCase):
         self.manifest.write_text(json.dumps({"answer_sha256": digest}))
         with self.assertRaises(EditorialEvalError):
             self.evaluate(expected_sha256=digest)
+
+    def test_cli_pass_prints_only_metadata(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = main(["--artifact-root", str(self.root),
+                           "--manifest", str(self.manifest),
+                           "--sha256", self.sha, "--language", "en",
+                           "--required-term", "red"])
+        self.assertEqual(status, 0)
+        self.assertNotIn(self.text, output.getvalue())
+        self.assertFalse(json.loads(output.getvalue())["publication_approved"])
+
+    def test_cli_revision_exit_code(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = main(["--artifact-root", str(self.root),
+                           "--manifest", str(self.manifest),
+                           "--sha256", self.sha, "--language", "en",
+                           "--required-term", "blue"])
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue())["status"], "REVISE_REQUIRED")
+
+    def test_cli_error_does_not_expose_private_path(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = main(["--artifact-root", str(self.root),
+                           "--manifest", str(self.root / "missing.json"),
+                           "--sha256", self.sha, "--language", "en"])
+        self.assertEqual(status, 2)
+        self.assertNotIn(str(self.root), output.getvalue())
 
     def test_does_not_modify_artifacts(self):
         before = self.manifest.read_bytes(), (self.attempt / "answer.txt").read_bytes()
