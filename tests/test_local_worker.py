@@ -169,6 +169,42 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.queue.get(review_id)["state"], "FAILED")
         self.assertEqual(len(self.fake.requests), 1)
 
+    def test_auto_review_survives_queue_reopen_and_pause(self):
+        draft = self.queue.enqueue(
+            kind="script_draft", request_key="episode-restart-review",
+            payload={"language": "ar", "topic": "الألوان", "auto_review": True},
+        )
+        finished = self.worker.run_once()
+        parent = json.loads(finished["result_json"])
+        review_id = parent["next_review_job_id"]
+        self.queue.set_paused(True)
+        reopened = StudioQueue(self.queue.path)
+        self.assertEqual(reopened.get(draft["job_id"])["state"], "COMPLETED")
+        self.assertEqual(reopened.get(review_id)["state"], "QUEUED")
+        self.assertEqual(self.worker.run_once(), {"status": "NO_ELIGIBLE_JOB"})
+        self.assertEqual(len(self.fake.requests), 1)
+        reopened.set_paused(False)
+        self.assertEqual(self.worker.run_once()["state"], "COMPLETED")
+        self.assertEqual(reopened.get(review_id)["state"], "COMPLETED")
+        self.assertFalse(json.loads(reopened.get(review_id)["result_json"])["publication_approved"])
+
+    def test_failed_review_preserves_draft_and_does_not_retry_automatically(self):
+        draft = self.queue.enqueue(
+            kind="script_draft", request_key="episode-review-fail",
+            payload={"language": "ar", "topic": "الألوان", "auto_review": True},
+        )
+        finished = self.worker.run_once()
+        parent = json.loads(finished["result_json"])
+        review_id = parent["next_review_job_id"]
+        with patch.object(self.router, "complete", side_effect=AIRouterError("simulated failure")):
+            failure = self.worker.run_once()
+        self.assertEqual(failure["status"], "FAILED")
+        self.assertEqual(self.queue.get(review_id)["state"], "FAILED")
+        self.assertEqual(self.queue.get(draft["job_id"])["state"], "COMPLETED")
+        self.assertTrue(Path(parent["artifact_manifest"]).is_file())
+        self.assertEqual(self.worker.run_once(), {"status": "NO_ELIGIBLE_JOB"})
+        self.assertEqual(len(self.fake.requests), 1)
+
     def test_review_uses_different_provider(self):
         job = self.queue.enqueue(
             kind="editorial_review", request_key="review1-ar",
