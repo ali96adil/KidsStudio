@@ -7,6 +7,10 @@ from __future__ import annotations
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import sqlite3
+from urllib.parse import urlsplit, parse_qs
+
+from .episode_notes import EpisodeNotes
 
 from .dashboard_summary import build_dashboard_summary
 from .queue_dashboard import queue_dashboard_snapshot
@@ -40,7 +44,7 @@ fetch("/api/summary",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("un
 </script></main></body></html>"""
 
 
-def make_handler(database: str):
+def make_handler(database: str, notes_database: str | None = None):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/":
@@ -56,6 +60,22 @@ def make_handler(database: str):
                               "queue_mutated": False, "publication_approved": False}
                     code = 503
                 data = json.dumps(report, sort_keys=True).encode("utf-8")
+                content_type = "application/json; charset=utf-8"
+            elif urlsplit(self.path).path == "/api/notes" and notes_database is not None:
+                try:
+                    query = parse_qs(urlsplit(self.path).query, strict_parsing=True)
+                    if set(query) != {"episode_id"} or len(query["episode_id"]) != 1:
+                        raise ValueError("invalid query")
+                    notes = EpisodeNotes(notes_database).list_notes(
+                        episode_id=query["episode_id"][0])
+                    report = {"status": "NOTES_READ_ONLY", "notes": notes,
+                              "publication_approved": False}
+                    code = 200
+                except (OSError, ValueError, sqlite3.Error):
+                    report = {"status": "NOTES_UNAVAILABLE",
+                              "publication_approved": False}
+                    code = 503
+                data = json.dumps(report, ensure_ascii=False).encode("utf-8")
                 content_type = "application/json; charset=utf-8"
             else:
                 self.send_error(404)
@@ -83,10 +103,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Local-only read-only KidsStudio dashboard")
     parser.add_argument("--db", required=True)
     parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument("--notes-db", default=None)
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("invalid port")
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(args.db))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(args.db, args.notes_db))
     try:
         print(f"Read-only dashboard: http://127.0.0.1:{args.port}/", flush=True)
         server.serve_forever()
