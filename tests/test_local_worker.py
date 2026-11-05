@@ -113,6 +113,62 @@ class WorkerIntegrationTests(unittest.TestCase):
                 expected_sha256="0" * 64, language="ar",
             )
 
+    def test_auto_review_handoff_and_evaluation_preserve_independence(self):
+        job = self.queue.enqueue(
+            kind="script_draft", request_key="episode-auto-review",
+            payload={"language": "ar", "topic": "الألوان",
+                     "auto_review": True},
+        )
+        drafted = self.worker.run_once()
+        self.assertEqual(drafted["state"], "COMPLETED")
+        parent = json.loads(drafted["result_json"])
+        review_id = parent["next_review_job_id"]
+        self.assertEqual(parent["status"], "DRAFTED_UNREVIEWED")
+        self.assertFalse(parent["publication_approved"])
+        child = self.queue.get(review_id)
+        self.assertEqual(child["state"], "QUEUED")
+        self.assertEqual(child["kind"], "editorial_review")
+        payload = json.loads(child["payload"])
+        self.assertEqual(payload["source_job_id"], job["job_id"])
+        self.assertEqual(payload["source_answer_sha256"], parent["artifact_sha256"])
+        self.assertNotIn("script_text", payload)
+        report = evaluate_local_artifact(
+            artifact_root=self.worker.root,
+            manifest_path=parent["artifact_manifest"],
+            expected_sha256=parent["artifact_sha256"],
+            language="ar", required_terms=("الألوان",),
+            min_chars=10,
+        )
+        self.assertEqual(report["status"], "MECHANICAL_PASS_REVIEW_REQUIRED")
+        self.assertEqual(self.queue.get(review_id)["state"], "QUEUED")
+        reviewed = self.worker.run_once()
+        self.assertEqual(reviewed["state"], "COMPLETED")
+        review_result = json.loads(reviewed["result_json"])
+        self.assertEqual(review_result["status"], "EDITORIAL_REVIEW_UNVERIFIED")
+        self.assertEqual(review_result["provider_id"], "critic")
+        self.assertFalse(review_result["publication_approved"])
+        self.assertEqual(len(self.fake.requests), 2)
+        self.assertEqual(self.fake.requests[0].full_url,
+                         "http://127.0.0.1:9981/v1/chat/completions")
+        self.assertEqual(self.fake.requests[1].full_url,
+                         "http://127.0.0.1:9982/v1/chat/completions")
+
+    def test_auto_review_rejects_tampered_source_before_review_provider(self):
+        self.queue.enqueue(
+            kind="script_draft", request_key="episode-tamper-review",
+            payload={"language": "ar", "topic": "الألوان",
+                     "auto_review": True},
+        )
+        drafted = self.worker.run_once()
+        parent = json.loads(drafted["result_json"])
+        review_id = parent["next_review_job_id"]
+        answer = Path(parent["artifact_manifest"]).parent / "answer.txt"
+        answer.write_text("tampered")
+        failed = self.worker.run_once()
+        self.assertEqual(failed["status"], "FAILED")
+        self.assertEqual(self.queue.get(review_id)["state"], "FAILED")
+        self.assertEqual(len(self.fake.requests), 1)
+
     def test_review_uses_different_provider(self):
         job = self.queue.enqueue(
             kind="editorial_review", request_key="review1-ar",
