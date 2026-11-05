@@ -34,7 +34,7 @@ class DashboardWebTests(unittest.TestCase):
         status, body, _ = self.request("GET", "/")
         self.assertEqual(status, 200)
         self.assertIn("لوحة الإنتاج", body)
-        self.assertIn("القراءة فقط", body)
+        self.assertIn("للقراءة فقط", body)
 
     def test_summary_json(self):
         status, body, _ = self.request("GET", "/api/summary")
