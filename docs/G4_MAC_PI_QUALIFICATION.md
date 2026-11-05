@@ -227,3 +227,14 @@ python -m kidsstudio.episode_notes --db "$HOME/kidsstudio-private/notes.sqlite" 
 ```
 
 Notes are append-only: resolving adds a RESOLVE event and preserves the original text. There is **no delete or publication approval command**. This is an unauthenticated local operator CLI, not a remotely accessible review UI. Keep the database private and backed up; the future secured dashboard must authenticate the owner and never treat resolved notes as permission to publish.
+
+## Optional local notes read endpoint
+
+```bash
+python -m kidsstudio.dashboard_web \
+  --db "$HOME/kidsstudio-private/state.sqlite" \
+  --notes-db "$HOME/kidsstudio-private/notes.sqlite" \
+  --port 8787
+```
+
+GET `http://127.0.0.1:8787/api/notes?episode_id=colors_ar_01` returns notes from the **separate** local notes database. The endpoint is disabled unless `--notes-db` is supplied; POST is rejected. Notes can contain private editorial text, so keep this unauthenticated prototype bound to loopback only and do not port-forward. The HTML currently displays aggregate counters; the notes endpoint is a read-only integration seam for a future authenticated owner review interface, not a finished review UI.
