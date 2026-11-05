@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from kidsstudio.ai_router import AIConfig, ChatRouter, AIRouterError
+from kidsstudio.editorial_eval_adapter import evaluate_local_artifact, EditorialEvalError
 from kidsstudio.local_worker import LocalAIWorker
 from kidsstudio.studio_queue import StudioQueue
 
@@ -76,6 +77,41 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.queue.get(job["job_id"])["state"], "COMPLETED")
         self.assertEqual(self.worker.run_once(), {"status": "NO_ELIGIBLE_JOB"})
         self.assertEqual(len(self.fake.requests), 1)
+
+    def test_draft_artifact_can_be_evaluated_without_queue_mutation(self):
+        job = self.queue.enqueue(
+            kind="script_draft", request_key="eval-draft-ar",
+            payload={"language": "ar", "topic": "الألوان"},
+        )
+        finished = self.worker.run_once()
+        completion = json.loads(finished["result_json"])
+        events_before = self.queue.events(job["job_id"])
+        report = evaluate_local_artifact(
+            artifact_root=self.worker.root,
+            manifest_path=completion["artifact_manifest"],
+            expected_sha256=completion["artifact_sha256"],
+            language="ar", required_terms=("الألوان",),
+            min_chars=10,
+        )
+        self.assertEqual(report["status"], "MECHANICAL_PASS_REVIEW_REQUIRED")
+        self.assertFalse(report["publication_approved"])
+        self.assertEqual(self.queue.get(job["job_id"])["state"], "COMPLETED")
+        self.assertEqual(self.queue.events(job["job_id"]), events_before)
+        self.assertEqual(len(self.fake.requests), 1)
+
+    def test_draft_eval_rejects_wrong_queue_provenance(self):
+        self.queue.enqueue(
+            kind="script_draft", request_key="eval-bad-sha",
+            payload={"language": "ar", "topic": "الألوان"},
+        )
+        finished = self.worker.run_once()
+        completion = json.loads(finished["result_json"])
+        with self.assertRaises(EditorialEvalError):
+            evaluate_local_artifact(
+                artifact_root=self.worker.root,
+                manifest_path=completion["artifact_manifest"],
+                expected_sha256="0" * 64, language="ar",
+            )
 
     def test_review_uses_different_provider(self):
         job = self.queue.enqueue(
