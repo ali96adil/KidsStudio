@@ -211,3 +211,19 @@ python -m kidsstudio.dashboard_web \
 ```
 
 Open `http://127.0.0.1:8787/` on that same host. The service binds **only** to loopback, provides GET `/` and GET `/api/summary`, rejects POST and exposes no remote authentication or operator actions. Do **not** port-forward or bind it to LAN/WAN: this is an unauthenticated local development preview, not the eventual secured Pi dashboard. The page shows aggregate queue counters only; no individual episode states or owner review interface yet. Missing SQLite data returns HTTP 503. No production daemon is installed or started by these commits.
+
+## Private owner review notes (isolated database)
+
+Create a private directory outside Git first (`chmod 700`). Notes are stored in a separate local SQLite database, not in the production queue:
+
+```bash
+python -m kidsstudio.episode_notes --db "$HOME/kidsstudio-private/notes.sqlite" init
+python -m kidsstudio.episode_notes --db "$HOME/kidsstudio-private/notes.sqlite" add \
+  --episode-id colors_ar_01 --text "راجع مستوى الصوت"
+python -m kidsstudio.episode_notes --db "$HOME/kidsstudio-private/notes.sqlite" list \
+  --episode-id colors_ar_01
+python -m kidsstudio.episode_notes --db "$HOME/kidsstudio-private/notes.sqlite" resolve \
+  --episode-id colors_ar_01 --note-id 1
+```
+
+Notes are append-only: resolving adds a RESOLVE event and preserves the original text. There is **no delete or publication approval command**. This is an unauthenticated local operator CLI, not a remotely accessible review UI. Keep the database private and backed up; the future secured dashboard must authenticate the owner and never treat resolved notes as permission to publish.
