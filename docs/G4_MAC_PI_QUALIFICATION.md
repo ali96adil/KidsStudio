@@ -44,3 +44,17 @@
 Stop worker/coordinator processes, keep publishing disabled, restore the pre-test queue backup only after preserving a separate copy of current evidence, and return to the last known-good commit. Never delete generated private artifacts automatically. Re-running tests against the live queue is not authorized by this checklist.
 
 **Current status:** NOT_RUN on physical Mac/Pi. GitHub synthetic CI and Godot smoke cannot substitute for these gates.
+
+## Read-only preflight command
+
+With the worker **stopped**, run locally on the host that actually holds the queue database:
+
+```bash
+python -m kidsstudio.g4_preflight \
+  --artifact-root /private/kidsstudio/artifacts \
+  --db /private/kidsstudio/state.sqlite
+```
+
+The command reads a SQLite immutable snapshot (no queue writes), checks the expected schema, basic integrity, private-root placement, available disk space (at least 1 GiB) and Python 3.11+. It prints a metadata-only JSON report, with exit 0 for preflight pass and 1 for blocked. **Do not point it at a concurrently changing database**: immutable read mode deliberately does not merge pending WAL updates, so a stopped worker and clean checkpoint are prerequisites for meaningful results. This is not an end-to-end readiness or security audit. A pass never enables publishing.
+
+If Mac and Pi use different local databases, run separately for each actual local queue; this command does not test network transport.
