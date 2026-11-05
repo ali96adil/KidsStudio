@@ -58,3 +58,16 @@ python -m kidsstudio.g4_preflight \
 The command reads a SQLite immutable snapshot (no queue writes), checks the expected schema, basic integrity, private-root placement, available disk space (at least 1 GiB) and Python 3.11+. It prints a metadata-only JSON report, with exit 0 for preflight pass and 1 for blocked. **Do not point it at a concurrently changing database**: immutable read mode deliberately does not merge pending WAL updates, so a stopped worker and clean checkpoint are prerequisites for meaningful results. This is not an end-to-end readiness or security audit. A pass never enables publishing.
 
 If Mac and Pi use different local databases, run separately for each actual local queue; this command does not test network transport.
+
+## Read-only host preflight command
+
+After installing the repository on each host, inspect existing private paths **without starting workers**:
+
+```bash
+python -m kidsstudio.host_preflight \
+  --artifact-root /private/kidsstudio/artifacts \
+  --queue-db /private/kidsstudio/state.sqlite \
+  --minimum-free-gib 2
+```
+
+Exit code `0` means configured static checks passed; `1` means action required; `2` means invalid input or inspection error. This command does **not** open SQLite, validate database contents, invoke AI, check network TLS, or authorize production. Paths must already exist; the command does not create them. Optional Godot/FFmpeg presence is informational, not a readiness guarantee. Store the JSON report privately.
