@@ -199,3 +199,15 @@ python -m kidsstudio.dashboard_summary \
 ```
 
 This converts the actual queue aggregate snapshot into five counters: `waiting`, `running`, `completed`, `needs_attention` and `cancelled`, plus `queue_paused`. Counts are validated for consistency and never treated as editorial approvals. `episode_status_available=false` and `private_upload_status_available=false` explicitly indicate missing authenticated integration. It is a JSON view model, not a hosted dashboard/UI or a new queue.
+
+## Local read-only web dashboard preview
+
+On the same host as the local SQLite queue:
+
+```bash
+python -m kidsstudio.dashboard_web \
+  --db "$HOME/kidsstudio-private/state.sqlite" \
+  --port 8787
+```
+
+Open `http://127.0.0.1:8787/` on that same host. The service binds **only** to loopback, provides GET `/` and GET `/api/summary`, rejects POST and exposes no remote authentication or operator actions. Do **not** port-forward or bind it to LAN/WAN: this is an unauthenticated local development preview, not the eventual secured Pi dashboard. The page shows aggregate queue counters only; no individual episode states or owner review interface yet. Missing SQLite data returns HTTP 503. No production daemon is installed or started by these commits.
