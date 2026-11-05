@@ -60,6 +60,26 @@ class InboxPromotionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.promote()
 
+    def test_second_promotion_rejected_without_temp_files(self):
+        self.promote()
+        with self.assertRaises(FileExistsError):
+            self.promote()
+        self.assertEqual(sorted(p.name for p in self.target.iterdir()),
+                         ["episode.mp4"])
+        self.assertEqual((self.target / "episode.mp4").read_bytes(), self.data)
+
+    def test_symlink_destination_rejected_without_touching_target(self):
+        outside = self.root / "untouched.txt"
+        outside.write_bytes(b"untouched")
+        (self.target / "episode.mp4").symlink_to(outside)
+        with self.assertRaises(FileExistsError):
+            self.promote()
+        self.assertEqual(outside.read_bytes(), b"untouched")
+
+    def test_same_root_rejected(self):
+        with self.assertRaises(ValueError):
+            self.promote(destination_root=self.source)
+
     def test_source_traversal_rejected(self):
         with self.assertRaises(ValueError):
             self.promote(relative_path="../episode.mp4")
