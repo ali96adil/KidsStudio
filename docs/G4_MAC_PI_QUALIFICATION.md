@@ -99,3 +99,18 @@ python -m kidsstudio.transfer_verify \
 ```
 
 Exit `0` = staged bytes match, `1` = mismatch, `2` = invalid or unsafe input. The tool hashes the local staged file only, reading in 1 MiB chunks (maximum 20 GiB). It does **not** send files, prove transport security, authenticate the Mac, verify video decodability, or grant upload/publication approval. Confirm transport TLS/SSH identity and permissions separately. The trusted SHA must not be taken from an untrusted received manifest.
+
+## Explicit Pi private inbox promotion (opt-in)
+
+After trusted SSH/SFTP transport and a matching SHA256, an operator may explicitly promote the already staged file into a **pre-existing**, private (POSIX mode 0700) inbox:
+
+```bash
+python -m kidsstudio.inbox_promote \
+  --source-root "$HOME/kidsstudio-private/incoming" \
+  --relative-path episode.mp4 \
+  --destination-root "$HOME/kidsstudio-private/ready" \
+  --destination-name episode.mp4 \
+  --expected-sha256 EXPECTED_TRUSTED_MAC_SHA256
+```
+
+This command is a local write, **not** an automatic step. It checks the source digest, streams a private temporary copy, rechecks the digest and uses an exclusive atomic hard-link to install the final name (existing names are never overwritten). Destination must exist, be private and outside Git. The command performs no network transfer, YouTube upload, queue mutation, or publication approval. Exit 0 = private promotion succeeded; 2 = rejected. It is not a replacement for SSH identity checks, private staging permissions, media inspection, or human review. Stop writers to the staging directory during promotion to avoid concurrent file changes.
