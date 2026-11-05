@@ -114,3 +114,15 @@ python -m kidsstudio.inbox_promote \
 ```
 
 This command is a local write, **not** an automatic step. It checks the source digest, streams a private temporary copy, rechecks the digest and uses an exclusive atomic hard-link to install the final name (existing names are never overwritten). Destination must exist, be private and outside Git. The command performs no network transfer, YouTube upload, queue mutation, or publication approval. Exit 0 = private promotion succeeded; 2 = rejected. It is not a replacement for SSH identity checks, private staging permissions, media inspection, or human review. Stop writers to the staging directory during promotion to avoid concurrent file changes.
+
+## Offline PRIVATE upload handoff preflight (not a YouTube uploader)
+
+```bash
+python -m kidsstudio.private_upload_preflight \
+  --inbox-root "$HOME/kidsstudio-private/ready" \
+  --relative-path episode.mp4 \
+  --expected-sha256 EXPECTED_TRUSTED_MAC_SHA256 \
+  --owner-reviewed
+```
+
+The `--owner-reviewed` flag is an **operator assertion only**, not authenticated approval. Without it, the preflight holds the file private. The check verifies the SHA256 and nonempty .mp4 filename, but **does not** decode the video, establish content rights, authenticate the operator, invoke YouTube, or authorize upload/publication. Even a `READY_FOR_MANUAL_PRIVATE_UPLOAD` report requires a separate authorized upload step with visibility PRIVATE and independent media/rights checks. Never treat this flag as permission to publish.
