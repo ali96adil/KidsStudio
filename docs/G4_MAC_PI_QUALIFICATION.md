@@ -86,3 +86,16 @@ python -m kidsstudio.host_readiness \
 Omit `--db` if this device does not own a local SQLite queue. The probe never opens the DB, creates directories, or contacts any host. It emits non-sensitive JSON with machine/OS/Python information and Boolean checks. Exit 0 = ready for *supervised tests only*; 1 = one or more checks failed; 2 = probe input/error. No production approval is implied.
 
 The probe checks the artifact directory itself for POSIX private permissions; its parent directories, actual ownership, ACLs, encryption, TLS and remote transfer require separate manual inspection. A directory that does not exist is **NOT_READY**; the probe deliberately will not create it.
+
+## G4.5 staged-file integrity verification (no transfer)
+
+After an independently authorized private transfer, obtain the expected SHA256 from the Mac's trusted source record and run on the Pi's private staging directory:
+
+```bash
+python -m kidsstudio.transfer_verify \
+  --root "$HOME/kidsstudio-private/incoming" \
+  --relative-path "episode.mp4" \
+  --expected-sha256 EXPECTED_MAC_SHA256
+```
+
+Exit `0` = staged bytes match, `1` = mismatch, `2` = invalid or unsafe input. The tool hashes the local staged file only, reading in 1 MiB chunks (maximum 20 GiB). It does **not** send files, prove transport security, authenticate the Mac, verify video decodability, or grant upload/publication approval. Confirm transport TLS/SSH identity and permissions separately. The trusted SHA must not be taken from an untrusted received manifest.
