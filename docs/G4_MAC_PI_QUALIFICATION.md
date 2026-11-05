@@ -190,3 +190,12 @@ python -m kidsstudio.queue_dashboard \
 ```
 
 This reads the **existing** local SQLite `jobs` and `settings` tables with `mode=ro` and `PRAGMA query_only=ON`. It outputs per-kind/per-state aggregate counts, total jobs and pause status, but **no** payloads, paths, job IDs, or secrets. It does not initialize a database, write queue state, claim a lease, or infer an episode's editorial/publication status. The separate `episode_lifecycle` projection remains unconnected until authenticated episode provenance is implemented. If the database is unavailable or schema differs, the command fails closed.
+
+## Dashboard view model (read-only)
+
+```bash
+python -m kidsstudio.dashboard_summary \
+  --db "$HOME/kidsstudio-private/state.sqlite"
+```
+
+This converts the actual queue aggregate snapshot into five counters: `waiting`, `running`, `completed`, `needs_attention` and `cancelled`, plus `queue_paused`. Counts are validated for consistency and never treated as editorial approvals. `episode_status_available=false` and `private_upload_status_available=false` explicitly indicate missing authenticated integration. It is a JSON view model, not a hosted dashboard/UI or a new queue.
