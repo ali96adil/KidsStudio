@@ -242,3 +242,19 @@ GET `http://127.0.0.1:8787/api/notes?episode_id=colors_ar_01` returns notes from
 ## Read-only episode notes inside the Arabic dashboard
 
 With `--notes-db` configured, the dashboard HTML now shows an episode-ID search form and displays notes with **pending/resolved** labels. Notes are rendered with DOM `textContent`, not `innerHTML`, so note content is not interpreted as markup. Without `--notes-db`, the section stays hidden. This UI is **read-only**, and its form only performs GET; note creation/resolution remain private CLI actions. Never expose this unauthenticated localhost preview to the network.
+
+## SHA-bound video review receipt draft
+
+A reviewer can produce an offline, metadata-only receipt for **exactly one** verified video byte sequence:
+
+```bash
+python -m kidsstudio.video_review_receipt \
+  --episode-id colors_ar_01 \
+  --video-root "$HOME/kidsstudio-private/ready" \
+  --relative-path episode.mp4 \
+  --expected-sha256 TRUSTED_SHA256 \
+  --review-outcome REVISION_REQUIRED \
+  --reviewer-notes "راجع صوت الأرنب"
+```
+
+The tool rehashes the local file and rejects changed content, unsafe paths, and unsupported outcomes. Outcomes are `NEEDS_REVIEW`, `REVISION_REQUIRED`, `ACCEPTED_PRIVATE`; **none** authorizes public release. The receipt is emitted to stdout, **not persisted**, and reviewer identity is **not authenticated**. This is not a YouTube approval or an actual video preview UI; those require separate secured implementation and owner testing.
