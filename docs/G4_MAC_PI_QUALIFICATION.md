@@ -328,3 +328,44 @@ The host readiness report now includes independent checks for **symlink componen
 `host_qualification` additionally rejects mismatched roles: `mac-render` requires Darwin on Apple Silicon or Intel, and `pi-private-handoff` requires Linux ARM plus a Raspberry Pi marker in `/proc/device-tree/model`. ARM Linux alone does not count as a Pi. On some images, the device-tree marker may be unavailable; those systems **fail closed** pending supervised diagnosis instead of guessing.
 
 Passing these offline checks means **ready for supervised testing only**. It does not prove Godot/ComfyUI renders, TLS pairing, network transfer, or actual private YouTube uploading; all physical G4 gates remain `NOT_RUN` until tested separately. The extended readiness report schema is version 2; parsers must tolerate new check keys.
+
+## Batch 35 — Pair the Mac and Pi readiness evidence (offline, no actual transfer)
+
+After installing the **same reviewed source revision** on the two devices, an operator can collect one JSON report on each host. Use a **private evidence directory outside Git** and a restrictive shell umask:
+
+Mac (locally):
+```bash
+umask 077
+mkdir -p "$HOME/kidsstudio-private/qualification"
+chmod 700 "$HOME/kidsstudio-private/qualification"
+python -m kidsstudio.host_qualification --role mac-render \
+  --artifact-root "$HOME/kidsstudio-private/ready" \
+  > "$HOME/kidsstudio-private/qualification/mac-report.json"
+```
+
+Raspberry Pi (locally):
+```bash
+umask 077
+mkdir -p "$HOME/kidsstudio-private/qualification"
+chmod 700 "$HOME/kidsstudio-private/qualification"
+python -m kidsstudio.host_qualification --role pi-private-handoff \
+  --artifact-root "$HOME/kidsstudio-private/inbox" \
+  > "$HOME/kidsstudio-private/qualification/pi-report.json"
+```
+
+**Only after the operator securely supplies the Pi JSON file** into the Mac's private qualification directory (under the name `pi-report.json`), compare on the Mac:
+
+```bash
+python -m kidsstudio.host_pair_report \
+  --mac-report "$HOME/kidsstudio-private/qualification/mac-report.json" \
+  --pi-report "$HOME/kidsstudio-private/qualification/pi-report.json"
+```
+
+This tool **never copies the reports** or the media between machines. It performs only bounded, read-only local reads of regular private JSON files (0600) in a private parent directory (0700), refusing symlinks and oversized data. It checks schema v2, both correct host roles, all declared boolean checks, optional database check-group completeness, offline synthetic review PASS, and absence of production/publication approval or claims of live transfer.
+
+Results:
+- `OFFLINE_REPORT_PAIR_CONSISTENT_UNVERIFIED` (exit 0): *reported* offline prerequisites are consistent. This **does not verify the reporting device**, prove the files are authentic or that the source revisions match, or constitute G4 transfer/upload qualification.
+- `OFFLINE_REPORT_PAIR_BLOCKED` (exit 1): required checks absent, invalid, failed, or contradictory; inspect fixed `mac_issues` / `pi_issues`.
+- `OFFLINE_REPORT_PAIR_ERROR` (exit 2): unsafe, oversized, malformed, or inaccessible evidence; private file contents are not echoed.
+
+The output SHA-256 values identify the **report bytes**, not real device identities, software builds, or video contents. The operator must separately record each device's Git commit and confirm they match before considering any supervised real-media test. Physical Mac/Pi transfer and YouTube tests remain `NOT_RUN`; no automatic approval is possible.
