@@ -278,3 +278,7 @@ Each record rehashes the video and appends its SHA, size, outcome, and notes. Ol
 ## Batch 26 — Review history in dashboard
 
 Run `python -m kidsstudio.dashboard_web --db "$HOME/kidsstudio-private/state.sqlite" --notes-db "$HOME/kidsstudio-private/notes.sqlite" --reviews-db "$HOME/kidsstudio-private/reviews.sqlite" --port 8787`. With `--reviews-db`, the local HTML exposes a read-only episode search for historical review records. GET `/api/reviews?episode_id=colors_ar_01` returns SHA-bound review history. It does not authenticate the reviewer, approve publication, or stream the video. Keep loopback-only.
+
+## Batch 27 — Latest video review freshness
+
+The pure `project_review_freshness(reviews, current_video_sha256=...)` model distinguishes no review, stale latest review, revision needed, pending review, and accepted-private-only for the current SHA. The optional local GET `/api/review-freshness?episode_id=colors_ar_01&current_sha256=TRUSTED_SHA256` uses the review history DB. **Important:** the SHA in this endpoint is caller-supplied, not independently rehashed, so its response is informational and cannot grant owner identity, upload, or publication permissions. For an authoritative local file check, separately use `transfer_verify` or the SHA-bound review receipt against the actual file. No new production actions.
