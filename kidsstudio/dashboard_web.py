@@ -13,6 +13,7 @@ from urllib.parse import urlsplit, parse_qs
 from .episode_notes import EpisodeNotes
 from .video_review_history import VideoReviewHistory
 from .review_freshness import project_review_freshness
+from .episode_review_overview import build_episode_review_overview
 
 from .dashboard_summary import build_dashboard_summary
 from .queue_dashboard import queue_dashboard_snapshot
@@ -180,6 +181,26 @@ def make_handler(database: str, notes_database: str | None = None,
                     code = 200
                 except (OSError, ValueError, sqlite3.Error):
                     report = {"status": "REVIEW_FRESHNESS_UNAVAILABLE",
+                              "owner_publication_approval": False}
+                    code = 503
+                data = json.dumps(report, sort_keys=True).encode("utf-8")
+                content_type = "application/json; charset=utf-8"
+            elif (urlsplit(self.path).path == "/api/episode-review"
+                  and reviews_database is not None and notes_database is not None):
+                try:
+                    query = parse_qs(urlsplit(self.path).query, strict_parsing=True)
+                    if set(query) != {"episode_id", "current_sha256"} or any(
+                        len(values) != 1 for values in query.values()
+                    ):
+                        raise ValueError("invalid query")
+                    report = build_episode_review_overview(
+                        episode_id=query["episode_id"][0],
+                        current_video_sha256=query["current_sha256"][0],
+                        notes_database=notes_database,
+                        reviews_database=reviews_database)
+                    code = 200
+                except (OSError, ValueError, sqlite3.Error):
+                    report = {"status": "EPISODE_REVIEW_UNAVAILABLE",
                               "owner_publication_approval": False}
                     code = 503
                 data = json.dumps(report, sort_keys=True).encode("utf-8")
