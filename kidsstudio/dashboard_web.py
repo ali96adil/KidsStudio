@@ -11,6 +11,7 @@ import sqlite3
 from urllib.parse import urlsplit, parse_qs
 
 from .episode_notes import EpisodeNotes
+from .video_review_history import VideoReviewHistory
 
 from .dashboard_summary import build_dashboard_summary
 from .queue_dashboard import queue_dashboard_snapshot
@@ -78,7 +79,8 @@ if(__NOTES_ENABLED__){
 </script></main></body></html>"""
 
 
-def make_handler(database: str, notes_database: str | None = None):
+def make_handler(database: str, notes_database: str | None = None,
+                 reviews_database: str | None = None):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/":
@@ -111,6 +113,22 @@ def make_handler(database: str, notes_database: str | None = None):
                     code = 503
                 data = json.dumps(report, ensure_ascii=False).encode("utf-8")
                 content_type = "application/json; charset=utf-8"
+            elif urlsplit(self.path).path == "/api/reviews" and reviews_database is not None:
+                try:
+                    query = parse_qs(urlsplit(self.path).query, strict_parsing=True)
+                    if set(query) != {"episode_id"} or len(query["episode_id"]) != 1:
+                        raise ValueError("invalid query")
+                    reviews = VideoReviewHistory(reviews_database).list_reviews(
+                        episode_id=query["episode_id"][0])
+                    report = {"status": "REVIEWS_READ_ONLY", "reviews": reviews,
+                              "owner_publication_approval": False}
+                    code = 200
+                except (OSError, ValueError, sqlite3.Error):
+                    report = {"status": "REVIEWS_UNAVAILABLE",
+                              "owner_publication_approval": False}
+                    code = 503
+                data = json.dumps(report, ensure_ascii=False).encode("utf-8")
+                content_type = "application/json; charset=utf-8"
             else:
                 self.send_error(404)
                 return
@@ -138,10 +156,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", required=True)
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument("--notes-db", default=None)
+    parser.add_argument("--reviews-db", default=None)
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("invalid port")
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(args.db, args.notes_db))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(args.db, args.notes_db, args.reviews_db))
     try:
         print(f"Read-only dashboard: http://127.0.0.1:{args.port}/", flush=True)
         server.serve_forever()
