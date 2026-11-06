@@ -302,3 +302,21 @@ Review history now checks private parent directory permissions and regular 0600-
 ## Batch 32 — Full synthetic local review pipeline
 
 Run `python -m kidsstudio.review_pipeline_qualification` on a test machine. This isolated temporary-directory scenario writes **synthetic bytes, not a playable MP4**, then checks note persistence, SHA-verified first private review, stale old review after file replacement, refusal of the old SHA, and retention of a new revision-required review. It prints `OFFLINE_REVIEW_PIPELINE_PASS` only if all seven assertions succeed. The test does not connect to Mac, Pi, ComfyUI, Godot, YouTube, or a real upload. **G4 physical Mac/Pi qualification remains NOT_RUN.**
+
+## Batch 33 — Unified offline host qualification commands
+
+Run separately and **supervised** on each physical host, after creating a private artifact root (0700), with a working Python 3.11+ environment:
+
+Mac:
+```bash
+python -m kidsstudio.host_qualification --role mac-render \
+  --artifact-root "$HOME/kidsstudio-private/ready" --min-free-gib 2
+```
+
+Raspberry Pi:
+```bash
+python -m kidsstudio.host_qualification --role pi-private-handoff \
+  --artifact-root "$HOME/kidsstudio-private/inbox" --min-free-gib 2
+```
+
+Optional `--db /absolute/path/to/existing/queue.sqlite` adds an existence/outside-Git check. The output is a JSON host-readiness report plus a synthetic review-pipeline self-test; it does **not** move any files between machines, invoke a model, authenticate the owner, contact YouTube, or approve production. The `SUPERVISED_TESTS_READY` result means only that the offline checks passed. Physical Mac/Pi tests remain **NOT_RUN** until the commands are actually executed on those machines and the resulting reports inspected.
