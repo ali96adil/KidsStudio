@@ -8,6 +8,7 @@ import unittest
 from http.server import ThreadingHTTPServer
 
 from kidsstudio.dashboard_web import make_handler
+from kidsstudio.episode_notes import EpisodeNotes
 from kidsstudio.studio_queue import StudioQueue
 from kidsstudio.video_review_history import VideoReviewHistory
 
@@ -24,6 +25,10 @@ class DashboardReviewsTests(unittest.TestCase):
         self.video.write_bytes(b"video fixture")
         sha = hashlib.sha256(self.video.read_bytes()).hexdigest()
         self.sha = sha
+        notes_db = root / "notes.sqlite"
+        notes = EpisodeNotes(notes_db)
+        notes.initialize()
+        notes.add(episode_id="colors_ar_01", text="راجع الصوت")
         reviews = root / "reviews.sqlite"
         history = VideoReviewHistory(reviews)
         history.initialize()
@@ -31,7 +36,7 @@ class DashboardReviewsTests(unittest.TestCase):
                        relative_path="episode.mp4", expected_sha256=sha,
                        review_outcome="REVISION_REQUIRED", reviewer_notes="راجع الصوت")
         self.server = ThreadingHTTPServer(
-            ("127.0.0.1", 0), make_handler(str(queue), reviews_database=str(reviews)))
+            ("127.0.0.1", 0), make_handler(str(queue), notes_database=str(notes_db), reviews_database=str(reviews)))
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(self.server.server_close)
@@ -80,6 +85,18 @@ class DashboardReviewsTests(unittest.TestCase):
         status, body = self.get("/api/review-freshness?episode_id=colors_ar_01&current_sha256=" + "b" * 64)
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["status"], "LATEST_REVIEW_STALE")
+
+    def test_combined_episode_review_endpoint(self):
+        status, body = self.get("/api/episode-review?episode_id=colors_ar_01&current_sha256=" + self.sha)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["notes_unresolved"], 1)
+        self.assertEqual(data["review_count"], 1)
+        self.assertFalse(data["owner_publication_approval"])
+
+    def test_combined_episode_review_rejects_missing_sha(self):
+        status, _ = self.get("/api/episode-review?episode_id=colors_ar_01")
+        self.assertEqual(status, 503)
 
     def test_post_rejected(self):
         status, _ = self.get("/api/reviews?episode_id=colors_ar_01", "POST")
