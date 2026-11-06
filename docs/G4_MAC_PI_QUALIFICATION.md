@@ -274,3 +274,7 @@ python -m kidsstudio.video_review_history --db "$HOME/kidsstudio-private/reviews
 ```
 
 Each record rehashes the video and appends its SHA, size, outcome, and notes. Older records remain intact when a new video version is reviewed. There is no delete, modify, authenticated reviewer identity, owner publication approval, YouTube call, or dashboard integration yet. Run only on a trusted private host; review notes are sensitive and the SQLite file requires backup.
+
+## Batch 26 — Review history in dashboard
+
+Run `python -m kidsstudio.dashboard_web --db "$HOME/kidsstudio-private/state.sqlite" --notes-db "$HOME/kidsstudio-private/notes.sqlite" --reviews-db "$HOME/kidsstudio-private/reviews.sqlite" --port 8787`. With `--reviews-db`, the local HTML exposes a read-only episode search for historical review records. GET `/api/reviews?episode_id=colors_ar_01` returns SHA-bound review history. It does not authenticate the reviewer, approve publication, or stream the video. Keep loopback-only.
