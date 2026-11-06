@@ -282,3 +282,7 @@ Run `python -m kidsstudio.dashboard_web --db "$HOME/kidsstudio-private/state.sql
 ## Batch 27 — Latest video review freshness
 
 The pure `project_review_freshness(reviews, current_video_sha256=...)` model distinguishes no review, stale latest review, revision needed, pending review, and accepted-private-only for the current SHA. The optional local GET `/api/review-freshness?episode_id=colors_ar_01&current_sha256=TRUSTED_SHA256` uses the review history DB. **Important:** the SHA in this endpoint is caller-supplied, not independently rehashed, so its response is informational and cannot grant owner identity, upload, or publication permissions. For an authoritative local file check, separately use `transfer_verify` or the SHA-bound review receipt against the actual file. No new production actions.
+
+## Batch 28 — Unified episode review overview
+
+When both `--notes-db` and `--reviews-db` are provided to the local dashboard, GET `/api/episode-review?episode_id=colors_ar_01&current_sha256=TRUSTED_SHA256` returns aggregate pending/resolved note counts, number of review records, latest outcome and SHA freshness in one read-only response. It contains no private note text and performs no writes. **Caller-supplied SHA is not reverified against the actual video**, and neither the reviewer nor the owner is authenticated. The overview is informational only and must never gate a real public release.
