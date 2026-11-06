@@ -320,3 +320,11 @@ python -m kidsstudio.host_qualification --role pi-private-handoff \
 ```
 
 Optional `--db /absolute/path/to/existing/queue.sqlite` adds an existence/outside-Git check. The output is a JSON host-readiness report plus a synthetic review-pipeline self-test; it does **not** move any files between machines, invoke a model, authenticate the owner, contact YouTube, or approve production. The `SUPERVISED_TESTS_READY` result means only that the offline checks passed. Physical Mac/Pi tests remain **NOT_RUN** until the commands are actually executed on those machines and the resulting reports inspected.
+
+## Batch 34 — Fail-closed role identity and private-path checks
+
+The host readiness report now includes independent checks for **symlink components anywhere in the supplied paths**, private ownership of the artifact directory, and (when using `--db`) a **regular, current-user-owned, owner-only readable database**, plus a private database parent. This is a read-only metadata inspection; it never opens or edits the queue database. A database whose permissions allow group/other access fails qualification. On POSIX, prepare private paths using `chmod 700 "$HOME/kidsstudio-private"` and `chmod 600 "$HOME/kidsstudio-private/queue.sqlite"` where those are actually the selected paths; do not change a live installation's ownership or permissions without inspecting it first.
+
+`host_qualification` additionally rejects mismatched roles: `mac-render` requires Darwin on Apple Silicon or Intel, and `pi-private-handoff` requires Linux ARM plus a Raspberry Pi marker in `/proc/device-tree/model`. ARM Linux alone does not count as a Pi. On some images, the device-tree marker may be unavailable; those systems **fail closed** pending supervised diagnosis instead of guessing.
+
+Passing these offline checks means **ready for supervised testing only**. It does not prove Godot/ComfyUI renders, TLS pairing, network transfer, or actual private YouTube uploading; all physical G4 gates remain `NOT_RUN` until tested separately. The extended readiness report schema is version 2; parsers must tolerate new check keys.
