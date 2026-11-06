@@ -35,6 +35,15 @@ strong{font-size:2.1rem;display:block;margin-top:.7rem}
 <p>معاينة محلية للقراءة فقط. لا توجد صلاحية تشغيل أو رفع أو نشر.</p>
 <div class="status" id="status" role="status">جاري قراءة حالة الطابور...</div>
 <section class="cards" id="cards" aria-label="إحصائيات المهام"></section>
+<section id="verified-section" hidden style="margin-top:2rem;background:#202c40;border-radius:15px;padding:1.25rem">
+<h2>فحص نسخة الفيديو الحالية</h2>
+<p>يتحقق من ملف محلي تحت مجلد الفيديوهات المحدد عند تشغيل الخادم. لا يمنح موافقة نشر.</p>
+<form id="verified-form">
+<label for="verified-episode">الحلقة</label><input id="verified-episode" required maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9_-]*">
+<label for="verified-path">اسم الملف النسبي</label><input id="verified-path" required maxlength="240" placeholder="episode.mp4">
+<label for="verified-sha">بصمة SHA-256 الموثوقة</label><input id="verified-sha" required minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}">
+<button type="submit">فحص النسخة</button></form>
+<p id="verified-status" role="status"></p><dl id="verified-details"></dl></section>
 <section id="reviews-section" hidden style="margin-top:2rem;background:#202c40;border-radius:15px;padding:1.25rem">
 <h2>تاريخ مراجعات الفيديو</h2><p>كل مراجعة مرتبطة ببصمة نسخة الفيديو — للقراءة فقط.</p>
 <form id="reviews-form"><label for="review-episode-id">معرّف الحلقة</label>
@@ -57,6 +66,43 @@ fetch("/api/summary",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("un
  const v=document.createElement("strong");v.textContent=String(d[key]);
  a.append(t,v);cards.append(a)}
 }).catch(()=>{document.getElementById("status").textContent="تعذرت قراءة قاعدة البيانات؛ لا توجد صلاحية لإجراء تغييرات."});
+const verifiedSection=document.getElementById("verified-section");
+if(__VERIFIED_ENABLED__){
+ verifiedSection.hidden=false;
+ document.getElementById("verified-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const episode=document.getElementById("verified-episode").value;
+  const path=document.getElementById("verified-path").value;
+  const sha=document.getElementById("verified-sha").value;
+  const status=document.getElementById("verified-status");
+  const details=document.getElementById("verified-details");
+  details.replaceChildren();
+  if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(episode)||!/^[a-fA-F0-9]{64}$/.test(sha)){
+   status.textContent="بيانات الفحص غير صالحة";return;
+  }
+  status.textContent="جاري التحقق من الملف...";
+  try{
+   const q=new URLSearchParams({episode_id:episode,relative_path:path,expected_sha256:sha});
+   const response=await fetch("/api/verified-episode-review?"+q,{cache:"no-store"});
+   if(!response.ok)throw Error("verification failed");
+   const data=await response.json();
+   if(data.status!=="EPISODE_REVIEW_LOCAL_VIDEO_VERIFIED")throw Error("invalid report");
+   status.textContent="تطابقت بصمة الملف وقت الفحص — هذا ليس إذناً بالنشر";
+   const fields=[
+    ["حالة المراجعة",data.review_freshness],
+    ["الملاحظات المفتوحة",data.notes_unresolved],
+    ["الملاحظات المعالجة",data.notes_resolved],
+    ["عدد المراجعات",data.review_count],
+    ["حجم الملف بالبايت",data.video_bytes_verified]
+   ];
+   for(const [name,value] of fields){
+    const dt=document.createElement("dt");dt.textContent=name;
+    const dd=document.createElement("dd");dd.textContent=String(value);
+    details.append(dt,dd);
+   }
+  }catch(_){status.textContent="فشل التحقق من الفيديو أو قراءة المراجعات";details.replaceChildren();}
+ });
+}
 const reviewsSection=document.getElementById("reviews-section");
 if(__REVIEWS_ENABLED__){
  reviewsSection.hidden=false;
@@ -123,7 +169,8 @@ def make_handler(database: str, notes_database: str | None = None,
         def do_GET(self):
             if self.path == "/":
                 data = (_HTML.replace("__NOTES_ENABLED__", "true" if notes_database is not None else "false")
-                        .replace("__REVIEWS_ENABLED__", "true" if reviews_database is not None else "false")).encode("utf-8")
+                        .replace("__REVIEWS_ENABLED__", "true" if reviews_database is not None else "false")
+                        .replace("__VERIFIED_ENABLED__", "true" if all((notes_database, reviews_database, video_root)) else "false")).encode("utf-8")
                 content_type = "text/html; charset=utf-8"
                 code = 200
             elif self.path == "/api/summary":
