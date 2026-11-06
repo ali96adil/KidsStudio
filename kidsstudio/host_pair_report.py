@@ -50,7 +50,8 @@ def _blockers(report: object, expected_role: str) -> list[str]:
     if report.get("role") != expected_role:
         result.append("incorrect_role")
     system, architectures = _ALLOWED_MACHINES[expected_role]
-    if report.get("host_system") != system or report.get("machine") not in architectures:
+    machine = report.get("machine")
+    if report.get("host_system") != system or not isinstance(machine, str) or machine not in architectures:
         result.append("host_platform_mismatch")
     if report.get("status") != "SUPERVISED_TESTS_READY":
         result.append("offline_readiness_not_passed")
