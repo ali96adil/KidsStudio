@@ -238,3 +238,7 @@ python -m kidsstudio.dashboard_web \
 ```
 
 GET `http://127.0.0.1:8787/api/notes?episode_id=colors_ar_01` returns notes from the **separate** local notes database. The endpoint is disabled unless `--notes-db` is supplied; POST is rejected. Notes can contain private editorial text, so keep this unauthenticated prototype bound to loopback only and do not port-forward. The HTML currently displays aggregate counters; the notes endpoint is a read-only integration seam for a future authenticated owner review interface, not a finished review UI.
+
+## Read-only episode notes inside the Arabic dashboard
+
+With `--notes-db` configured, the dashboard HTML now shows an episode-ID search form and displays notes with **pending/resolved** labels. Notes are rendered with DOM `textContent`, not `innerHTML`, so note content is not interpreted as markup. Without `--notes-db`, the section stays hidden. This UI is **read-only**, and its form only performs GET; note creation/resolution remain private CLI actions. Never expose this unauthenticated localhost preview to the network.
