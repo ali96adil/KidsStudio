@@ -298,3 +298,7 @@ When the loopback dashboard is launched with `--notes-db`, `--reviews-db`, and `
 ## Batch 31 — Private review database hardening
 
 Review history now checks private parent directory permissions and regular 0600-style database permissions before every read/write; direct symlink database paths are rejected. The database must live outside Git and inside a private pre-existing directory. Tests cover symlink, public file, and public directory rejection. This reduces accidental disclosure, but does not replace filesystem access controls or eliminate all possible concurrent path-swap races; do not run against attacker-writable directories.
+
+## Batch 32 — Full synthetic local review pipeline
+
+Run `python -m kidsstudio.review_pipeline_qualification` on a test machine. This isolated temporary-directory scenario writes **synthetic bytes, not a playable MP4**, then checks note persistence, SHA-verified first private review, stale old review after file replacement, refusal of the old SHA, and retention of a new revision-required review. It prints `OFFLINE_REVIEW_PIPELINE_PASS` only if all seven assertions succeed. The test does not connect to Mac, Pi, ComfyUI, Godot, YouTube, or a real upload. **G4 physical Mac/Pi qualification remains NOT_RUN.**
