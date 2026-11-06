@@ -1,16 +1,26 @@
 """Read-only host role qualification combining readiness and synthetic pipeline.
 
-Produces no host-specific credentials or network activity.
+No production actions, external network calls, or host credential reads.
 """
 from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from .host_readiness import inspect_host
 from .review_pipeline_qualification import run_review_pipeline_qualification
 
 _ROLES = {"mac-render", "pi-private-handoff"}
+
+
+def _raspberry_pi_model_present() -> bool:
+    """A Linux ARM machine alone is not proof of Raspberry Pi hardware."""
+    try:
+        model = Path("/proc/device-tree/model").read_bytes()[:256]
+    except OSError:
+        return False
+    return b"raspberry pi" in model.lower()
 
 
 def qualify_host(*, role: str, artifact_root: str,
@@ -20,17 +30,30 @@ def qualify_host(*, role: str, artifact_root: str,
     readiness = inspect_host(
         artifact_root=artifact_root, database=database,
         min_free_gib=min_free_gib)
+    system = readiness["host_system"]
+    machine = readiness["machine"].lower()
+    checks = dict(readiness["checks"])
+    if role == "mac-render":
+        checks["role_matches_os_machine"] = (
+            system == "Darwin" and machine in {"arm64", "x86_64"})
+    else:
+        checks["role_matches_os_machine"] = (
+            system == "Linux" and machine in {"aarch64", "armv7l", "armv6l"})
+        checks["raspberry_pi_model_confirmed"] = (
+            checks["role_matches_os_machine"] and _raspberry_pi_model_present())
     synthetic = run_review_pipeline_qualification()
+    ready = (
+        readiness["ready_for_supervised_tests"]
+        and all(checks.values())
+        and synthetic["status"] == "OFFLINE_REVIEW_PIPELINE_PASS"
+    )
     return {
-        "schema_version": 1,
-        "status": ("SUPERVISED_TESTS_READY" if
-                   readiness["ready_for_supervised_tests"] and
-                   synthetic["status"] == "OFFLINE_REVIEW_PIPELINE_PASS"
-                   else "SUPERVISED_TESTS_BLOCKED"),
+        "schema_version": 2,
+        "status": "SUPERVISED_TESTS_READY" if ready else "SUPERVISED_TESTS_BLOCKED",
         "role": role,
-        "host_system": readiness["host_system"],
+        "host_system": system,
         "machine": readiness["machine"],
-        "checks": readiness["checks"],
+        "checks": checks,
         "synthetic_review_pipeline": synthetic["status"],
         "real_mac_pi_transfer_test": "NOT_RUN",
         "real_youtube_upload_test": "NOT_RUN",
@@ -50,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         result = qualify_host(
             role=args.role, artifact_root=args.artifact_root,
             database=args.db, min_free_gib=args.min_free_gib)
-    except (ValueError, OSError):
+    except (ValueError, OSError, AssertionError):
         result = {"status": "QUALIFICATION_ERROR",
                   "production_approved": False,
                   "publication_approved": False}
