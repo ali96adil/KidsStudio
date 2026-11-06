@@ -45,8 +45,7 @@ class HostQualificationTests(unittest.TestCase):
         self.assertEqual(report["status"], "SUPERVISED_TESTS_BLOCKED")
 
     def test_non_pi_linux_arm_machine_blocked(self):
-        with patch("kidsstudio.host_qualification.inspect_host") as readiness, \\
-             patch("kidsstudio.host_qualification._raspberry_pi_model_present",
+        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._raspberry_pi_model_present",
                    return_value=False):
             readiness.return_value = {
                 "ready_for_supervised_tests": True, "host_system": "Linux",
@@ -57,8 +56,7 @@ class HostQualificationTests(unittest.TestCase):
         self.assertEqual(report["status"], "SUPERVISED_TESTS_BLOCKED")
 
     def test_pi_hardware_confirmed_but_not_production_approved(self):
-        with patch("kidsstudio.host_qualification.inspect_host") as readiness, \\
-             patch("kidsstudio.host_qualification._raspberry_pi_model_present",
+        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._raspberry_pi_model_present",
                    return_value=True):
             readiness.return_value = {
                 "ready_for_supervised_tests": True, "host_system": "Linux",
