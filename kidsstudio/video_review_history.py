@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import stat
 import time
 
 from .video_review_receipt import build_video_review_receipt
@@ -19,17 +20,31 @@ _EPISODE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}\Z")
 
 class VideoReviewHistory:
     def __init__(self, database: str | Path):
-        self.path = Path(database).expanduser().resolve()
+        self.path = Path(os.path.abspath(os.path.expanduser(str(database))))
         if self.path.suffix not in {".db", ".sqlite"}:
             raise ValueError("invalid review database")
         if any((parent / ".git").exists() for parent in (self.path.parent, *self.path.parents)):
             raise ValueError("review history must remain outside Git")
 
+    def _check_private_path(self, *, allow_missing: bool = False) -> None:
+        if not self.path.parent.is_dir() or self.path.parent.is_symlink():
+            raise ValueError("real private parent directory required")
+        if self.path.parent.stat().st_mode & 0o077:
+            raise ValueError("review directory must be private")
+        if self.path.is_symlink():
+            raise ValueError("database symlink forbidden")
+        if not self.path.exists():
+            if allow_missing:
+                return
+            raise ValueError("review history not initialized")
+        info = self.path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+            raise ValueError("review database must be a private regular file")
+
     def initialize(self) -> None:
+        self._check_private_path(allow_missing=True)
         if self.path.exists():
             raise FileExistsError("review history already exists")
-        if not self.path.parent.is_dir() or self.path.parent.stat().st_mode & 0o077:
-            raise ValueError("existing private directory required")
         fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(fd)
         try:
@@ -51,8 +66,7 @@ class VideoReviewHistory:
             raise
 
     def _connect(self, *, readonly: bool = False):
-        if not self.path.is_file():
-            raise ValueError("review history not initialized")
+        self._check_private_path()
         if readonly:
             return sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
         return sqlite3.connect(self.path)
