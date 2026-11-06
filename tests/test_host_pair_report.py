@@ -133,6 +133,23 @@ class HostPairReportTests(unittest.TestCase):
         result = compare_host_reports(self.mac, self.pi)
         self.assertIn("host_platform_mismatch", result["mac_issues"])
 
+    def test_malformed_machine_array_fails_closed(self):
+        self.mac["machine"] = ["arm64"]
+        result = compare_host_reports(self.mac, self.pi)
+        self.assertIn("host_platform_mismatch", result["mac_issues"])
+
+    def test_cli_malformed_json_rejected_without_contents(self):
+        self.save()
+        self.pi_path.write_text('{"machine":', encoding="utf-8")
+        self.pi_path.chmod(0o600)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = main(["--mac-report", str(self.mac_path),
+                         "--pi-report", str(self.pi_path)])
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(output.getvalue())["status"],
+                         "OFFLINE_REPORT_PAIR_ERROR")
+
     def test_missing_input_rejected(self):
         result = compare_host_reports(None, self.pi)
         self.assertIn("invalid_report_object", result["mac_issues"])
