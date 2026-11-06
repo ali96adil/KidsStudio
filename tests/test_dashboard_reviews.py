@@ -23,6 +23,7 @@ class DashboardReviewsTests(unittest.TestCase):
         self.video = root / "episode.mp4"
         self.video.write_bytes(b"video fixture")
         sha = hashlib.sha256(self.video.read_bytes()).hexdigest()
+        self.sha = sha
         reviews = root / "reviews.sqlite"
         history = VideoReviewHistory(reviews)
         history.initialize()
@@ -66,6 +67,19 @@ class DashboardReviewsTests(unittest.TestCase):
     def test_missing_id_rejected(self):
         status, _ = self.get("/api/reviews")
         self.assertEqual(status, 503)
+
+    def test_review_freshness_current_sha(self):
+        status, body = self.get("/api/review-freshness?episode_id=colors_ar_01&current_sha256=" + self.sha)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["status"], "CURRENT_VERSION_REVISION_REQUIRED")
+        self.assertTrue(data["current_sha_supplied_by_caller_not_verified"])
+        self.assertFalse(data["owner_publication_approval"])
+
+    def test_review_freshness_stale_sha(self):
+        status, body = self.get("/api/review-freshness?episode_id=colors_ar_01&current_sha256=" + "b" * 64)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["status"], "LATEST_REVIEW_STALE")
 
     def test_post_rejected(self):
         status, _ = self.get("/api/reviews?episode_id=colors_ar_01", "POST")
