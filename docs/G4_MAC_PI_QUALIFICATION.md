@@ -294,3 +294,7 @@ When both `--notes-db` and `--reviews-db` are provided to the local dashboard, G
 ## Batch 30 — Verified video review visible in Arabic dashboard
 
 When the loopback dashboard is launched with `--notes-db`, `--reviews-db`, and `--video-root`, it now displays a form for episode ID, relative filename and trusted SHA-256. The form calls only GET `/api/verified-episode-review`, then shows the file hash match at request time, latest review freshness, unresolved/resolved note counts, review count, and verified byte size. No write buttons, uploads, approvals, or remote access. A hash mismatch displays an error and no result. Never use the form with an untrusted SHA or expose this unauthenticated server to LAN.
+
+## Batch 31 — Private review database hardening
+
+Review history now checks private parent directory permissions and regular 0600-style database permissions before every read/write; direct symlink database paths are rejected. The database must live outside Git and inside a private pre-existing directory. Tests cover symlink, public file, and public directory rejection. This reduces accidental disclosure, but does not replace filesystem access controls or eliminate all possible concurrent path-swap races; do not run against attacker-writable directories.
