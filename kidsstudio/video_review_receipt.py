@@ -26,13 +26,13 @@ def build_video_review_receipt(*, episode_id: str, video_root: str,
     verification = verify_staged_file(
         root=video_root, relative_path=relative_path,
         expected_sha256=expected_sha256)
-    if verification.get("status") != "MATCH":
+    if verification.get("status") != "VERIFIED":
         raise ValueError("video SHA-256 mismatch or unsafe source")
     return {
         "schema_version": 1,
         "episode_id": episode_id,
         "video_sha256": expected_sha256.lower(),
-        "video_bytes": verification["size_bytes"],
+        "video_bytes": verification["bytes"],
         "review_outcome": review_outcome,
         "reviewer_notes": reviewer_notes,
         "reviewer_identity_authenticated": False,
