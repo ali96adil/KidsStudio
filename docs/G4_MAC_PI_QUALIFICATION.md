@@ -258,3 +258,19 @@ python -m kidsstudio.video_review_receipt \
 ```
 
 The tool rehashes the local file and rejects changed content, unsafe paths, and unsupported outcomes. Outcomes are `NEEDS_REVIEW`, `REVISION_REQUIRED`, `ACCEPTED_PRIVATE`; **none** authorizes public release. The receipt is emitted to stdout, **not persisted**, and reviewer identity is **not authenticated**. This is not a YouTube approval or an actual video preview UI; those require separate secured implementation and owner testing.
+
+## Private SHA-bound review history
+
+A separate private SQLite database can retain successive video review receipts:
+
+```bash
+python -m kidsstudio.video_review_history --db "$HOME/kidsstudio-private/reviews.sqlite" init
+python -m kidsstudio.video_review_history --db "$HOME/kidsstudio-private/reviews.sqlite" record \
+  --episode-id colors_ar_01 --video-root "$HOME/kidsstudio-private/ready" \
+  --relative-path episode.mp4 --expected-sha256 TRUSTED_SHA256 \
+  --review-outcome REVISION_REQUIRED --reviewer-notes "راجع الصوت"
+python -m kidsstudio.video_review_history --db "$HOME/kidsstudio-private/reviews.sqlite" list \
+  --episode-id colors_ar_01
+```
+
+Each record rehashes the video and appends its SHA, size, outcome, and notes. Older records remain intact when a new video version is reviewed. There is no delete, modify, authenticated reviewer identity, owner publication approval, YouTube call, or dashboard integration yet. Run only on a trusted private host; review notes are sensitive and the SQLite file requires backup.
