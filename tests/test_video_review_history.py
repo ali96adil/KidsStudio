@@ -58,6 +58,22 @@ class VideoReviewHistoryTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.history.initialize()
 
+    def test_symlink_database_rejected(self):
+        link = self.root / "linked.sqlite"
+        link.symlink_to(self.history.path)
+        with self.assertRaises(ValueError):
+            VideoReviewHistory(link).list_reviews(episode_id="colors_ar_01")
+
+    def test_public_permissions_rejected(self):
+        self.history.path.chmod(0o644)
+        with self.assertRaises(ValueError):
+            self.history.list_reviews(episode_id="colors_ar_01")
+
+    def test_public_parent_rejected(self):
+        self.root.chmod(0o755)
+        with self.assertRaises(ValueError):
+            self.history.list_reviews(episode_id="colors_ar_01")
+
     def test_unapproved_even_if_private_accepted(self):
         self.record(review_outcome="ACCEPTED_PRIVATE")
         self.assertFalse(self.history.list_reviews(episode_id="colors_ar_01")[0][
