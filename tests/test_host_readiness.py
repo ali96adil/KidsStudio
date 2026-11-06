@@ -18,6 +18,7 @@ class HostReadinessTests(unittest.TestCase):
         self.artifacts.mkdir(mode=0o700)
         self.db = self.root / "queue.sqlite"
         self.db.write_bytes(b"synthetic - never opened by probe")
+        self.db.chmod(0o600)
 
     def test_private_local_root_and_db(self):
         report = inspect_host(artifact_root=self.artifacts, database=self.db,
@@ -46,6 +47,45 @@ class HostReadinessTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn(str(self.root), output.getvalue())
         self.assertFalse(json.loads(output.getvalue())["publication_approved"])
+
+    def test_symlinked_parent_rejected(self):
+        link = self.root / "alias"
+        link.symlink_to(self.artifacts, target_is_directory=True)
+        report = inspect_host(artifact_root=link, min_free_gib=0)
+        self.assertFalse(report["checks"]["artifact_root_no_symlink_components"])
+        self.assertFalse(report["ready_for_supervised_tests"])
+
+    def test_nested_symlink_component_rejected(self):
+        link = self.root / "alias"
+        link.symlink_to(self.artifacts, target_is_directory=True)
+        nested = link / "inside"
+        nested.mkdir()
+        report = inspect_host(artifact_root=nested, min_free_gib=0)
+        self.assertFalse(report["checks"]["artifact_root_no_symlink_components"])
+        self.assertFalse(report["ready_for_supervised_tests"])
+
+    def test_symlinked_database_rejected(self):
+        link = self.root / "linked.sqlite"
+        link.symlink_to(self.db)
+        report = inspect_host(artifact_root=self.artifacts,
+                              database=link, min_free_gib=0)
+        self.assertFalse(report["checks"]["database_regular_file"])
+        self.assertFalse(report["checks"]["database_no_symlink_components"])
+        self.assertFalse(report["ready_for_supervised_tests"])
+
+    def test_public_database_permissions_rejected(self):
+        self.db.chmod(0o644)
+        report = inspect_host(artifact_root=self.artifacts,
+                              database=self.db, min_free_gib=0)
+        self.assertFalse(report["checks"]["database_private_permissions"])
+        self.assertFalse(report["ready_for_supervised_tests"])
+
+    def test_public_database_parent_rejected(self):
+        self.root.chmod(0o755)
+        report = inspect_host(artifact_root=self.artifacts,
+                              database=self.db, min_free_gib=0)
+        self.assertFalse(report["checks"]["database_parent_private"])
+        self.assertFalse(report["ready_for_supervised_tests"])
 
     def test_invalid_threshold(self):
         with self.assertRaises(ValueError):
