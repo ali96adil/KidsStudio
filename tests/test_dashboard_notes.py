@@ -40,6 +40,13 @@ class DashboardNotesTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_notes_ui_visible_when_enabled(self):
+        status, body = self.request("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn("ملاحظات الحلقات", body)
+        self.assertIn("if(true)", body)
+        self.assertIn("textContent=note.text", body)
+
     def test_episode_notes_are_readable(self):
         status, body = self.request("GET", "/api/notes?episode_id=colors_ar_01")
         self.assertEqual(status, 200)
