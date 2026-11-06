@@ -36,7 +36,7 @@ class DashboardReviewsTests(unittest.TestCase):
                        relative_path="episode.mp4", expected_sha256=sha,
                        review_outcome="REVISION_REQUIRED", reviewer_notes="راجع الصوت")
         self.server = ThreadingHTTPServer(
-            ("127.0.0.1", 0), make_handler(str(queue), notes_database=str(notes_db), reviews_database=str(reviews)))
+            ("127.0.0.1", 0), make_handler(str(queue), notes_database=str(notes_db), reviews_database=str(reviews), video_root=str(root)))
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(self.server.server_close)
@@ -97,6 +97,26 @@ class DashboardReviewsTests(unittest.TestCase):
     def test_combined_episode_review_rejects_missing_sha(self):
         status, _ = self.get("/api/episode-review?episode_id=colors_ar_01")
         self.assertEqual(status, 503)
+
+    def test_verified_video_review_endpoint(self):
+        status, body = self.get("/api/verified-episode-review?episode_id=colors_ar_01&relative_path=episode.mp4&expected_sha256=" + self.sha)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["local_file_verified_at_report_time"])
+        self.assertEqual(data["review_freshness"], "CURRENT_VERSION_REVISION_REQUIRED")
+        self.assertFalse(data["owner_publication_approval"])
+
+    def test_verified_video_mismatch_fails_closed(self):
+        status, body = self.get("/api/verified-episode-review?episode_id=colors_ar_01&relative_path=episode.mp4&expected_sha256=" + "b" * 64)
+        self.assertEqual(status, 503)
+        self.assertFalse(json.loads(body)["owner_publication_approval"])
+
+    def test_verified_video_form_visible(self):
+        status, body = self.get("/")
+        self.assertEqual(status, 200)
+        self.assertIn("فحص نسخة الفيديو الحالية", body)
+        self.assertIn("if(true)", body)
+        self.assertIn("data.video_bytes_verified", body)
 
     def test_post_rejected(self):
         status, _ = self.get("/api/reviews?episode_id=colors_ar_01", "POST")
