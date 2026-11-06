@@ -32,6 +32,12 @@ strong{font-size:2.1rem;display:block;margin-top:.7rem}
 <p>معاينة محلية للقراءة فقط. لا توجد صلاحية تشغيل أو رفع أو نشر.</p>
 <div class="status" id="status" role="status">جاري قراءة حالة الطابور...</div>
 <section class="cards" id="cards" aria-label="إحصائيات المهام"></section>
+<section id="reviews-section" hidden style="margin-top:2rem;background:#202c40;border-radius:15px;padding:1.25rem">
+<h2>تاريخ مراجعات الفيديو</h2><p>كل مراجعة مرتبطة ببصمة نسخة الفيديو — للقراءة فقط.</p>
+<form id="reviews-form"><label for="review-episode-id">معرّف الحلقة</label>
+<input id="review-episode-id" required maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9_-]*">
+<button type="submit">عرض تاريخ النسخ</button></form>
+<p id="reviews-status" role="status"></p><ol id="reviews-list"></ol></section>
 <section id="notes-section" hidden style="margin-top:2rem;background:#202c40;border-radius:15px;padding:1.25rem">
 <h2>ملاحظات الحلقات</h2><p>للقراءة فقط — إغلاق الملاحظات لا يمنح موافقة النشر.</p>
 <form id="notes-form"><label for="episode-id">معرّف الحلقة</label>
@@ -48,6 +54,34 @@ fetch("/api/summary",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("un
  const v=document.createElement("strong");v.textContent=String(d[key]);
  a.append(t,v);cards.append(a)}
 }).catch(()=>{document.getElementById("status").textContent="تعذرت قراءة قاعدة البيانات؛ لا توجد صلاحية لإجراء تغييرات."});
+const reviewsSection=document.getElementById("reviews-section");
+if(__REVIEWS_ENABLED__){
+ reviewsSection.hidden=false;
+ document.getElementById("reviews-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const id=document.getElementById("review-episode-id").value;
+  const status=document.getElementById("reviews-status");
+  const list=document.getElementById("reviews-list");
+  list.replaceChildren();
+  if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(id)){status.textContent="معرّف الحلقة غير صالح";return;}
+  status.textContent="جاري قراءة المراجعات...";
+  try{
+   const response=await fetch("/api/reviews?episode_id="+encodeURIComponent(id),{cache:"no-store"});
+   if(!response.ok)throw Error("unavailable");
+   const data=await response.json();
+   if(data.status!=="REVIEWS_READ_ONLY"||!Array.isArray(data.reviews))throw Error("invalid");
+   status.textContent=data.reviews.length?"عدد المراجعات: "+data.reviews.length:"لا توجد مراجعات";
+   for(const review of data.reviews){
+    const li=document.createElement("li");
+    li.style.whiteSpace="pre-wrap";li.style.overflowWrap="anywhere";
+    const label=document.createElement("strong");
+    label.textContent="مراجعة "+review.review_id+" — "+review.review_outcome+" — SHA256: "+review.video_sha256.slice(0,12)+"… ";
+    const body=document.createElement("span");body.textContent=review.reviewer_notes;
+    li.append(label,body);list.append(li);
+   }
+  }catch(_){status.textContent="تعذرت قراءة تاريخ المراجعات";list.replaceChildren();}
+ });
+}
 const section=document.getElementById("notes-section");
 if(__NOTES_ENABLED__){
  section.hidden=false;
@@ -84,7 +118,8 @@ def make_handler(database: str, notes_database: str | None = None,
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/":
-                data = _HTML.replace("__NOTES_ENABLED__", "true" if notes_database is not None else "false").encode("utf-8")
+                data = (_HTML.replace("__NOTES_ENABLED__", "true" if notes_database is not None else "false")
+                        .replace("__REVIEWS_ENABLED__", "true" if reviews_database is not None else "false")).encode("utf-8")
                 content_type = "text/html; charset=utf-8"
                 code = 200
             elif self.path == "/api/summary":
