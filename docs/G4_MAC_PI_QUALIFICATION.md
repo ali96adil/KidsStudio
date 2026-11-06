@@ -286,3 +286,7 @@ The pure `project_review_freshness(reviews, current_video_sha256=...)` model dis
 ## Batch 28 — Unified episode review overview
 
 When both `--notes-db` and `--reviews-db` are provided to the local dashboard, GET `/api/episode-review?episode_id=colors_ar_01&current_sha256=TRUSTED_SHA256` returns aggregate pending/resolved note counts, number of review records, latest outcome and SHA freshness in one read-only response. It contains no private note text and performs no writes. **Caller-supplied SHA is not reverified against the actual video**, and neither the reviewer nor the owner is authenticated. The overview is informational only and must never gate a real public release.
+
+## Batch 29 — Verify the actual local video before review summary
+
+`build_verified_episode_review` first hashes the file under a trusted local root with `transfer_verify.verify_staged_file`, then derives note counts and review freshness from the **verified** digest. A mismatch or unsafe path fails closed. Optional dashboard `--video-root "$HOME/kidsstudio-private/ready"` (requires both notes and reviews databases) exposes GET `/api/verified-episode-review?episode_id=colors_ar_01&relative_path=episode.mp4&expected_sha256=TRUSTED_SHA256`. This checks only the local file **at request time**; it is not an immutable lock, does not authenticate the reviewer, and cannot authorize uploading or public publication. Avoid exposing the unauthenticated loopback endpoint over a network.
