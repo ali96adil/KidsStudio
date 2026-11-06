@@ -290,3 +290,7 @@ When both `--notes-db` and `--reviews-db` are provided to the local dashboard, G
 ## Batch 29 — Verify the actual local video before review summary
 
 `build_verified_episode_review` first hashes the file under a trusted local root with `transfer_verify.verify_staged_file`, then derives note counts and review freshness from the **verified** digest. A mismatch or unsafe path fails closed. Optional dashboard `--video-root "$HOME/kidsstudio-private/ready"` (requires both notes and reviews databases) exposes GET `/api/verified-episode-review?episode_id=colors_ar_01&relative_path=episode.mp4&expected_sha256=TRUSTED_SHA256`. This checks only the local file **at request time**; it is not an immutable lock, does not authenticate the reviewer, and cannot authorize uploading or public publication. Avoid exposing the unauthenticated loopback endpoint over a network.
+
+## Batch 30 — Verified video review visible in Arabic dashboard
+
+When the loopback dashboard is launched with `--notes-db`, `--reviews-db`, and `--video-root`, it now displays a form for episode ID, relative filename and trusted SHA-256. The form calls only GET `/api/verified-episode-review`, then shows the file hash match at request time, latest review freshness, unresolved/resolved note counts, review count, and verified byte size. No write buttons, uploads, approvals, or remote access. A hash mismatch displays an error and no result. Never use the form with an untrusted SHA or expose this unauthenticated server to LAN.
