@@ -73,6 +73,15 @@ def run_real_colors_smoke() -> dict:
         assert movie.stat().st_mode & 0o077 == 0
         assert hashlib.sha256(movie.read_bytes()).hexdigest() == report["final_mp4_sha256"]
         duration = _check_video(_probe(movie), with_audio=True)
+        profile_probe = subprocess.run([
+            "ffprobe", "-v", "error", "-show_entries",
+            "stream=codec_type,profile", "-of", "json", str(movie)
+        ], capture_output=True, check=False, timeout=30)
+        assert profile_probe.returncode == 0
+        stream_info = json.loads(profile_probe.stdout)["streams"]
+        video_streams = [s for s in stream_info if s.get("codec_type") == "video"]
+        assert len(video_streams) == 1
+        assert video_streams[0].get("profile") in ("Baseline", "Constrained Baseline")
         assert abs(duration - DURATION) <= 0.2
         # Decode pixels from the actual encoded result: don't rely on the
         # source PNGs or mocked FFmpeg to assert color correctness.
