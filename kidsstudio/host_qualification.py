@@ -32,11 +32,14 @@ def _source_checkout() -> tuple[str | None, bool]:
         return None, False
     try:
         sha = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            ["git", "-C", str(root), "rev-parse", "--verify", "HEAD^{commit}"],
             capture_output=True, text=True, check=False, timeout=5)
+        # Inspect the ENTIRE checkout, including scripts, docs, workflows
+        # and untracked (non-ignored) files. Never print local filenames.
+        # This is a consistency signal, not host or build attestation.
         changes = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain",
-             "--untracked-files=no", "--", "kidsstudio", "tests"],
+            ["git", "-C", str(root), "status", "--porcelain=v1",
+             "--untracked-files=all"],
             capture_output=True, text=True, check=False, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
         return None, False
