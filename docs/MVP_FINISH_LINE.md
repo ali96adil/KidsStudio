@@ -91,3 +91,7 @@ In addition to the Linux original 24-second synthetic-silent render smoke, `.git
 ## Batch 53 — stop failed Mac renders early
 
 The Mac pilot launcher now performs a no-render prerequisite check for an already-installed Arabic macOS voice and pinned clean checkout **before** encoding. Native `say` WAV output must contain non-negligible signal energy in each of the six original four-second scenes; otherwise the local render is blocked before final mux. This reduces wasted rendering and silent-first-draft failures but **does not** validate Arabic pronunciation, substitute for human listening, or perform the actual supervised operator Mac test. No automatic voice/model downloads, cloud inference, Pi SSH transfer or YouTube upload are enabled.
+
+## Batch 54 — avoid expensive failed Mac video renders
+
+The native macOS colors pilot builds and validates its six Arabic speech beats **before** encoding the picture track, so a broken or silent native voice never spends time creating the full silent MP4. An optional `KIDSSTUDIO_MAC_VOICE` chooses an already-installed Arabic voice consistently during preflight and rendering; the launcher remains Bash 3.2-compatible and produces retry-unique private file names. Passing automated checks still does not constitute reviewed Arabic speech or a run on the owner's physical Mac.
