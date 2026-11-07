@@ -160,7 +160,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         self.assertEqual(command[0], "ffmpeg")
         self.assertIn("libx264", command)
         self.assertIn("yuv420p", command)
-        self.assertIn("concat=n=6:v=1:a=0[out]", command)
+        self.assertIn("concat=n=6:v=1:a=0[out]", " ".join(command))
         self.assertFalse(any("http" in arg for arg in command))
 
     def test_mac_voice_six_original_beats_do_not_get_truncated(self):
@@ -184,7 +184,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         self.assertTrue(filename.is_file())
         self.assertEqual([x[0] for x in commands].count("say"), 6)
         self.assertEqual([x[0] for x in commands].count("ffmpeg"), 1)
-        self.assertIn("concat=n=6:v=0:a=1[out]", commands[-1])
+        self.assertIn("concat=n=6:v=0:a=1[out]", " ".join(commands[-1]))
         self.assertFalse(any("https" in str(cmd) for cmd in commands))
 
     def test_too_long_spoken_beat_fails_closed(self):
