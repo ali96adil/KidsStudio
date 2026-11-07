@@ -1,0 +1,50 @@
+name: macOS native colors encode and optional Arabic voice smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-colors-smoke:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python pipeline and local media binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e . imageio-ffmpeg==0.6.0
+          FFMPEG_EXE="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          "$FFMPEG_EXE" -hide_banner -encoders | grep libx264
+          ln -s "$FFMPEG_EXE" "$RUNNER_TEMP/ffmpeg"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          # ffprobe is needed only for local technical verification.
+          # This is the GitHub-hosted macOS runner, never the operator's Mac.
+          if ! command -v ffprobe >/dev/null 2>&1; then
+            brew install ffmpeg
+          fi
+          command -v ffprobe
+          command -v say
+      - name: Validate supervised Mac launcher syntax
+        shell: bash
+        run: bash -n scripts/run_mac_colors_pilot.sh
+      - name: Real macOS 24-second original colors MP4 (synthetic silent WAV)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci_colors_episode_smoke.py
+      - name: Optional installed system Arabic voice test (no new downloads)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci_macos_arabic_voice_smoke.py
+      # The tested MP4 and optional system-voice WAV are temporary, local to
+      # the hosted runner, and NEVER uploaded as GitHub Actions artifacts.
+      # A green job never qualifies the owner's actual Mac/voice or the Pi.
