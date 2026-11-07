@@ -60,15 +60,15 @@ if [[ ! -s "$TARGET" ]]; then
   exit 2
 fi
 chmod 600 "$TARGET"
-echo "Video (private, NOT uploaded): $TARGET"
-shasum -a 256 "$TARGET"
-echo "Step 3/3: inspect actual MP4 faststart, H264/AAC and decoded samples"
 MOVIE_SHA="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
+echo "Step 3/3: inspect actual MP4 faststart, H264/AAC and decoded samples"
 "$PYTHON" -m kidsstudio.mp4_playback_preflight \
   --root "$OUTPUT_DIR" \
   --relative-path "$BASENAME" \
   --expected-sha256 "$MOVIE_SHA"
 echo "Local technical compatibility preflight passed (not an owner review)."
+echo "Video (private, NOT uploaded): $TARGET"
+echo "Final MP4 SHA256: $MOVIE_SHA"
 echo "Listen and watch the ENTIRE clip before any Pi transfer or upload."
 # Open only the local result for the owner's immediate visual/audio review.
 open "$TARGET"
