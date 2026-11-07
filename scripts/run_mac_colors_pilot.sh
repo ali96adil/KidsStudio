@@ -37,7 +37,7 @@ BASENAME="colors_ar_01_test_$(date '+%Y%m%d_%H%M%S').mp4"
 TARGET="$OUTPUT_DIR/$BASENAME"
 
 echo "Source checkout: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-echo "Step 1/3: local preflight (no render, no network)"
+echo "Step 1/4: local preflight (no render, no network)"
 set +e
 PREVIEW="$("$PYTHON" -m kidsstudio.first_colors_episode \
   --output-root "$OUTPUT_DIR" --output-name "$BASENAME" 2>&1)"
@@ -49,7 +49,7 @@ if [[ "$PREVIEW_EXIT" -ne 1 ]] || [[ "$PREVIEW" != *COLORS_EPISODE_PREVIEW_ONLY*
   exit 2
 fi
 
-echo "Step 2/3: owner-invoked local render and macOS Arabic voice"
+echo "Step 2/4: owner-invoked local render and macOS Arabic voice"
 "$PYTHON" -m kidsstudio.first_colors_episode \
   --output-root "$OUTPUT_DIR" \
   --output-name "$BASENAME" \
@@ -61,14 +61,27 @@ if [[ ! -s "$TARGET" ]]; then
 fi
 chmod 600 "$TARGET"
 MOVIE_SHA="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
-echo "Step 3/3: inspect actual MP4 faststart, H264/AAC and decoded samples"
+echo "Step 3/4: inspect actual MP4 faststart, H264/AAC and decoded samples"
 "$PYTHON" -m kidsstudio.mp4_playback_preflight \
   --root "$OUTPUT_DIR" \
   --relative-path "$BASENAME" \
   --expected-sha256 "$MOVIE_SHA"
 echo "Local technical compatibility preflight passed (not an owner review)."
+echo "Step 4/4: persist immutable private evidence (owner review pending)"
+EVIDENCE_DIR="$HOME/kidsstudio-private/qualification"
+mkdir -p "$EVIDENCE_DIR"
+chmod 700 "$EVIDENCE_DIR"
+EVIDENCE_NAME="${BASENAME%.mp4}.evidence.json"
+"$PYTHON" -m kidsstudio.mac_pilot_evidence collect \
+  --episode-id colors_ar_01 \
+  --video-root "$OUTPUT_DIR" \
+  --video-name "$BASENAME" \
+  --expected-sha256 "$MOVIE_SHA" \
+  --evidence-root "$EVIDENCE_DIR" \
+  --evidence-name "$EVIDENCE_NAME"
 echo "Video (private, NOT uploaded): $TARGET"
 echo "Final MP4 SHA256: $MOVIE_SHA"
+echo "Private technical evidence (review pending): $EVIDENCE_DIR/$EVIDENCE_NAME"
 echo "Listen and watch the ENTIRE clip before any Pi transfer or upload."
 # Open only the local result for the owner's immediate visual/audio review.
 open "$TARGET"
