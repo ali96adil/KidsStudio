@@ -39,7 +39,9 @@ def run_macos_arabic_voice_smoke() -> dict:
             "arabic_voice_render_tested": False,
         }
     with tempfile.TemporaryDirectory(prefix="kidsstudio-macos-ci-speech-") as tmp:
-        root = Path(tmp)
+        # macOS /var is often a symlink. Resolve its real private path
+        # so the no-symlink evidence guard does not reject valid CI temp WAV.
+        root = Path(tmp).resolve(strict=True)
         root.chmod(0o700)
         result = _synthesize_wav(root, voice=picked)
         duration = _wav_duration(result)
