@@ -144,3 +144,16 @@ The additional GitHub Actions workflow `.github/workflows/macos-colors-smoke.yml
 A separate CI step checks for an **already installed** native Arabic macOS `say` voice. When available, it attempts to synthesize the six original speech beats into a temporary 24-second private WAV, checks basic duration, and deletes it. When no Arabic voice is installed on the hosted runner, it prints `MACOS_CI_ARABIC_VOICE_NOT_INSTALLED_NOT_TESTED` instead of claiming that speech synthesis passed. This is a **capability check, not listening or Arabic pronunciation verification**. The CI does not download voices, install a speech model, access project secrets, generate public videos, contact a Pi, or invoke a YouTube API.
 
 The physical owner-Mac test is **still required**: CI may use different voices, audio hardware, FFmpeg paths, macOS versions and local Python environments. The supervised four-step command remains `bash scripts/run_mac_colors_pilot.sh`. An actual owner review must follow with its exact SHA-bound notes; see [MAC_PILOT_EVIDENCE_AND_REVIEW.md](MAC_PILOT_EVIDENCE_AND_REVIEW.md).
+
+## Batch 53 — pre-render native Arabic voice readiness and per-beat PCM signal presence
+
+Before the supervised one-command Mac launcher starts the expensive MP4 encode, it runs:
+```bash
+python3 -m kidsstudio.mac_colors_preflight \
+  --artifact-root "$HOME/kidsstudio-private/ready"
+```
+This command is **read-only** and checks the real Mac role, Python/private artifact root/free disk, a clean full-source Git checkout, `ffmpeg`, `ffprobe`, `say`, `git` and `shasum`, plus detection of an **already-installed** native Arabic `say` voice. It never downloads a voice or renders speech/video; on failure it prints fixed, non-sensitive blocker codes and exits nonzero **before** MP4 encoding. If `installed_arabic_voice_missing_or_invalid` is listed, choose an actual installed Arabic system voice or configure one locally under operator control; the code never silently switches to English. Use a private original SHA-pinned WAV via the supported separate `--voice-mode supplied_wav` command if no system voice is available.
+
+Once the Mac renders six voice segments, `kidsstudio.audio_pcm_energy.check_six_beat_pcm_energy` verifies that the locally generated **24-second mono 16-bit PCM WAV has measurable signal in each of the six four-second scenes** before muxing the final MP4. A silent or almost silent beat fails closed and leaves the intermediate files private for supervised diagnosis. This signal-presence check cannot recognize Arabic words or prove that the narration is intelligible, pleasant, correctly paced or properly pronounced; the owner's complete listening review still controls acceptance.
+
+The Linux and hosted-macOS CI **synthetic silent-WAV** encoder smokes intentionally use `--voice-mode supplied_wav` and are **not** treated as actual Arabic speech. The energy requirement is enforced on the native `say` speech track; it does not pretend that imported WAV content is voice-verified. Actual operator Mac audio and device playback remain NOT_RUN.
