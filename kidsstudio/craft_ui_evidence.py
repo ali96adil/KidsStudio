@@ -15,9 +15,9 @@ from .optional_tool_evidence import (
 )
 from .transfer_verify import verify_staged_file
 
-_SHA = re.compile(r"[a-fA-F0-9]{64}\\Z")
+_SHA = re.compile(r"[a-fA-F0-9]{64}\Z")
 _VIEWPORTS = frozenset({375, 768, 1280})
-_PNG_HEADER = b"\\x89PNG\\r\\n\\x1a\\n"
+_PNG_HEADER = b"\x89PNG\r\n\x1a\n"
 
 
 def audit_craft_ui_evidence(*, root: str, manifest: dict) -> dict:
@@ -53,7 +53,7 @@ def audit_craft_ui_evidence(*, root: str, manifest: dict) -> dict:
         with evidence.open("rb") as file:
             header = file.read(24)
         if (len(header) != 24 or header[:8] != _PNG_HEADER
-                or header[8:16] != b"\\x00\\x00\\x00\\x0dIHDR"):
+                or header[8:16] != b"\x00\x00\x00\x0dIHDR"):
             raise ToolEvidenceError("Invalid PNG IHDR header.")
         pixels_w, pixels_h = struct.unpack(">II", header[16:24])
         if not (width <= pixels_w <= width * 4 and
