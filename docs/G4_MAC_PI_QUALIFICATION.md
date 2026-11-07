@@ -377,3 +377,9 @@ Host qualification reports now use **schema v3**, including the local checkout G
 This mechanism reduces accidental version skew but is **not attestation**: reports can be fabricated, binaries or untracked code could differ, and a matching Git SHA does not prove the identity or state of a device. The operator must confirm host identities, inspect actual deployed code, and supervise the real transfer. The report itself never grants production or publication permissions.
 
 `host_qualification` also works from an installed package without a checkout, but then reports `source_commit: null` and `source_checkout_clean: false`; for paired qualification run it from the pinned source checkout of KidsStudio. **Schema v2 pairing is intentionally rejected**; regenerate reports on both machines after updating the branch.
+
+## Batch 51 — strict source-checkout cleanliness during actual Mac proof
+
+Before collecting SHA-bound Mac technical evidence or comparing Mac/Pi reports, `host_qualification` now reads the full Git commit via `git rev-parse --verify HEAD^{commit}` and inspects **the entire checkout**, not merely `kidsstudio/` and `tests/`. Its read-only `git status --porcelain=v1 --untracked-files=all` rejects any tracked modification or untracked *non-ignored* file under the repo, including changes to scripts, docs and CI workflows. Only a Git-tracked clean source checkout produces `source_checkout_clean: true`; an installed package without `.git`, an invalid commit or a failed Git read remains false.
+
+This is an operator consistency signal, **not cryptographic attestation of hardware, builds, dependencies or ignored files**. If the checkout is dirty, inspect `git status --short` locally and resolve it under your own change-management process; never delete local production material simply to pass a check. Media and evidence should remain in the private directory **outside Git**. Actual Mac/Pi physical tests and YouTube PRIVATE upload remain NOT_RUN.
