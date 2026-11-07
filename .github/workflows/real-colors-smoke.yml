@@ -1,0 +1,35 @@
+name: Real colors episode encoding smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-colors-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install KidsStudio and pinned FFmpeg bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e . imageio-ffmpeg==0.6.0
+          FFMPEG_EXE="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          "$FFMPEG_EXE" -hide_banner -encoders | grep libx264
+          ln -s "$FFMPEG_EXE" "$RUNNER_TEMP/ffmpeg"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          command -v ffprobe
+      - name: Real 24-second original frames and synthetic audio MP4 check
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci_colors_episode_smoke.py
+      # Deliberately never upload the MP4 as a GitHub artifact:
+      # even synthetic children's content should not bypass owner review.
