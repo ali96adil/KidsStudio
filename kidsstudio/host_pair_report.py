@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 
@@ -45,10 +46,16 @@ def _blockers(report: object, expected_role: str) -> list[str]:
     if not isinstance(report, dict):
         return ["invalid_report_object"]
     result: list[str] = []
-    if type(report.get("schema_version")) is not int or report["schema_version"] != 2:
+    if type(report.get("schema_version")) is not int or report["schema_version"] != 3:
         result.append("incompatible_schema")
     if report.get("role") != expected_role:
         result.append("incorrect_role")
+    revision = report.get("source_commit")
+    if not isinstance(revision, str) or not re.fullmatch(r"[a-fA-F0-9]{40}", revision):
+        result.append("source_commit_missing_or_invalid")
+    if report.get("source_checkout_clean") is not True:
+        result.append("source_checkout_not_clean")
+
     system, architectures = _ALLOWED_MACHINES[expected_role]
     machine = report.get("machine")
     if report.get("host_system") != system or not isinstance(machine, str) or machine not in architectures:
@@ -86,6 +93,13 @@ def compare_host_reports(mac_report: object, pi_report: object) -> dict:
     """Compare unauthenticated report contents without claiming live qualification."""
     mac_issues = _blockers(mac_report, "mac-render")
     pi_issues = _blockers(pi_report, "pi-private-handoff")
+    # A matching checkout ID is necessary for comparability, not proof of
+    # authentic hardware or unmodified runtime code.
+    if not mac_issues and not pi_issues and (
+        mac_report["source_commit"].lower() != pi_report["source_commit"].lower()
+    ):
+        mac_issues.append("source_revision_mismatch")
+        pi_issues.append("source_revision_mismatch")
     return {
         "schema_version": 1,
         "status": (
@@ -95,6 +109,7 @@ def compare_host_reports(mac_report: object, pi_report: object) -> dict:
         "mac_issues": mac_issues,
         "pi_issues": pi_issues,
         "source_reports_authenticated": False,
+        "same_code_revision_claimed": not mac_issues and not pi_issues,
         "same_code_revision_proven": False,
         "real_mac_pi_transfer_test": "NOT_RUN",
         "real_youtube_upload_test": "NOT_RUN",
