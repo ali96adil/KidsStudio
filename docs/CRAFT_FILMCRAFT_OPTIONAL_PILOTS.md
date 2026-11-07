@@ -95,3 +95,21 @@ python -m kidsstudio.filmcraft_baseline_compare \
 The baseline **must be a delivery-profile video with AAC audio**; a silent Godot animation prototype is insufficient and should instead go through the existing preview checks. The two media files must be 0600 inside an existing private 0700 root outside Git. Each supplied SHA must match the real content, calculated independently on that host.
 
 \`FILMCRAFT_BASELINE_TECHNICALLY_COMPARABLE_UNREVIEWED\` means the two containers have comparable *technical output profiles*; it does **not** mean the video frames match, voices sound the same, narration is synchronized, subtitles are legible, they represent the same story, or either editor origin is proven. The duration delta and byte-size ratio are diagnostics, not a quality score. Human review of both previews and their Arabic/English audio remains essential. No media is copied to Pi or published.
+
+
+## Batch 42 — compare three real decoded video-frame samples (optional)
+
+The technical metadata comparator above does not check whether FilmCraft preserved the **picture**. For an operator-requested follow-up, use `kidsstudio.filmcraft_frame_compare`. It first runs the complete verified technical comparison on both existing files, then uses **local ffmpeg** to decode three low-resolution frames at 25%, 50%, and 75% of each clip's duration. Samples are decoded into memory as 320×180 RGB with Pillow and are never saved or uploaded. The six frame-decode commands have a fixed argument list, no shell, a per-call timeout and output size checks. The files are SHA-verified **again after** all samples to reject ordinary mid-run changes.
+
+~~~bash
+python -m kidsstudio.filmcraft_frame_compare \
+  --evidence-root "$HOME/kidsstudio-private/creative-tool-evidence/filmcraft" \
+  --baseline-relative-path godot-final.mp4 \
+  --baseline-sha256 TRUSTED_SHA_FOR_GODOT_EXPORT \
+  --candidate-relative-path filmcraft-final.mp4 \
+  --candidate-sha256 TRUSTED_SHA_FOR_FILMCRAFT_EXPORT
+~~~
+
+The response shows normalized RGB differences and the fraction of pixels changed by more than 24/255 at each time point. Default guidance thresholds are 6% mean color difference and 35% changed pixels. `FILMCRAFT_SAMPLED_FRAMES_WITHIN_LIMITS_UNREVIEWED` is only a **limited sampled-frame diagnostic**, not an editor acceptance criterion. Differing output may be caused by trims, timing, anti-aliasing, color or gamma transforms; even identical sampled frames cannot prove the full episode is correct. Captions and sound are **not** tested. Be careful running ffmpeg against untrusted third-party video files: this tool is not a system sandbox. Keep all inputs original, authorized and synthetic until a supervised Mac pilot is approved.
+
+The automated unit tests use synthetic MP4 bytes and mocked ffprobe/ffmpeg; passing CI does **not** prove either alpha editor or a real video comparison has been run on the Mac.
