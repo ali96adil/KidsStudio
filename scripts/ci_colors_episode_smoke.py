@@ -19,6 +19,7 @@ from PIL import Image
 
 from kidsstudio.first_colors_episode import DURATION, run_first_colors_episode
 from kidsstudio.mac_episode_audio import _check_video, _probe
+from kidsstudio.mp4_playback_preflight import inspect_mp4_playback
 
 
 def _wav_silence(path: Path) -> str:
@@ -83,6 +84,16 @@ def run_real_colors_smoke() -> dict:
         assert len(video_streams) == 1
         assert video_streams[0].get("profile") in ("Baseline", "Constrained Baseline")
         assert abs(duration - DURATION) <= 0.2
+        # This parses the ACTUAL MP4 headers and decodes samples; no mock,
+        # owner voice, Pi, YouTube or publication is involved.
+        playback = inspect_mp4_playback(
+            root=str(ready), relative_path=movie.name,
+            expected_sha256=report["final_mp4_sha256"])
+        assert playback["status"] == "MP4_PLAYBACK_PREFLIGHT_PASSED_UNREVIEWED"
+        assert playback["faststart_moov_before_mdat"] is True
+        assert playback["video_samples_decoded"] == 3
+        assert playback["audio_samples_decoded"] == 2
+        assert playback["owner_playback_reviewed"] is False
         # Decode pixels from the actual encoded result: don't rely on the
         # source PNGs or mocked FFmpeg to assert color correctness.
         red = _frame_color(movie, second=10, x=640, y=400)
@@ -97,6 +108,7 @@ def run_real_colors_smoke() -> dict:
             "resolution": [1280, 720],
             "fps": 24,
             "h264_aac_stereo": True,
+            "faststart_sample_playback_preflight": True,
             "decoded_color_checks": {"red_apple": True, "yellow_sun": True,
                                      "blue_sky": True},
             "sha256_verified": True,
