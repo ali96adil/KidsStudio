@@ -262,7 +262,7 @@ def run_first_colors_episode(
     movie = _render_silent(stage)
     voice_path = _synthesize_wav(stage, voice=mac_voice) if checked_wav is None else checked_wav
     voice_root = str(stage) if checked_wav is None else str(Path(narration_root))
-    voice_name = voice_path.name
+    voice_name = "arabic_voice.wav" if checked_wav is None else narration_name
     muxed = mux_episode_pilot(
         video_root=str(stage), video_name=movie.name, video_sha256=_sha(movie),
         narration_root=voice_root, narration_name=voice_name,
