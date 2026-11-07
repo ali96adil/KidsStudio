@@ -203,3 +203,9 @@ private, non-overwritable run directory, with **no automated rerun**,
 paid cloud inference, full-rig approval or YouTube publishing.
 See [first bunny trial](docs/FIRST_BUNNY_RUN.md). The first actual Mac
 FLUX artistic-quality check has not been performed in CI.
+
+## Experimental Pi YouTube PRIVATE uploader (supervised only)
+
+The separate `kidsstudio.pi_youtube_private_upload` command implements an **explicit opt-in, foreground** Google OAuth2 resumable upload to YouTube **PRIVATE**, with a private on-disk journal, SHA-256 checks, 1MiB resumable chunks, no automatic new session after an uncertain failure, and post-upload privacy verification. The uploader **is not called by the queue, the Pi service, or any automatic workflow**. It does not publish publicly. Its owner-authorization CLI flags are assertions by the operator, not authenticated approvals.
+
+All tests use fake OAuth/YouTube transports; real Google OAuth authorization, Pi deployment and a private test upload have **not been executed**. Do not use real account credentials before supervised security review. See [Pi private uploader pilot](docs/PI_YOUTUBE_PRIVATE_UPLOAD_PILOT.md) and [MVP finish line](docs/MVP_FINISH_LINE.md).
