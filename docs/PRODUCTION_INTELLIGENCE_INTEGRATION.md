@@ -1,6 +1,6 @@
 # Production Intelligence — Safe Integration Register
 
-Status: PLANNING / NO RUNTIME CHANGES
+Status: OPT-IN TEST/QUALIFICATION MODULES / NO LIVE RUNTIME CHANGES
 Branch: feature/production-intelligence-safe-integration
 Date: 2026-11-04
 
@@ -44,3 +44,10 @@ G5 enable only after documented review and owner authorization.
 - Inventory full repo tree and actual implementation coverage.
 - Confirm Mac/Pi deployed versions and data backup before live work.
 - Identify exact eval fixtures and metrics with educational, Arabic/English, visual and audio reviewers.
+
+## Craft Anything and FilmCraft optional pilots (2026-11-07)
+
+- **Pilot 38:** `kidsstudio/craft_ui_evidence.py` accepts privately captured screenshots of the **KidsStudio-owned** dashboard at 375/768/1280 CSS-width labels; checks current-file SHA256 and limited PNG dimensions, and never runs a coding agent, Craft CLI or MCP. Manual layout review remains mandatory.
+- **Pilot 39:** `kidsstudio/filmcraft_export_check.py` verifies a private candidate MP4 SHA256 before/after an operator-requested local ffprobe, checking H.264/AAC, 1280×720, frame rate and stereo 48 kHz audio. This does not run FilmCraft or prove the video came from it. Manual Arabic captions, sound and visual checks remain mandatory.
+- Shared `kidsstudio/optional_tool_evidence.py` enforces private regular evidence files outside Git. Both pilots are additive, fail-closed and **read-only**, with no changes to the existing Godot/FFmpeg renderer, worker, queue, Pi handoff or YouTube publishing.
+- See [CRAFT_FILMCRAFT_OPTIONAL_PILOTS.md](CRAFT_FILMCRAFT_OPTIONAL_PILOTS.md) for operator commands, test limitations and rollback. Real Mac/Pi and optional-tool qualification remain **NOT_RUN**.
