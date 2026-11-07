@@ -1,9 +1,10 @@
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from kidsstudio.host_qualification import qualify_host
+from kidsstudio.host_qualification import _source_checkout, qualify_host
 
 
 class HostQualificationTests(unittest.TestCase):
@@ -82,6 +83,74 @@ class HostQualificationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             qualify_host(role="youtube-public", artifact_root=str(self.root),
                          min_free_gib=0)
+
+
+    def test_source_checkout_checks_entire_repo_including_scripts_and_untracked(self):
+        checkout = Path(self.tmp.name) / "checkout"
+        (checkout / ".git").mkdir(parents=True)
+        source_path = checkout / "kidsstudio" / "host_qualification.py"
+        source_path.parent.mkdir()
+        seen = []
+
+        def fake_git(args, **kwargs):
+            seen.append(args)
+            if "rev-parse" in args:
+                return SimpleNamespace(returncode=0, stdout="a" * 40 + "\n")
+            self.assertIn("--porcelain=v1", args)
+            self.assertIn("--untracked-files=all", args)
+            self.assertNotIn("--", args)
+            return SimpleNamespace(returncode=0, stdout="?? scripts/other.py\n")
+
+        with patch("kidsstudio.host_qualification.__file__", str(source_path)), \
+             patch("kidsstudio.host_qualification.subprocess.run",
+                   side_effect=fake_git):
+            revision, clean = _source_checkout()
+        self.assertEqual(revision, "a" * 40)
+        self.assertFalse(clean)
+        self.assertEqual(len(seen), 2)
+        self.assertIn("HEAD^{commit}", seen[0])
+
+    def test_source_checkout_clean_only_if_complete_status_empty(self):
+        checkout = Path(self.tmp.name) / "checkout_clean"
+        (checkout / ".git").mkdir(parents=True)
+        source_path = checkout / "kidsstudio" / "host_qualification.py"
+        source_path.parent.mkdir()
+        answers = [
+            SimpleNamespace(returncode=0, stdout="b" * 40 + "\n"),
+            SimpleNamespace(returncode=0, stdout=""),
+        ]
+        with patch("kidsstudio.host_qualification.__file__", str(source_path)), \
+             patch("kidsstudio.host_qualification.subprocess.run",
+                   side_effect=answers):
+            self.assertEqual(_source_checkout(), ("b" * 40, True))
+
+    def test_source_checkout_without_git_fails_closed(self):
+        source_path = Path(self.tmp.name) / "nogit" / "kidsstudio" / "module.py"
+        with patch("kidsstudio.host_qualification.__file__", str(source_path)), \
+             patch("kidsstudio.host_qualification.subprocess.run") as git:
+            self.assertEqual(_source_checkout(), (None, False))
+        git.assert_not_called()
+
+    def test_source_checkout_invalid_commit_or_failed_status_fails_closed(self):
+        checkout = Path(self.tmp.name) / "checkout_bad"
+        (checkout / ".git").mkdir(parents=True)
+        source_path = checkout / "kidsstudio" / "host_qualification.py"
+        source_path.parent.mkdir()
+        for sha, code, expected in [
+            ("not-a-sha", 0, (None, False)),
+            ("c" * 40, 1, ("c" * 40, False)),
+            ("c" * 40, 0, ("c" * 40, True)),
+        ]:
+            with self.subTest(sha=sha, code=code), patch(
+                "kidsstudio.host_qualification.__file__", str(source_path)
+            ), patch(
+                "kidsstudio.host_qualification.subprocess.run",
+                side_effect=[
+                    SimpleNamespace(returncode=0, stdout=sha + "\n"),
+                    SimpleNamespace(returncode=code, stdout=""),
+                ],
+            ):
+                self.assertEqual(_source_checkout(), expected)
 
 
 if __name__ == "__main__":
