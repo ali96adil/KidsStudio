@@ -62,3 +62,36 @@ This operator-initiated checker hashes the actual file **before and after** runn
 - The local filesystem checks are not an OS sandbox; a malicious concurrent process with write access could still race file replacement.
 - Disable these evaluation tools simply by not invoking their CLI modules. Keep existing approved media immutable; archive or delete experimental copies only after deliberate review.
 - Craft Anything actual UI runs, FilmCraft actual export on the Mac, Mac→Pi network transfer, and YouTube tests are still **NOT_RUN**.
+
+
+## Batch 40 — compare actual decoded screenshots from two private sets
+
+The earlier hash/IHDR checker verified metadata but could not measure layout differences. The new \`kidsstudio.craft_ui_pixel_compare\` rechecks the two private manifests, fully decodes their PNGs with Pillow, and computes normalized RGB mean absolute difference and the fraction of changed pixels (at a fixed channel threshold). It compares matching physical pixel dimensions at each 375/768/1280 CSS viewport. It never edits screenshots, contacts Craft Anything or exports a diff image.
+
+Prepare two manifest JSON files in the same existing private evidence root: \`baseline.json\` and \`candidate.json\`. Both follow the \`craft.json\` schema shown above, with their own relative PNG paths and trusted SHA256. Use snapshots captured under the **same font environment, browser zoom, device scale, scroll position, content and UI state** or changes may be false alarms.
+
+~~~bash
+python -m kidsstudio.craft_ui_pixel_compare \
+  --evidence-root "$HOME/kidsstudio-private/creative-tool-evidence/craft" \
+  --baseline-manifest baseline.json \
+  --candidate-manifest candidate.json
+~~~
+
+Default conservative limits: mean RGB absolute difference <= 1%, changed pixel fraction <= 5%, with per-channel change > 24/255 counting as changed. A value within the limits means **pixel-diff within limits, not visually/educationally approved**. Different font rendering or dynamic content can change pixels even if the experience is acceptable. Results return only dimensions, hashes and metrics; no private pixels, screenshots or web URLs are emitted. Invalid PNGs, malformed private manifests, mismatched physical dimensions, symlink/permission problems and hash tampering fail closed. Browser interactions, keyboard focus, accessibility and real Arabic right-to-left behavior still require supervised manual checks.
+
+## Batch 41 — compare FilmCraft and Godot final-delivery technical profiles
+
+The new \`kidsstudio.filmcraft_baseline_compare\` accepts **two separate already-rendered private MP4 files**, one Godot/FFmpeg baseline and one candidate FilmCraft export. The checker independently hashes and ffprobes both files, enforces the existing delivery profile (H.264, 1280x720, yuv420p; AAC 48 kHz stereo; supported frame rate), and compares exact nominal frame rate plus a <= 0.10-second duration difference. Both must have distinct content SHA256s. It prints only technical metrics, SHA256 digests and privacy/review flags.
+
+~~~bash
+python -m kidsstudio.filmcraft_baseline_compare \
+  --evidence-root "$HOME/kidsstudio-private/creative-tool-evidence/filmcraft" \
+  --baseline-relative-path godot-final.mp4 \
+  --baseline-sha256 TRUSTED_SHA_FOR_GODOT_EXPORT \
+  --candidate-relative-path filmcraft-final.mp4 \
+  --candidate-sha256 TRUSTED_SHA_FOR_FILMCRAFT_EXPORT
+~~~
+
+The baseline **must be a delivery-profile video with AAC audio**; a silent Godot animation prototype is insufficient and should instead go through the existing preview checks. The two media files must be 0600 inside an existing private 0700 root outside Git. Each supplied SHA must match the real content, calculated independently on that host.
+
+\`FILMCRAFT_BASELINE_TECHNICALLY_COMPARABLE_UNREVIEWED\` means the two containers have comparable *technical output profiles*; it does **not** mean the video frames match, voices sound the same, narration is synchronized, subtitles are legible, they represent the same story, or either editor origin is proven. The duration delta and byte-size ratio are diagnostics, not a quality score. Human review of both previews and their Arabic/English audio remains essential. No media is copied to Pi or published.
