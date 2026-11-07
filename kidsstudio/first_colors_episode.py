@@ -20,6 +20,7 @@ import subprocess
 
 from PIL import Image, ImageDraw
 
+from .audio_pcm_energy import AudioPresenceError, check_six_beat_pcm_energy
 from .mac_episode_audio import (
     EpisodeMuxError, _check_video, _private_root, _probe, _wav_duration,
     mux_episode_pilot,
@@ -181,6 +182,13 @@ def _synthesize_wav(stage: Path, *, voice: str | None) -> Path:
     os.chmod(voice_wav, 0o600)
     if abs(_wav_duration(voice_wav) - DURATION) > 0.1:
         raise EpisodeMuxError("Synthesized speech track duration incorrect.")
+    # Fail closed if the installed system voice yielded silence in any beat.
+    # This is only a signal-energy check, NOT actual Arabic speech validation.
+    try:
+        check_six_beat_pcm_energy(
+            root=str(stage), relative_path=voice_wav.name)
+    except (AudioPresenceError, OSError, ValueError) as exc:
+        raise EpisodeMuxError("Narration missing/inaudible in a story beat.") from exc
     return voice_wav
 
 
