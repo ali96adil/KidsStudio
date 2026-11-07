@@ -160,6 +160,8 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         self.assertEqual(command[0], "ffmpeg")
         self.assertIn("libx264", command)
         self.assertIn("yuv420p", command)
+        self.assertEqual(command[command.index("-profile:v") + 1], "baseline")
+        self.assertEqual(command[command.index("-level:v") + 1], "3.1")
         self.assertIn("concat=n=6:v=1:a=0[out]", " ".join(command))
         self.assertFalse(any("http" in arg for arg in command))
 
