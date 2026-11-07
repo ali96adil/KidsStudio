@@ -203,3 +203,24 @@ private, non-overwritable run directory, with **no automated rerun**,
 paid cloud inference, full-rig approval or YouTube publishing.
 See [first bunny trial](docs/FIRST_BUNNY_RUN.md). The first actual Mac
 FLUX artistic-quality check has not been performed in CI.
+
+## Experimental Pi YouTube PRIVATE uploader (supervised only)
+
+The separate `kidsstudio.pi_youtube_private_upload` command implements an **explicit opt-in, foreground** Google OAuth2 resumable upload to YouTube **PRIVATE**, with a private on-disk journal, SHA-256 checks, 1MiB resumable chunks, no automatic new session after an uncertain failure, and post-upload privacy verification. The uploader **is not called by the queue, the Pi service, or any automatic workflow**. It does not publish publicly. Its owner-authorization CLI flags are assertions by the operator, not authenticated approvals.
+
+All tests use fake OAuth/YouTube transports; real Google OAuth authorization, Pi deployment and a private test upload have **not been executed**. Do not use real account credentials before supervised security review. See [Pi private uploader pilot](docs/PI_YOUTUBE_PRIVATE_UPLOAD_PILOT.md) and [MVP finish line](docs/MVP_FINISH_LINE.md).
+
+## First playable, no-cloud Arabic colors smoke (Mac pilot)
+
+A new **optional** one-command demonstration renders six original static educational color illustrations and an Arabic speech track to a private 24-second H.264/AAC MP4. It uses an **already installed** Arabic macOS voice through `say`, or an owner-supplied PCM WAV; it does **not** require ComfyUI, external AI APIs, model downloads, SSH or YouTube. The existing rig-first Godot pipeline stays the production direction.
+
+```bash
+umask 077
+mkdir -p "$HOME/kidsstudio-private/ready"
+chmod 700 "$HOME/kidsstudio-private/ready"
+python -m kidsstudio.first_colors_episode --output-root "$HOME/kidsstudio-private/ready"
+# On the Mac only, after checking voice availability:
+python -m kidsstudio.first_colors_episode --output-root "$HOME/kidsstudio-private/ready" --execute
+```
+
+The first command is **preview-only**; the second creates a new file and does not publish it. An Arabic macOS voice must already be installed. This smoke still requires full human review of pronunciation, suitability, visual/audio quality and any subsequent owner-approved transfer/private upload. Detailed instructions: [First playable colors pilot](docs/FIRST_PLAYABLE_COLORS_PILOT.md). **No actual user Mac/Pi run has yet been verified.**
