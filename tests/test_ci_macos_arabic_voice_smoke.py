@@ -45,7 +45,7 @@ class MacOSVoiceSmokeTests(unittest.TestCase):
         def fake_speech(root, *, voice):
             self.assertEqual(voice, "OriginalArabic")
             file = Path(root) / "voice.wav"
-            file.write_bytes(b"no real voice, unit-test placeholder")
+            file.write_bytes(b"synthetic mock bytes " * 10)
             generated.append(file)
             return file
         with patch("scripts.ci_macos_arabic_voice_smoke.platform.system",
