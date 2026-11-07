@@ -24,6 +24,7 @@ class MockSSHRunner:
         self.calls = []
         self.force_failure = False
         self.bad_receipt = False
+        self.missing_privacy_receipt = False
         self.on_stream = None
 
     def __call__(self, argv, **kwargs):
@@ -50,6 +51,8 @@ class MockSSHRunner:
             self.on_stream()
         if self.bad_receipt:
             result["sha256"] = "0" * 64
+        if self.missing_privacy_receipt:
+            result.pop("private_inbox_verified_at_receive", None)
         kwargs["stdout"].write(json.dumps(result).encode("utf-8"))
         return types.SimpleNamespace(returncode=0)
 
@@ -135,6 +138,11 @@ class MacToPiTransferTests(unittest.TestCase):
 
     def test_bad_remote_receipt_rejected(self):
         self.runner.bad_receipt = True
+        with self.assertRaises(MacPiTransferError):
+            self.transfer(execute=True)
+
+    def test_missing_private_receiver_assertion_rejected(self):
+        self.runner.missing_privacy_receipt = True
         with self.assertRaises(MacPiTransferError):
             self.transfer(execute=True)
 
