@@ -18,6 +18,7 @@ import wave
 from PIL import Image
 
 from kidsstudio.first_colors_episode import DURATION, run_first_colors_episode
+from kidsstudio.audio_pcm_energy import AudioPresenceError, check_six_beat_pcm_energy
 from kidsstudio.mac_episode_audio import _check_video, _probe
 from kidsstudio.mp4_playback_preflight import inspect_mp4_playback
 
@@ -63,6 +64,14 @@ def run_real_colors_smoke() -> dict:
         ready.mkdir(mode=0o700)
         wav = audio / "synthetic_silent_24s.wav"
         digest = _wav_silence(wav)
+        # The silent synthetic CI input is valid for codec testing, but must
+        # NEVER pass the native Arabic narration energy-presence gate.
+        try:
+            check_six_beat_pcm_energy(root=str(audio), relative_path=wav.name)
+        except AudioPresenceError:
+            pass
+        else:
+            raise AssertionError("Silent CI WAV misclassified as audible voice.")
         report = run_first_colors_episode(
             output_root=str(ready), output_name="ci_colors_silent_test.mp4",
             voice_mode="supplied_wav",
@@ -116,6 +125,7 @@ def run_real_colors_smoke() -> dict:
                                      "blue_sky": True},
             "sha256_verified": True,
             "synthetic_silent_audio_only": True,
+            "synthetic_silence_correctly_rejected_as_voice": True,
             "mac_hardware_tested": False,
             "arabic_voice_tested": False,
             "pi_transfer_performed": False,
