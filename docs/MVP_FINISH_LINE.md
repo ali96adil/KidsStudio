@@ -95,3 +95,7 @@ The Mac pilot launcher now performs a no-render prerequisite check for an alread
 ## Batch 54 — avoid expensive failed Mac video renders
 
 The native macOS colors pilot builds and validates its six Arabic speech beats **before** encoding the picture track, so a broken or silent native voice never spends time creating the full silent MP4. An optional `KIDSSTUDIO_MAC_VOICE` chooses an already-installed Arabic voice consistently during preflight and rendering; the launcher remains Bash 3.2-compatible and produces retry-unique private file names. Passing automated checks still does not constitute reviewed Arabic speech or a run on the owner's physical Mac.
+
+## Batch 55 — CI exercises native voice-mode piping, not spoken Arabic
+
+Added a full hosted-macOS `voice_mode=macos` CI integration using **six synthetic FFmpeg AIFF tones**, never fake spoken words or user media. It verifies the real production AIFF-to-PCM timing/energy, real illustrated 24-second render, AAC mux, H.264/AAC preflight and separately decodes all six beats from the **finished MP4**. It catches sound loss during final mux while making no claim that an actual installed Arabic `say` voice speaks correctly. Do not treat synthetic CI passing as a substitute for the supervised owner Mac render, voice listening and private video review.
