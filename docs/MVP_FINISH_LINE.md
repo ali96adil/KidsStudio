@@ -87,3 +87,7 @@ Practical Mac steps: [MAC_PILOT_EVIDENCE_AND_REVIEW.md](MAC_PILOT_EVIDENCE_AND_R
 ## Batch 52 — additional macOS-specific CI assurance, not device qualification
 
 In addition to the Linux original 24-second synthetic-silent render smoke, `.github/workflows/macos-colors-smoke.yml` exercises the same real H.264/AAC pipeline on an **ephemeral GitHub macOS 15 runner**, plus an optional local-system Arabic `say` speech-synthesis capability check. An Arabic voice not present on the runner is explicitly reported as `NOT_TESTED`; a CI success never substitutes for listening to the user's actual Mac render. No generated media/artifact is uploaded, no live Pi transfer is performed and no private/public YouTube upload is authorized. Scope is still frozen on the one Arabic colors pilot; operator attendance at the Mac/Pi remains the blocking physical gate.
+
+## Batch 53 — stop failed Mac renders early
+
+The Mac pilot launcher now performs a no-render prerequisite check for an already-installed Arabic macOS voice and pinned clean checkout **before** encoding. Native `say` WAV output must contain non-negligible signal energy in each of the six original four-second scenes; otherwise the local render is blocked before final mux. This reduces wasted rendering and silent-first-draft failures but **does not** validate Arabic pronunciation, substitute for human listening, or perform the actual supervised operator Mac test. No automatic voice/model downloads, cloud inference, Pi SSH transfer or YouTube upload are enabled.
