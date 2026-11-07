@@ -72,9 +72,9 @@ def receive_private_video(*, destination_root: str | Path,
     destination = base / destination_name
     # An existing item never gets replaced; a matching item may be reported
     # as already present for idempotent local receiver checks.
-    if _verify_existing(destination, expected_sha256, expected_bytes):
-        return _receipt("PI_INBOX_ALREADY_VERIFIED", destination_name,
-                        expected_sha256.lower(), expected_bytes)
+    already_present = _verify_existing(destination, expected_sha256, expected_bytes)
+    # Consume and hash the entire SSH stdin even if the identical file exists;
+    # otherwise an early receiver exit may break the sender's SSH pipe.
     fd, temp_name = tempfile.mkstemp(prefix=".incoming-", dir=base)
     checksum = hashlib.sha256()
     received = 0
@@ -94,6 +94,9 @@ def receive_private_video(*, destination_root: str | Path,
             os.fsync(output.fileno())
         if checksum.hexdigest() != expected_sha256.lower():
             raise PiReceiveError("Incoming video SHA256 mismatch.")
+        if already_present:
+            return _receipt("PI_INBOX_ALREADY_VERIFIED", destination_name,
+                            expected_sha256.lower(), expected_bytes)
         try:
             # Atomic no-replace on same filesystem. Destination never becomes
             # visible until the entire video has been checked and synced.
