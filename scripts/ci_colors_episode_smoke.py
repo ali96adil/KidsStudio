@@ -52,7 +52,10 @@ def _frame_color(file: Path, *, second: int, x: int, y: int) -> tuple[int, int, 
 
 def run_real_colors_smoke() -> dict:
     with tempfile.TemporaryDirectory(prefix="kidsstudio-colors-real-") as working:
-        base = Path(working)
+        # macOS often exposes /var as a symlink to /private/var.
+        # The private-evidence path guard correctly rejects symlink ancestors;
+        # resolve this runner-created temporary directory to its real path.
+        base = Path(working).resolve(strict=True)
         base.chmod(0o700)
         audio = base / "audio"
         ready = base / "ready"
@@ -124,7 +127,10 @@ def run_real_colors_smoke() -> dict:
 if __name__ == "__main__":
     try:
         result = run_real_colors_smoke()
-    except (AssertionError, OSError, ValueError, subprocess.TimeoutExpired):
+    except (AssertionError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        if __import__("os").environ.get("GITHUB_ACTIONS") == "true":
+            print("CI colors smoke failed in synthetic runner:",
+                  type(exc).__name__, file=sys.stderr)
         print(json.dumps({"status": "REAL_FFMPEG_COLORS_SMOKE_FAILED",
                           "mac_hardware_tested": False,
                           "youtube_upload_performed": False,
