@@ -7,7 +7,7 @@
 - Python CI and a synthetic real-Godot smoke pipeline have passed in previous commits. **These are CI/environment tests, not a supervised run of the user's Mac.**
 - Local text-agent and independent reviewer mock integration; local ComfyUI / Godot/FFmpeg adapters; queue leases and fail-closed review/QA checks.
 - Read-only host readiness, checked local review receipts, basic host report pairing and SHA256 evidence checks. Matching Git revision support lives in batch 43; still requires two fresh real-host reports.
-- Private upload **preflight/dry run only**. The repository **does not yet establish a working live YouTube OAuth upload from the Pi**, so do not claim end-to-end PRIVATE upload works.
+- Private upload **preflight/dry run only**. A new explicit opt-in resumable uploader exists in the pilot branch, but **no Google OAuth login or real Pi upload has been tested**. Do not claim end-to-end PRIVATE upload works until an owner-supervised pilot confirms it.
 
 ## Remaining blocking acceptance gates (no artificial milestones)
 
@@ -32,7 +32,7 @@ python -m kidsstudio.host_qualification --role pi-private-handoff \
   --artifact-root "$HOME/kidsstudio-private/inbox" --min-free-gib 2
 ```
 
-Collect both reports privately and run the read-only comparator as documented in `G4_MAC_PI_QUALIFICATION.md`. Do a separately authorized **real transfer of one test MP4**, compare sender and receiver SHA256, and verify Pi disk space, restart recovery, network/permissions and retry behavior. **No working automated PRIVATE YouTube upload has been demonstrated yet.** Before unattended upload is enabled, implement and independently test OAuth token storage, YouTube visibility forced to PRIVATE, made-for-kids declaration, idempotent retry/resume, owner authorization and Pi reboot handling, using official test credentials only with the owner's consent. A manual authenticated PRIVATE upload is a temporary pilot option, not proof the Pi uploader is complete.
+Collect both reports privately and run the read-only comparator as documented in `G4_MAC_PI_QUALIFICATION.md`. Do a separately authorized **real transfer of one test MP4**, compare sender and receiver SHA256, and verify Pi disk space, restart recovery, network/permissions and retry behavior. **An explicit foreground PRIVATE resumable upload implementation exists, but its Google API network path is mock-tested only.** See `PI_YOUTUBE_PRIVATE_UPLOAD_PILOT.md`. Initial OAuth enrollment, live Pi upload and YouTube Studio confirmation are still untested; no unattended upload service is allowed. The new local command enforces PRIVATE, made-for-kids confirmation, durable journal and status check, but still needs a security review and supervised test credentials before live use. A manual authenticated PRIVATE upload is a temporary pilot option, not proof the Pi uploader is complete.
 
 ### C. End-to-end owner acceptance and freeze — NOT_RUN
 
@@ -47,3 +47,7 @@ The user watches the full private YouTube draft, checks Arabic pedagogical accur
 - Preserve `main` and PR #33 unmerged until physical evidence and explicit acceptance. Maintain the previous known-good production setup.
 
 **Current decision:** SOURCE-CODE PILOT / DEVICE QUALIFICATION PENDING. This is not a full production launch or an authorized upload.
+
+## Batch 44 — foreground private uploader added, NOT live-qualified
+
+`kidsstudio/pi_youtube_private_upload.py` adds a deliberate operator-only YouTube resumable upload client and state journal, with a Google OAuth refresh-token client, SHA checks, private-only metadata, resumable session offset probes, and remote PRIVATE status verification. **No OAuth client or real video was uploaded**; CI uses fake Google responses. Owner authorization remains a CLI assertion, not an authenticated identity. The program does not initiate OAuth login or enable background queue consumption. See [`PI_YOUTUBE_PRIVATE_UPLOAD_PILOT.md`](PI_YOUTUBE_PRIVATE_UPLOAD_PILOT.md).
