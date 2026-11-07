@@ -30,6 +30,9 @@ jobs:
             sudo apt-get install -y -qq ffmpeg
           fi
           command -v ffprobe
+      - name: Validate physical Mac launcher syntax (never execute on Linux)
+        shell: bash
+        run: bash -n scripts/run_mac_colors_pilot.sh
       - name: Real 24-second original frames and synthetic audio MP4 check
         shell: bash
         run: |
