@@ -69,3 +69,40 @@ In a controlled trial, evaluate the same **synthetic** Arabic/English fixtures a
 `tests/test_omniroute_profile.py` checks preview-only mode, private config creation, permissions, refusal to overwrite or save inside Git, prohibition of auto/combos, missing opt-in for external models, fail-closed paid route without worker paid opt-in, deterministic exact-model request payloads and a fake two-agent worker workflow.
 
 **These tests contain no live OmniRoute call or paid API usage.** Local-only routing, data residency, provider identity and production quality still require physical supervised verification.
+
+## Offline quality / latency / cost worksheet (implemented, no inference)
+
+Use `kidsstudio.omniroute_benchmark` to compare **already collected, synthetic** text answers. It does not call the gateway or fetch prices. Mechanical checks include length, required concept terms and nonempty lines; they **cannot assess** true educational value, originality, legal rights or child safety.
+
+Example private input JSON (all rates and token counters below are *hypothetical*):
+
+```json
+{
+  "candidates": [
+    {
+      "model": "ollama/LOCAL_MODEL_NAME",
+      "language": "ar",
+      "text": "الأرنب الصغير يتعلم الألوان. اللون الأحمر في التفاحة، والأصفر في الشمس. نلعب ونتذكر الألوان معاً.",
+      "required_terms": ["الألوان", "الأحمر"],
+      "prompt_tokens": 150,
+      "completion_tokens": 90,
+      "latency_ms": 2100,
+      "usd_per_m_input_tokens": "0",
+      "usd_per_m_output_tokens": "0"
+    }
+  ]
+}
+```
+
+**Never assume a local model, free tier, or quoted provider price equals zero true cost.** Local cost excludes electricity and hardware. Enter `usd_per_m_input_tokens` and `usd_per_m_output_tokens` only after checking the actual provider rates; otherwise **omit both** to mark cost unknown. Actual usage may differ from model-reported counters. All output is informational, not authenticated or approved. To run:
+
+```bash
+umask 077
+mkdir -p "$HOME/kidsstudio-private/benchmarks"
+chmod 700 "$HOME/kidsstudio-private/benchmarks"
+# Create a synthetic candidates.json file locally, mode 0600, in that folder.
+python -m kidsstudio.omniroute_benchmark \
+  --private-fixture "$HOME/kidsstudio-private/benchmarks/candidates.json"
+```
+
+The report contains the text SHA, mechanical score/checks, reported counters/latency and operator-supplied estimated API cost. It never outputs the submitted answer text. No automatic winner, retries, provider switching, approval, or API usage. Compare at least Arabic and English samples, and manually review educational correctness before choosing an operator-approved model.
