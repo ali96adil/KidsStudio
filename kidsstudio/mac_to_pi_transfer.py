@@ -144,6 +144,9 @@ def transfer_private_video(
     if final["status"] != "VERIFIED" or final["bytes"] != preview["bytes"]:
         raise MacPiTransferError("Local video changed during transfer.")
     if (not isinstance(remote, dict)
+            or type(remote.get("schema_version")) is not int
+            or remote["schema_version"] != 1
+            or remote.get("private_inbox_verified_at_receive") is not True
             or remote.get("status") not in {
                 "PI_INBOX_RECEIVED_PRIVATE", "PI_INBOX_ALREADY_VERIFIED"
             }
