@@ -45,6 +45,11 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/ci_macos_arabic_voice_smoke.py
+      - name: Real native-mode AIFF to PCM to AAC pipeline with synthetic TONES
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci_macos_native_voice_mode_smoke.py
       # The tested MP4 and optional system-voice WAV are temporary, local to
       # the hosted runner, and NEVER uploaded as GitHub Actions artifacts.
       # A green job never qualifies the owner's actual Mac/voice or the Pi.
