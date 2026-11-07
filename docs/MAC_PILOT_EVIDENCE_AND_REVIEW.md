@@ -59,3 +59,9 @@ The `ACCEPTED_PRIVATE` status is an **unauthenticated local operator assertion**
 ## Next physical acceptance gates
 
 A recorded local review does **not** invoke `mac_to_pi_transfer` or `pi_youtube_private_upload`. After a satisfactory real-Mac visual/audio review, separately qualify the physical Pi, compare source revisions, perform one **explicit** host-key-verified SSH transfer and independently compare MP4 SHA on the Pi. Then, under separate owner supervision and with private credentials not shared in chat/GitHub, test the **PRIVATE-only** YouTube upload. The owner must watch the resulting YouTube PRIVATE draft and make a separate later publication decision. See [MAC_PI_TRANSFER_PILOT.md](MAC_PI_TRANSFER_PILOT.md), [PI_YOUTUBE_PRIVATE_UPLOAD_PILOT.md](PI_YOUTUBE_PRIVATE_UPLOAD_PILOT.md), and [MVP_FINISH_LINE.md](MVP_FINISH_LINE.md).
+
+## Batch 53 — diagnose voice before spending time on render
+
+The foreground launcher now runs a read-only `mac_colors_preflight` **before** beginning rendering. It refuses missing/invalid installed Arabic `say` voices, a dirty/unavailable Git checkout, missing local FFmpeg/ffprobe and an unsafe output root. The detailed command can be run separately: `python3 -m kidsstudio.mac_colors_preflight --artifact-root "$HOME/kidsstudio-private/ready"`. The output has only fixed blocker codes; it deliberately does not print the voice name or private file paths.
+
+For the native macOS voice route, the completed original 24-second PCM speech track additionally needs measurable audio energy in **all six four-second beats**, rather than merely a valid WAV header. This catches empty and nearly silent native voice outputs but **does not** verify spoken language or correctness; an owner must still listen. The evidence sidecar is technical metadata only, never publication permission. The optional `supplied_wav` route is not automatically classified as spoken Arabic by this gate and still needs owner listening.
