@@ -345,6 +345,12 @@ def execute_private_upload(
                 raise YouTubePrivateError("Upload journal is not for this exact immutable request.")
             state = record.get("state")
             if state == "PRIVATE_UPLOAD_CONFIRMED":
+                # A persisted confirmation is historical evidence only: check
+                # the current remote visibility before reporting it again.
+                remote = backend.video_status(
+                    token=token_provider(), video_id=record["video_id"])
+                if remote.get("privacyStatus") != "private":
+                    raise YouTubePrivateError("Previously private video is not private now.")
                 return {
                     "status": "PRIVATE_UPLOAD_CONFIRMED", "video_id": record["video_id"],
                     "publication_approved": False, "upload_submitted": True,
@@ -367,9 +373,13 @@ def execute_private_upload(
                       "state": "INITIATION_UNCERTAIN",
                       "media_sha256": preview["artifact_sha256"],
                       "media_bytes": total}
+            # Refreshing OAuth cannot itself create a video. Do it before
+            # persisting the upload-initiation uncertainty journal, so an
+            # invalid/expired refresh token does not block a never-started upload.
+            first_token = token_provider()
             _save_journal(journal_path, record, create=True)
             session = backend.start(
-                token=token_provider(),
+                token=first_token,
                 metadata=preview["youtube_request_preview"],
                 size=total)
             record["state"] = "SESSION_ACTIVE"
