@@ -197,7 +197,8 @@ def _render_silent(stage: Path) -> Path:
     movie = stage / "silent.mp4"
     _run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
           "-n", *inputs, "-filter_complex", graph, "-map", "[out]",
-          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(FPS),
+          "-c:v", "libx264", "-profile:v", "baseline", "-level:v", "3.1",
+          "-pix_fmt", "yuv420p", "-r", str(FPS),
           "-t", str(DURATION), "-movflags", "+faststart", str(movie)],
          timeout=900)
     os.chmod(movie, 0o600)
