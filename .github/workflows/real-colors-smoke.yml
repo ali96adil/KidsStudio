@@ -25,6 +25,10 @@ jobs:
           "$FFMPEG_EXE" -hide_banner -encoders | grep libx264
           ln -s "$FFMPEG_EXE" "$RUNNER_TEMP/ffmpeg"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          if ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
           command -v ffprobe
       - name: Real 24-second original frames and synthetic audio MP4 check
         shell: bash
