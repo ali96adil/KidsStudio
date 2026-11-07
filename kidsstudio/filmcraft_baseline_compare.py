@@ -55,6 +55,8 @@ def compare_filmcraft_baseline(
         ),
         "checks": checks,
         "duration_delta_seconds": duration_delta,
+        "baseline_duration_seconds": base["duration_seconds"] if base else None,
+        "candidate_duration_seconds": other["duration_seconds"] if other else None,
         "baseline_bytes": baseline["file_bytes"],
         "candidate_bytes": candidate["file_bytes"],
         "candidate_to_baseline_bytes_ratio": round(
