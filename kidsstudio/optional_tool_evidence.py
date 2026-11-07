@@ -17,7 +17,7 @@ class ToolEvidenceError(ValueError):
 
 def private_evidence_file(root: str | Path, relative_path: str, *, max_bytes: int) -> Path:
     if (not isinstance(relative_path, str) or not relative_path
-            or "\\x00" in relative_path):
+            or "\x00" in relative_path):
         raise ToolEvidenceError("Invalid relative file path.")
     piece = Path(relative_path)
     if piece.is_absolute() or ".." in piece.parts or piece.parts == (".",):
