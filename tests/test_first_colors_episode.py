@@ -180,14 +180,34 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                    return_value="Maged"), \
              patch("kidsstudio.first_colors_episode._run", side_effect=fake_run), \
              patch("kidsstudio.first_colors_episode._probe",
-                   return_value={"format": {"duration": "1.8"}}):
+                   return_value={"format": {"duration": "1.8"}}), \
+             patch("kidsstudio.first_colors_episode.check_six_beat_pcm_energy",
+                   return_value={"status": "SIX_BEAT_PCM_ENERGY_PRESENT_UNREVIEWED"}) as energy:
             filename = _synthesize_wav(stage, voice=None)
+        energy.assert_called_once_with(root=str(stage), relative_path="arabic_voice.wav")
         self.assertEqual(filename.name, "arabic_voice.wav")
         self.assertTrue(filename.is_file())
         self.assertEqual([x[0] for x in commands].count("say"), 6)
         self.assertEqual([x[0] for x in commands].count("ffmpeg"), 1)
         self.assertIn("concat=n=6:v=0:a=1[out]", " ".join(commands[-1]))
         self.assertFalse(any("https" in str(cmd) for cmd in commands))
+
+    def test_silent_native_voice_blocks_final_mux(self):
+        stage = self.private / "silent_speech"
+        stage.mkdir(mode=0o700)
+        def fake_run(argv, **kwargs):
+            if argv[0] == "say":
+                Path(argv[argv.index("-o")+1]).write_bytes(b"dummy aiff")
+            else:
+                write_wav(Path(argv[-1]), seconds=24, sample_rate=48000)
+            return types.SimpleNamespace(returncode=0)
+        with patch("kidsstudio.first_colors_episode._arabic_voice",
+                   return_value="Maged"), \
+             patch("kidsstudio.first_colors_episode._run", side_effect=fake_run), \
+             patch("kidsstudio.first_colors_episode._probe",
+                   return_value={"format": {"duration": "1.8"}}):
+            with self.assertRaises(EpisodeMuxError):
+                _synthesize_wav(stage, voice=None)
 
     def test_too_long_spoken_beat_fails_closed(self):
         stage = self.private / "speech2"
