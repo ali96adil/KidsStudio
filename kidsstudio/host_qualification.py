@@ -7,6 +7,8 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
+import subprocess
 
 from .host_readiness import inspect_host
 from .review_pipeline_qualification import run_review_pipeline_qualification
@@ -21,6 +23,29 @@ def _raspberry_pi_model_present() -> bool:
     except OSError:
         return False
     return b"raspberry pi" in model.lower()
+
+
+def _source_checkout() -> tuple[str | None, bool]:
+    """Read checkout revision, without network access or branch mutations."""
+    root = Path(__file__).resolve().parent.parent
+    if not (root / ".git").exists():
+        return None, False
+    try:
+        sha = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=False, timeout=5)
+        changes = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain",
+             "--untracked-files=no", "--", "kidsstudio", "tests"],
+            capture_output=True, text=True, check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None, False
+    revision = sha.stdout.strip()
+    if (sha.returncode != 0 or
+            not re.fullmatch(r"[a-fA-F0-9]{40}", revision)):
+        return None, False
+    return revision.lower(), (
+        changes.returncode == 0 and not changes.stdout.strip())
 
 
 def qualify_host(*, role: str, artifact_root: str,
@@ -42,17 +67,20 @@ def qualify_host(*, role: str, artifact_root: str,
         checks["raspberry_pi_model_confirmed"] = (
             checks["role_matches_os_machine"] and _raspberry_pi_model_present())
     synthetic = run_review_pipeline_qualification()
+    revision, clean = _source_checkout()
     ready = (
         readiness["ready_for_supervised_tests"]
         and all(checks.values())
         and synthetic["status"] == "OFFLINE_REVIEW_PIPELINE_PASS"
     )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "SUPERVISED_TESTS_READY" if ready else "SUPERVISED_TESTS_BLOCKED",
         "role": role,
         "host_system": system,
         "machine": readiness["machine"],
+        "source_commit": revision,
+        "source_checkout_clean": clean,
         "checks": checks,
         "synthetic_review_pipeline": synthetic["status"],
         "real_mac_pi_transfer_test": "NOT_RUN",
