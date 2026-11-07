@@ -65,3 +65,21 @@ A recorded local review does **not** invoke `mac_to_pi_transfer` or `pi_youtube_
 The foreground launcher now runs a read-only `mac_colors_preflight` **before** beginning rendering. It refuses missing/invalid installed Arabic `say` voices, a dirty/unavailable Git checkout, missing local FFmpeg/ffprobe and an unsafe output root. The detailed command can be run separately: `python3 -m kidsstudio.mac_colors_preflight --artifact-root "$HOME/kidsstudio-private/ready"`. The output has only fixed blocker codes; it deliberately does not print the voice name or private file paths.
 
 For the native macOS voice route, the completed original 24-second PCM speech track additionally needs measurable audio energy in **all six four-second beats**, rather than merely a valid WAV header. This catches empty and nearly silent native voice outputs but **does not** verify spoken language or correctness; an owner must still listen. The evidence sidecar is technical metadata only, never publication permission. The optional `supplied_wav` route is not automatically classified as spoken Arabic by this gate and still needs owner listening.
+
+## Batch 54 — validate Arabic voice before video encode; choose an installed voice
+
+The first colors render now synthesizes and checks all six Arabic voice beats **before** encoding the illustrated 24-second MP4. If a system voice is missing, silent, too long for a beat or otherwise fails, the video encode and final mux are **not started**. Failed attempts may leave private intermediate speech files for local diagnosis but never upload them.
+
+The Mac launcher also accepts an optional, specifically selected *already installed* Arabic system voice without modifying the project:
+
+```bash
+# Run locally on the Mac to see available voices and languages:
+say -v '?'
+
+# Example: only if an Arabic voice named Maged is actually listed:
+KIDSSTUDIO_MAC_VOICE=Maged bash scripts/run_mac_colors_pilot.sh
+```
+
+A supplied name is checked against the installed Arabic voice list both during preflight and rendering. The launcher uses branches rather than empty Bash arrays to support the system Bash included with macOS, and each output filename has both timestamp and a random retry suffix to avoid collisions when two attempts happen within one second. Do **not** share your speech files or generated clip publicly while reviewing them.
+
+This change improves local operational reliability; it does not prove correct Arabic pronunciation or replace the full owner listening/playback check. Actual owner Mac, Pi transfer, YouTube PRIVATE upload and later publication decisions remain separate human-supervised steps.
