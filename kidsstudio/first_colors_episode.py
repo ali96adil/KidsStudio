@@ -268,10 +268,14 @@ def run_first_colors_episode(
         return result
     stage = root / (output_name.removesuffix(".mp4") + "-pilot-sources")
     stage.mkdir(mode=0o700)
-    movie = _render_silent(stage)
+    # Synthesizing and checking six short spoken beats comes BEFORE the
+    # expensive video encode. Bad/missing native Arabic voice must not waste
+    # video rendering or create a misleading final MP4. The supplied-WAV
+    # route was already SHA/duration-qualified above and remains independent.
     voice_path = _synthesize_wav(stage, voice=mac_voice) if checked_wav is None else checked_wav
     voice_root = str(stage) if checked_wav is None else str(Path(narration_root))
     voice_name = "arabic_voice.wav" if checked_wav is None else narration_name
+    movie = _render_silent(stage)
     muxed = mux_episode_pilot(
         video_root=str(stage), video_name=movie.name, video_sha256=_sha(movie),
         narration_root=voice_root, narration_name=voice_name,
