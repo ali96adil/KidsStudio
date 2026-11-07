@@ -69,3 +69,20 @@ Watch and listen to **the whole output**: do the spoken colors match the display
 If the smoke pilot succeeds, record the exact Git commit, final MP4 SHA and file duration. Then use the independent [Mac-to-Pi transfer](MAC_PI_TRANSFER_PILOT.md), recheck SHA on the Pi, and only after separate owner permission use the [YouTube PRIVATE upload pilot](PI_YOUTUBE_PRIVATE_UPLOAD_PILOT.md). Do not upload this first graphics-only smoke file as if it were a polished children's episode.
 
 **Not tested here:** actual Apple Arabic voice availability, actual Mac rendering and audio quality, actual Pi transfer and OAuth/YouTube upload. CI tests are synthetic or mocked and cannot assert those facts.
+
+## Batch 48 — genuine CI encoding test and simplest Mac invocation
+
+GitHub Actions workflow `.github/workflows/real-colors-smoke.yml` performs a **real 24-second 1280×720 FFmpeg H.264/AAC** encode using the actual six original Pillow scenes and an artificially **silent 24-second test WAV**, verifies output SHA256/audio stream and decodes three actual MP4 frames to check the red apple, yellow sun and blue sky. The generated file remains in the temporary CI workspace; it is **not attached, uploaded to YouTube or approved**. This validates Linux FFmpeg behavior only, not the presence or pronunciation of a Mac Arabic voice.
+
+On a Mac with the latest feature-branch source checkout, Python 3.11+ / Pillow, FFmpeg/FFprobe and a locally installed Arabic `say` voice, the **shortest supervised command** is:
+
+```bash
+cd /path/to/your/KidsStudio
+bash scripts/run_mac_colors_pilot.sh
+```
+
+That explicit command checks the required local applications, creates a private output directory, performs a non-writing preflight, renders a new **versioned** 24-second video with an installed Arabic voice, prints SHA256, and opens the local movie for listening and review. It does **not** install or download models, transmit videos to Pi, contact YouTube, spend on AI APIs, delete earlier versions, approve publication, or launch any background service. To select a different local Python environment, set `KIDSSTUDIO_PYTHON=/absolute/path/to/python3.12`.
+
+The GitHub CI workflow only runs `bash -n` against this launcher; **the launcher has never been executed on the user's actual Mac**. A downloadable visual-only demonstration rendered in a separate ChatGPT runtime is not equivalent to the Mac's voice-enabled, owner-reviewed output.
+
+**Next hard gate:** supervised execution on the real Mac and inspection of the voice/visual results. Then one physical SSH Mac→Pi receipt and a separate OAuth-authorized YouTube PRIVATE test are the remaining device/network qualifications. Avoid re-entering exploratory feature development until these are done.
