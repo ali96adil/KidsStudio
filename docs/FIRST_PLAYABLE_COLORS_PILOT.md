@@ -128,3 +128,11 @@ If and only if you actually **watched the full video, listened to all Arabic nar
 Review notes may be visible in your local shell history/process list when provided with --reviewer-notes, so avoid confidential notes or credentials in that argument. Both the technical report and the review files must stay on the owner's encrypted/private device, outside Git. There is no SSH transfer, Pi test, OAuth, YouTube call, queue mutation, background task or public release in this workflow.
 
 **Actual physical Mac render, Arabic voice listening and a real human review are still NOT_RUN** in development/CI. This only provides a reliable tool to capture their evidence when the operator runs it on the Mac; never substitute a synthetic CI pass for that step.
+
+## Batch 51 — collect private physical-Mac pilot evidence and separate owner review
+
+The foreground Mac launcher now includes a **fourth step**: after the verified H.264/AAC encode, it runs `kidsstudio.mac_pilot_evidence collect`, repeats offline role/checkout qualification and the MP4 decoder preflight, and writes a **unique owner-private technical evidence JSON** in `$HOME/kidsstudio-private/qualification` before opening the video. Evidence is SHA-256-bound to the specific MP4, includes the checked-out Git commit and explicit pending/false review/upload/publication flags, and never changes the media or any existing evidence file. Running the launcher from a source checkout with local tracked changes blocks the evidence step instead of recording misleading provenance.
+
+Once the owner has actually watched and listened to the whole Arabic video, the separate `kidsstudio.mac_pilot_evidence review` command records either `REVISION_REQUIRED` with notes or `ACCEPTED_PRIVATE` **only when the operator explicitly confirms both full-video and Arabic-voice review**. Each review is a separate 0600 JSON file. The reviewer identity is not cryptographically authenticated; private acceptance does not approve Pi transfer, an upload, or a public release. Full commands and file locations: [MAC_PILOT_EVIDENCE_AND_REVIEW.md](MAC_PILOT_EVIDENCE_AND_REVIEW.md).
+
+The new sidecars are **non-replacing through the tool, not tamper-proof** against their filesystem owner. GitHub CI uses synthetic data and mocked platform checks; the real Mac/voice, physical Pi and YouTube steps are still `NOT_RUN`.
