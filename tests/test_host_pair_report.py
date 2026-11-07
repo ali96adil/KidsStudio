@@ -43,7 +43,9 @@ def host(role, *, with_db=False):
     if with_db:
         checks.update({name: True for name in _DB})
     return {
-        "schema_version": 2,
+        "schema_version": 3,
+        "source_commit": "a" * 40,
+        "source_checkout_clean": True,
         "role": role,
         "host_system": "Linux" if pi else "Darwin",
         "machine": "aarch64" if pi else "arm64",
@@ -87,6 +89,28 @@ class HostPairReportTests(unittest.TestCase):
                                       host("pi-private-handoff", with_db=True))
         self.assertEqual(result["mac_issues"], [])
         self.assertEqual(result["pi_issues"], [])
+
+    def test_different_commits_rejected(self):
+        self.pi["source_commit"] = "b" * 40
+        result = compare_host_reports(self.mac, self.pi)
+        self.assertEqual(result["status"], "OFFLINE_REPORT_PAIR_BLOCKED")
+        self.assertIn("source_revision_mismatch", result["mac_issues"])
+        self.assertFalse(result["same_code_revision_proven"])
+
+    def test_dirty_checkout_rejected(self):
+        self.mac["source_checkout_clean"] = False
+        result = compare_host_reports(self.mac, self.pi)
+        self.assertIn("source_checkout_not_clean", result["mac_issues"])
+
+    def test_missing_commit_rejected(self):
+        del self.pi["source_commit"]
+        result = compare_host_reports(self.mac, self.pi)
+        self.assertIn("source_commit_missing_or_invalid", result["pi_issues"])
+
+    def test_matching_revisions_are_claims_not_authentication(self):
+        result = compare_host_reports(self.mac, self.pi)
+        self.assertTrue(result["same_code_revision_claimed"])
+        self.assertFalse(result["same_code_revision_proven"])
 
     def test_wrong_role_rejected(self):
         result = compare_host_reports(self.pi, self.mac)
