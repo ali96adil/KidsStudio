@@ -369,3 +369,11 @@ Results:
 - `OFFLINE_REPORT_PAIR_ERROR` (exit 2): unsafe, oversized, malformed, or inaccessible evidence; private file contents are not echoed.
 
 The output SHA-256 values identify the **report bytes**, not real device identities, software builds, or video contents. The operator must separately record each device's Git commit and confirm they match before considering any supervised real-media test. Physical Mac/Pi transfer and YouTube tests remain `NOT_RUN`; no automatic approval is possible.
+
+## Batch 43 — source revision parity before any real Mac/Pi transfer
+
+Host qualification reports now use **schema v3**, including the local checkout Git SHA-1 and whether tracked code/tests are clean at inspection time. The offline comparator `host_pair_report` requires **both hosts to report the same valid 40-digit revision and a clean tracked checkout** before it returns `OFFLINE_REPORT_PAIR_CONSISTENT_UNVERIFIED`. A mismatch or unavailable Git revision blocks the pair.
+
+This mechanism reduces accidental version skew but is **not attestation**: reports can be fabricated, binaries or untracked code could differ, and a matching Git SHA does not prove the identity or state of a device. The operator must confirm host identities, inspect actual deployed code, and supervise the real transfer. The report itself never grants production or publication permissions.
+
+`host_qualification` also works from an installed package without a checkout, but then reports `source_commit: null` and `source_checkout_clean: false`; for paired qualification run it from the pinned source checkout of KidsStudio. **Schema v2 pairing is intentionally rejected**; regenerate reports on both machines after updating the branch.
