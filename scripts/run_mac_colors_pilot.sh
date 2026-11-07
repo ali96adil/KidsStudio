@@ -32,14 +32,22 @@ OUTPUT_DIR="$HOME/kidsstudio-private/ready"
 mkdir -p "$OUTPUT_DIR"
 chmod 700 "$OUTPUT_DIR"
 
+# Optional explicit choice among ALREADY INSTALLED Arabic macOS voices.
+# Arrays keep the name literal; invalid/uninstalled names fail closed.
+VOICE_ARGS=()
+if [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
+  VOICE_ARGS=(--mac-voice "$KIDSSTUDIO_MAC_VOICE")
+fi
+
 # Check native Arabic voice, full Git checkout and private host BEFORE encoding.
 # Does not synthesize audio, write a video or use the network.
 echo "Gate 0/4: check installed Arabic voice, Git source and private Mac readiness"
 "$PYTHON" -m kidsstudio.mac_colors_preflight \
-  --artifact-root "$OUTPUT_DIR"
+  --artifact-root "$OUTPUT_DIR" "${VOICE_ARGS[@]}"
 
-# Unique filename: no deletion/overwriting of earlier accepted previews.
-BASENAME="colors_ar_01_test_$(date '+%Y%m%d_%H%M%S').mp4"
+# Include random per-invocation suffix so even same-second retries cannot
+# silently reuse a failed staging directory. All output remains non-overwriting.
+BASENAME="colors_ar_01_test_$(date '+%Y%m%d_%H%M%S')_${RANDOM}${RANDOM}.mp4"
 TARGET="$OUTPUT_DIR/$BASENAME"
 
 echo "Source checkout: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -59,7 +67,7 @@ echo "Step 2/4: owner-invoked local render and macOS Arabic voice"
 "$PYTHON" -m kidsstudio.first_colors_episode \
   --output-root "$OUTPUT_DIR" \
   --output-name "$BASENAME" \
-  --voice-mode macos --execute
+  --voice-mode macos "${VOICE_ARGS[@]}" --execute
 
 if [[ ! -s "$TARGET" ]]; then
   echo "MAC_COLORS_BLOCKED: finished video missing."
