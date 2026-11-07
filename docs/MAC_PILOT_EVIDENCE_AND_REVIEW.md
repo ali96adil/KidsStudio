@@ -4,7 +4,7 @@
 
 ## One Mac command
 
-On a trusted macOS 14+ system with the reviewed KidsStudio branch checked out, Python 3.11+ and Pillow available, an **already installed** Arabic macOS voice, and `ffmpeg`/`ffprobe`:
+On a trusted macOS system with the reviewed KidsStudio branch checked out, Python 3.11+ and Pillow available, an **already installed** Arabic macOS voice, and `ffmpeg`/`ffprobe`:
 
 ```bash
 cd /path/to/KidsStudio
@@ -27,28 +27,28 @@ Both directories are created with owner-only permission (0700), media/sidecar fi
 **The owner**, not an unattended agent, chooses one outcome and records a short note. Reading the generated `Video`, `Final MP4 SHA256` and `Private technical evidence` lines from the Mac launcher is the easiest way to supply exact values. Replace the placeholders below with those printed values:
 
 ```bash
-python3 -m kidsstudio.mac_pilot_evidence review \\
-  --video-root "$HOME/kidsstudio-private/ready" \\
-  --video-name ACTUAL_GENERATED_FILENAME.mp4 \\
-  --expected-sha256 ACTUAL_RECORDED_64_HEX_SHA \\
-  --evidence-root "$HOME/kidsstudio-private/qualification" \\
-  --evidence-name ACTUAL_GENERATED_FILENAME.evidence.json \\
-  --review-outcome REVISION_REQUIRED \\
+python3 -m kidsstudio.mac_pilot_evidence review \
+  --video-root "$HOME/kidsstudio-private/ready" \
+  --video-name ACTUAL_GENERATED_FILENAME.mp4 \
+  --expected-sha256 ACTUAL_RECORDED_64_HEX_SHA \
+  --evidence-root "$HOME/kidsstudio-private/qualification" \
+  --evidence-name ACTUAL_GENERATED_FILENAME.evidence.json \
+  --review-outcome REVISION_REQUIRED \
   --reviewer-notes "مثلاً: نطق كلمة الأصفر يحتاج تحسين"
 ```
 
 To record **local private-only acceptance** after actually checking the **entire** video and **all** spoken Arabic, change the outcome and include the two explicit attestations:
 
 ```bash
-python3 -m kidsstudio.mac_pilot_evidence review \\
-  --video-root "$HOME/kidsstudio-private/ready" \\
-  --video-name ACTUAL_GENERATED_FILENAME.mp4 \\
-  --expected-sha256 ACTUAL_RECORDED_64_HEX_SHA \\
-  --evidence-root "$HOME/kidsstudio-private/qualification" \\
-  --evidence-name ACTUAL_GENERATED_FILENAME.evidence.json \\
-  --review-outcome ACCEPTED_PRIVATE \\
-  --reviewed-full-video \\
-  --reviewed-arabic-voice \\
+python3 -m kidsstudio.mac_pilot_evidence review \
+  --video-root "$HOME/kidsstudio-private/ready" \
+  --video-name ACTUAL_GENERATED_FILENAME.mp4 \
+  --expected-sha256 ACTUAL_RECORDED_64_HEX_SHA \
+  --evidence-root "$HOME/kidsstudio-private/qualification" \
+  --evidence-name ACTUAL_GENERATED_FILENAME.evidence.json \
+  --review-outcome ACCEPTED_PRIVATE \
+  --reviewed-full-video \
+  --reviewed-arabic-voice \
   --reviewer-notes "النسخة المحلية مقبولة كتجربة خاصة فقط"
 ```
 
