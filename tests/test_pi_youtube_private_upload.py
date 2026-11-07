@@ -131,6 +131,24 @@ class PrivateUploaderTests(unittest.TestCase):
         self.assertTrue(repeated["from_existing_journal"])
         self.assertEqual(backend.started, 1)
 
+    def test_confirmed_upload_rechecks_remote_visibility(self):
+        backend = FakeYouTube()
+        self.upload(backend)
+        backend.final_private = False
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(backend)
+        self.assertEqual(backend.started, 1)
+        self.assertEqual(_load_journal(self.journal)["state"], "PRIVATE_UPLOAD_CONFIRMED")
+
+    def test_oauth_failure_does_not_create_ambiguous_upload_journal(self):
+        backend = FakeYouTube()
+        def failed_oauth():
+            raise YouTubePrivateError("simulated OAuth denial")
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(backend, token_provider=failed_oauth)
+        self.assertFalse(self.journal.exists())
+        self.assertEqual(backend.calls, [])
+
     def test_explicit_authorization_required_before_network_or_journal(self):
         backend = FakeYouTube()
         for changes in ({"owner_authorized": False},
