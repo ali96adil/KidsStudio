@@ -256,6 +256,59 @@ class FirstColorsEpisodeTests(unittest.TestCase):
             (self.private / "colors_ar_01-pilot-sources" /
              "arabic_voice.wav").read_bytes()).hexdigest())
 
+    def test_native_voice_is_verified_before_any_visual_encode(self):
+        order = []
+        def synthetic_voice(stage, *, voice):
+            order.append("voice")
+            target = stage / "arabic_voice.wav"
+            write_wav(target)
+            return target
+
+        def synthetic_visual(stage):
+            order.append("video")
+            self.assertTrue((stage / "arabic_voice.wav").exists())
+            target = stage / "silent.mp4"
+            target.write_bytes(b"synthetic placeholder")
+            target.chmod(0o600)
+            return target
+
+        with patch("kidsstudio.first_colors_episode._arabic_voice",
+                   return_value="Maged"), \
+             patch("kidsstudio.first_colors_episode._synthesize_wav",
+                   side_effect=synthetic_voice), \
+             patch("kidsstudio.first_colors_episode._render_silent",
+                   side_effect=synthetic_visual), \
+             patch("kidsstudio.first_colors_episode.mux_episode_pilot",
+                   return_value={
+                       "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+                       "final_mp4_sha256": "b" * 64,
+                       "final_mp4_bytes": 2400,
+                   }):
+            result = run_first_colors_episode(
+                output_root=str(self.private), execute=True)
+        self.assertEqual(order, ["voice", "video"])
+        self.assertTrue(result["render_executed"])
+        self.assertFalse(result["publication_approved"])
+
+    def test_missing_or_incomplete_native_voice_skips_visual_encode(self):
+        for reason in ("silent cue", "beat too long", "cannot synthesize"):
+            with self.subTest(reason=reason), patch(
+                "kidsstudio.first_colors_episode._arabic_voice",
+                return_value="Maged"), patch(
+                "kidsstudio.first_colors_episode._synthesize_wav",
+                side_effect=EpisodeMuxError(reason)), patch(
+                "kidsstudio.first_colors_episode._render_silent"
+            ) as render, patch(
+                "kidsstudio.first_colors_episode.mux_episode_pilot"
+            ) as mux:
+                with self.assertRaises(EpisodeMuxError):
+                    run_first_colors_episode(
+                        output_root=str(self.private),
+                        output_name=f"native_fails_{reason.replace(' ', '_')}.mp4",
+                        execute=True)
+                render.assert_not_called()
+                mux.assert_not_called()
+
     def test_cli_invalid_configuration_redacts_paths(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
