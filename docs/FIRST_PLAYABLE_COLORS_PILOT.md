@@ -101,3 +101,30 @@ python -m kidsstudio.mp4_playback_preflight \\
 ```
 
 A successful `MP4_PLAYBACK_PREFLIGHT_PASSED_UNREVIEWED` means a conservative **technical sample** passed, **not** that the entire MP4 was decoded or successfully opened on iPhone/iPad, that Arabic pronunciation is natural, that audio is audible, or that anyone reviewed the lesson. The result always leaves publication/transfer/upload flags false. On failures, the launcher stops **before opening or handing off** the video, retains the file for private diagnosis and prints a fixed blocked status rather than a media path or FFmpeg log. Do not use this check to bypass full owner playback review. The Linux real-colors CI smoke now checks the same actual encoded H.264/AAC file and samples, without claiming Mac hardware or voice qualification.
+
+## Batch 51 — durable private Mac evidence and explicit owner review
+
+The foreground **scripts/run_mac_colors_pilot.sh** now has **four** stages: offline preflight, local 24-second Arabic-voice render, actual MP4 sample decoding, and creation of a **new, non-overwritten owner-private 0600 evidence JSON** under "$HOME/kidsstudio-private/qualification" outside Git. The evidence contains the exact final MP4 SHA-256, size, duration, three video/two audio decode counts, source Git commit, clean tracked checkout claim, and host readiness. Its status is always MAC_PILOT_EVIDENCE_RECORDED_REVIEW_PENDING; it cannot authenticate the Mac's identity, confirm a human listened, or authorize an upload.
+
+Run the Mac launcher as previously documented. Only after it has succeeded, **watch and listen to the entire generated local video**. In the example below, replace the exact versioned name with the one printed by the launcher; do not use "latest" or a guessed hash:
+
+~~~bash
+VIDEO_NAME="colors_ar_01_test_REPLACE_WITH_ACTUAL_TIMESTAMP.mp4"
+VIDEO_SHA="$(shasum -a 256 "$HOME/kidsstudio-private/ready/$VIDEO_NAME" | awk '{print $1}')"
+EVIDENCE_NAME="$(basename "$VIDEO_NAME" .mp4).evidence.json"
+
+# If the clip needs correction, save a SHA-bound note:
+python -m kidsstudio.mac_pilot_evidence review \
+  --video-root "$HOME/kidsstudio-private/ready" \
+  --video-name "$VIDEO_NAME" --expected-sha256 "$VIDEO_SHA" \
+  --evidence-root "$HOME/kidsstudio-private/qualification" \
+  --evidence-name "$EVIDENCE_NAME" \
+  --review-outcome REVISION_REQUIRED \
+  --reviewer-notes "راجع نطق الأحمر وتزامن المشاهد"
+~~~
+
+If and only if you actually **watched the full video, listened to all Arabic narration and personally accept that specific PRIVATE test**, run the same review command with **--review-outcome ACCEPTED_PRIVATE --reviewed-full-video --reviewed-arabic-voice** instead of REVISION_REQUIRED. Both outcomes create a distinct append-only review JSON file; earlier evidence is not altered. The acceptance is a **local operator assertion without identity authentication**, and it is neither permission to upload to the owner's channel nor authorization to publish.
+
+Review notes may be visible in your local shell history/process list when provided with --reviewer-notes, so avoid confidential notes or credentials in that argument. Both the technical report and the review files must stay on the owner's encrypted/private device, outside Git. There is no SSH transfer, Pi test, OAuth, YouTube call, queue mutation, background task or public release in this workflow.
+
+**Actual physical Mac render, Arabic voice listening and a real human review are still NOT_RUN** in development/CI. This only provides a reliable tool to capture their evidence when the operator runs it on the Mac; never substitute a synthetic CI pass for that step.
