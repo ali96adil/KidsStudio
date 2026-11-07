@@ -106,6 +106,19 @@ def qualify_filmcraft_export(
         raise ToolEvidenceError("This initial check supports MP4 exports only.")
     probe = _read_probe(file, runner=runner)
     checks = _checks(probe)
+    technical_profile = None
+    if all(checks.values()):
+        video = next(s for s in probe["streams"] if s["codec_type"] == "video")
+        fps = Fraction(str(video["avg_frame_rate"]))
+        technical_profile = {
+            "duration_seconds": float(probe["format"]["duration"]),
+            "fps_numerator": fps.numerator,
+            "fps_denominator": fps.denominator,
+            "width": 1280,
+            "height": 720,
+            "audio_sample_rate": 48000,
+            "audio_channels": 2,
+        }
     second = verify_staged_file(
         root=evidence_root, relative_path=relative_path,
         expected_sha256=expected_sha256, max_bytes=_MAX_BYTES)
@@ -118,6 +131,7 @@ def qualify_filmcraft_export(
         "checks": checks,
         "file_sha256": first["sha256"],
         "file_bytes": first["bytes"],
+        "technical_profile": technical_profile,
         "file_integrity_checked_at_report_time": True,
         "editor_origin_authenticated": False,
         "video_visual_quality_verified": False,
