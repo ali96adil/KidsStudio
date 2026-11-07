@@ -86,3 +86,18 @@ That explicit command checks the required local applications, creates a private 
 The GitHub CI workflow only runs `bash -n` against this launcher; **the launcher has never been executed on the user's actual Mac**. A downloadable visual-only demonstration rendered in a separate ChatGPT runtime is not equivalent to the Mac's voice-enabled, owner-reviewed output.
 
 **Next hard gate:** supervised execution on the real Mac and inspection of the voice/visual results. Then one physical SSH Mac→Pi receipt and a separate OAuth-authorized YouTube PRIVATE test are the remaining device/network qualifications. Avoid re-entering exploratory feature development until these are done.
+
+## Batch 50 — fail-closed playback compatibility inspection
+
+The Mac launcher now has a **third local step** before it opens any generated episode: `kidsstudio.mp4_playback_preflight` independently verifies the final private MP4 SHA-256, parses top-level ISO BMFF boxes to check that exactly one `moov` precedes `mdat` (faststart), requires H.264 Baseline/Constrained Baseline level 3.1 or lower and AAC-LC stereo 48 kHz, and actually decodes **three video samples and two audio samples** through local FFmpeg. It checks the file SHA-256 again after probing. No samples are saved; the check reads only local media, never writes, uploads, or contacts Pi/YouTube.
+
+For an existing private local MP4, use the **SHA recorded by the operator from the completed render**:
+
+```bash
+python -m kidsstudio.mp4_playback_preflight \\
+  --root "$HOME/kidsstudio-private/ready" \\
+  --relative-path colors_ar_01.mp4 \\
+  --expected-sha256 TRUSTED_64_HEX_SHA256
+```
+
+A successful `MP4_PLAYBACK_PREFLIGHT_PASSED_UNREVIEWED` means a conservative **technical sample** passed, **not** that the entire MP4 was decoded or successfully opened on iPhone/iPad, that Arabic pronunciation is natural, that audio is audible, or that anyone reviewed the lesson. The result always leaves publication/transfer/upload flags false. On failures, the launcher stops **before opening or handing off** the video, retains the file for private diagnosis and prints a fixed blocked status rather than a media path or FFmpeg log. Do not use this check to bypass full owner playback review. The Linux real-colors CI smoke now checks the same actual encoded H.264/AAC file and samples, without claiming Mac hardware or voice qualification.
