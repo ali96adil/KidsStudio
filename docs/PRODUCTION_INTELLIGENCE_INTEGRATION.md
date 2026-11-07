@@ -51,3 +51,11 @@ G5 enable only after documented review and owner authorization.
 - **Pilot 39:** `kidsstudio/filmcraft_export_check.py` verifies a private candidate MP4 SHA256 before/after an operator-requested local ffprobe, checking H.264/AAC, 1280×720, frame rate and stereo 48 kHz audio. This does not run FilmCraft or prove the video came from it. Manual Arabic captions, sound and visual checks remain mandatory.
 - Shared `kidsstudio/optional_tool_evidence.py` enforces private regular evidence files outside Git. Both pilots are additive, fail-closed and **read-only**, with no changes to the existing Godot/FFmpeg renderer, worker, queue, Pi handoff or YouTube publishing.
 - See [CRAFT_FILMCRAFT_OPTIONAL_PILOTS.md](CRAFT_FILMCRAFT_OPTIONAL_PILOTS.md) for operator commands, test limitations and rollback. Real Mac/Pi and optional-tool qualification remain **NOT_RUN**.
+
+
+## Visual comparison extensions — batches 40–42 (2026-11-07)
+
+- `craft_ui_pixel_compare.py`: fully decode and compare **two sets** of three private hash-verified 375/768/1280 dashboard PNG screenshots; report per-viewport color and changed-pixel ratios, with no auto approval, screenshot output or Craft agent invocation.
+- `filmcraft_baseline_compare.py`: independently hash and ffprobe two private delivery MP4s, confirm H.264/AAC technical requirements, matching nominal frame rates and <=0.10-second duration delta. This is **not** a full visual or audio comparison.
+- `filmcraft_frame_compare.py`: after the technical check, use local ffmpeg to decode six in-memory 320×180 frames at three relative timeline positions; report frame differences, then rehash both files. This checks **samples only**, not complete quality or subtitles.
+- No installation, remote tool, real alpha-tool execution, publication, queue mutation or transfer was performed. Source identity is unverified; physical Mac/Pi G4 remains NOT_RUN. Runbooks and thresholds are documented in `CRAFT_FILMCRAFT_OPTIONAL_PILOTS.md`.
