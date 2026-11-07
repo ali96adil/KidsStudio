@@ -32,18 +32,17 @@ OUTPUT_DIR="$HOME/kidsstudio-private/ready"
 mkdir -p "$OUTPUT_DIR"
 chmod 700 "$OUTPUT_DIR"
 
-# Optional explicit choice among ALREADY INSTALLED Arabic macOS voices.
-# Arrays keep the name literal; invalid/uninstalled names fail closed.
-VOICE_ARGS=()
-if [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
-  VOICE_ARGS=(--mac-voice "$KIDSSTUDIO_MAC_VOICE")
-fi
-
-# Check native Arabic voice, full Git checkout and private host BEFORE encoding.
-# Does not synthesize audio, write a video or use the network.
+# Explicitly selected voice is optional, and must already be installed.
+# Use separate calls (no empty arrays) for compatibility with macOS Bash 3.2.
+# No shell evaluation; an invalid voice name fails in Python.
 echo "Gate 0/4: check installed Arabic voice, Git source and private Mac readiness"
-"$PYTHON" -m kidsstudio.mac_colors_preflight \
-  --artifact-root "$OUTPUT_DIR" "${VOICE_ARGS[@]}"
+if [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
+  "$PYTHON" -m kidsstudio.mac_colors_preflight \
+    --artifact-root "$OUTPUT_DIR" --mac-voice "$KIDSSTUDIO_MAC_VOICE"
+else
+  "$PYTHON" -m kidsstudio.mac_colors_preflight \
+    --artifact-root "$OUTPUT_DIR"
+fi
 
 # Include random per-invocation suffix so even same-second retries cannot
 # silently reuse a failed staging directory. All output remains non-overwriting.
@@ -64,10 +63,17 @@ if [[ "$PREVIEW_EXIT" -ne 1 ]] || [[ "$PREVIEW" != *COLORS_EPISODE_PREVIEW_ONLY*
 fi
 
 echo "Step 2/4: owner-invoked local render and macOS Arabic voice"
-"$PYTHON" -m kidsstudio.first_colors_episode \
-  --output-root "$OUTPUT_DIR" \
-  --output-name "$BASENAME" \
-  --voice-mode macos "${VOICE_ARGS[@]}" --execute
+if [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
+  "$PYTHON" -m kidsstudio.first_colors_episode \
+    --output-root "$OUTPUT_DIR" \
+    --output-name "$BASENAME" \
+    --voice-mode macos --mac-voice "$KIDSSTUDIO_MAC_VOICE" --execute
+else
+  "$PYTHON" -m kidsstudio.first_colors_episode \
+    --output-root "$OUTPUT_DIR" \
+    --output-name "$BASENAME" \
+    --voice-mode macos --execute
+fi
 
 if [[ ! -s "$TARGET" ]]; then
   echo "MAC_COLORS_BLOCKED: finished video missing."
