@@ -32,6 +32,12 @@ OUTPUT_DIR="$HOME/kidsstudio-private/ready"
 mkdir -p "$OUTPUT_DIR"
 chmod 700 "$OUTPUT_DIR"
 
+# Check native Arabic voice, full Git checkout and private host BEFORE encoding.
+# Does not synthesize audio, write a video or use the network.
+echo "Gate 0/4: check installed Arabic voice, Git source and private Mac readiness"
+"$PYTHON" -m kidsstudio.mac_colors_preflight \
+  --artifact-root "$OUTPUT_DIR"
+
 # Unique filename: no deletion/overwriting of earlier accepted previews.
 BASENAME="colors_ar_01_test_$(date '+%Y%m%d_%H%M%S').mp4"
 TARGET="$OUTPUT_DIR/$BASENAME"
