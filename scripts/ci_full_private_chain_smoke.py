@@ -1,9 +1,9 @@
 """CI-only complete private handoff for an actually FFmpeg-encoded colors MP4.
 
-Real: SHA, MP4 playback check, source evidence writer, review-note writer,
-reviewed Mac->Pi handoff logic, Pi atomic receiver and uploader journal/chunks.
-SIMULATED: owner viewing/listening (CI CANNOT REVIEW CONTENT), SSH transport,
-Google token and PRIVATE YouTube service. No real account, Pi, DNS or network.
+Real: SHA, MP4 playback check, technical Mac→Pi QA-only handoff,
+Pi atomic receiver, uploader journal/chunks and post-PRIVATE review note writer.
+SIMULATED: Mac host identity, owner reviewing ONLY AFTER private upload,
+SSH transport, Google token and PRIVATE YouTube service. No real account, Pi, DNS or network.
 All files stay in one ephemeral 0700 working directory; never artifacts.
 """
 from __future__ import annotations
@@ -21,6 +21,9 @@ from kidsstudio.mac_pilot_evidence import (
 from kidsstudio.pi_transfer_receive import receive_private_video
 from kidsstudio.reviewed_mac_pi_handoff import (
     MacPiReviewGateError, transfer_reviewed_mac_pilot,
+)
+from kidsstudio.technical_mac_pi_handoff import (
+    transfer_technical_private_pilot,
 )
 from kidsstudio.transfer_verify import verify_staged_file
 from kidsstudio.pi_youtube_private_upload import (
@@ -146,34 +149,28 @@ def check_offline_full_private_chain(
         evidence_name=evidence_name,
         pi_host="mock-pi.local", pi_user="ciuser", runner=ssh,
     )
+    # Legacy optional pre-review sender remains fail-closed, but it is
+    # NOT the default for this owner's PRIVATE-first review workflow.
     try:
         transfer_reviewed_mac_pilot(**args, execute=True)
     except MacPiReviewGateError:
         pass
     else:
-        raise AssertionError("Unreviewed synthetic video should never transfer.")
+        raise AssertionError("Legacy reviewed-only path accepted no owner note.")
     if ssh.calls != 0:
-        raise AssertionError("Review gate made an SSH call before approval.")
-    # THIS IS A TEST FIXTURE, NOT AN ACTUAL OWNER: fake assertions are
-    # explicitly confined to the CI temporary directory and are deleted.
-    review = record_mac_pilot_review(
-        evidence_root=str(proof), evidence_name=evidence_name,
-        video_root=str(ready), video_name=video_name,
-        expected_sha256=expected_sha256, review_outcome="ACCEPTED_PRIVATE",
-        reviewer_notes="CI SIMULATED APPROVAL ONLY -- NO PERSON WATCHED THIS",
-        reviewed_full_video=True, reviewed_arabic_voice=True,
-    )
-    if review["review_outcome"] != "ACCEPTED_PRIVATE":
-        raise AssertionError("Synthetic review fixture failed.")
-    preview = transfer_reviewed_mac_pilot(**args)
-    if (preview["status"] != "MAC_PI_REVIEWED_TRANSFER_PREVIEW_ONLY"
+        raise AssertionError("Legacy review gate called SSH before approval.")
+    # Owner review is intentionally still pending. The SHA/codec/host
+    # evidence alone qualifies an exact source for PRIVATE staging.
+    preview = transfer_technical_private_pilot(**args)
+    if (preview["status"] != "MAC_PI_QA_ONLY_TRANSFER_PREVIEW_NO_SSH"
             or preview["ssh_connection_performed"] is not False
+            or preview["owner_review_pending_until_youtube_private_draft"] is not True
             or ssh.calls != 0):
-        raise AssertionError("Offline transfer preview unexpectedly connected.")
-    received = transfer_reviewed_mac_pilot(**args, execute=True)
-    if (received["status"] != "MAC_PI_REVIEWED_PRIVATE_TRANSFER_VERIFIED"
+        raise AssertionError("QA-only private transfer preview not offline.")
+    received = transfer_technical_private_pilot(**args, execute=True)
+    if (received["status"] != "MAC_PI_QA_ONLY_PRIVATE_TRANSFER_VERIFIED"
             or ssh.calls != 1):
-        raise AssertionError("Mock SSH receiver failed exact SHA handoff.")
+        raise AssertionError("Mock SSH receiver failed exact SHA private handoff.")
     stored = verify_staged_file(
         root=str(inbox), relative_path=video_name,
         expected_sha256=expected_sha256)
@@ -206,12 +203,25 @@ def check_offline_full_private_chain(
             or journal["media_sha256"] != expected_sha256
             or journal.get("session_url")):
         raise AssertionError("Synthetic upload journal incorrect or not finalized.")
+    # NOW (after mock PRIVATE upload) simulate the operator noting a
+    # revision, without pretending any human actually watched or heard it.
+    review = record_mac_pilot_review(
+        evidence_root=str(proof), evidence_name=evidence_name,
+        video_root=str(ready), video_name=video_name,
+        expected_sha256=expected_sha256, review_outcome="REVISION_REQUIRED",
+        reviewer_notes="CI simulated post-PRIVATE draft review — NO HUMAN WATCHED",
+        reviewed_full_video=False, reviewed_arabic_voice=False,
+    )
+    if (review["review_outcome"] != "REVISION_REQUIRED"
+            or review["publication_approved"] is not False):
+        raise AssertionError("Post-private synthetic review note failed.")
     return {
         "status": "OFFLINE_REAL_MP4_TO_FAKE_PI_TO_FAKE_YOUTUBE_PRIVATE_PASSED",
         "real_mp4_sha256_matched_on_both_local_hosts": True,
         "real_media_bytes_passed_to_actual_pi_receiver_code": True,
         "real_private_upload_chunk_and_journal_logic_exercised": True,
-        "simulated_owner_review_only_no_human_review": True,
+        "private_upload_happened_before_simulated_owner_review": True,
+        "human_owner_review_actually_performed": False,
         "mock_ssh_no_network": True,
         "mock_google_no_network_no_oauth": True,
         "youtube_video_id_is_fake": True,
