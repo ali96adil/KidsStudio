@@ -65,3 +65,9 @@ python -m kidsstudio.pi_youtube_private_upload \
 - **Security hardening review:** journal persistence under crash/power loss, network timeout and untrusted server responses, lock-file recovery, exact MIME/content type, token handling and independently verifying target channel/video content.
 - **Owner review:** open and watch the PRIVATE draft; check correct Arabic/English voice, timing and educational content before release.
 - **Optional later automation:** queue consumer, secure Mac→Pi transport, service restart, OAuth enrollment, fully supervised privacy audit and separate owner-governed publication. These are NOT part of this pilot.
+
+## Batch 59 — offline end-to-end smoke before live OAuth
+
+GitHub CI now runs the real first-colors 24-second FFmpeg MP4 all the way through Mac private sidecar creation, an explicitly **simulated** owner acceptance, the existing reviewed-transfer gate, the Pi receiver *in-process* on a temporary private folder, and the **real resumable uploader implementation with an injected FAKE Google backend and token**. It verifies exact bytes and SHA across the mock Mac/Pi boundary, the final private-only fake upload response and the journal's confirmed state. The fake backend refuses `public`, `unlisted`, missing `selfDeclaredMadeForKids`, or `publishAt` metadata in tests.
+
+This test must never be called a real YouTube upload or a real user review: no DNS, SSH, Google OAuth credentials, network traffic or persistent CI media are involved, and the fake video ID is not a YouTube resource. The Pi's genuine Google OAuth and actual PRIVATE upload **still require an explicit supervised device test** following the independent Mac/Pi receipt verification procedure.
