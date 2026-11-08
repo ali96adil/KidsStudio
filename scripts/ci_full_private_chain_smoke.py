@@ -29,6 +29,9 @@ from kidsstudio.transfer_verify import verify_staged_file
 from kidsstudio.pi_youtube_private_upload import (
     YouTubePrivateError, execute_private_upload, _load_journal,
 )
+from kidsstudio.pi_private_draft_review import (
+    inspect_uploaded_private_draft, record_post_private_draft_review,
+)
 
 
 _SESSION = ("https://www.googleapis.com/upload/youtube/v3/videos?"
@@ -203,8 +206,34 @@ def check_offline_full_private_chain(
             or journal["media_sha256"] != expected_sha256
             or journal.get("session_url")):
         raise AssertionError("Synthetic upload journal incorrect or not finalized.")
-    # NOW (after mock PRIVATE upload) simulate the operator noting a
-    # revision, without pretending any human actually watched or heard it.
+    # Now show exact PRIVATE journal + Pi MP4 SHA + YouTube video ID is
+    # eligible for an OFFLINE operator note; no live Google status query.
+    note_dir = base / "mock-pi-owner-private-reviews"
+    note_dir.mkdir(mode=0o700)
+    review_args = dict(
+        private_root=str(inbox), relative_path=video_name,
+        expected_sha256=expected_sha256, episode_id="colors_ar_01",
+        journal_file=str(record), video_id=_FAKE_VIDEO_ID,
+    )
+    post_private = inspect_uploaded_private_draft(**review_args)
+    if (post_private["status"] != "PI_PRIVATE_DRAFT_REVIEW_ELIGIBLE_OFFLINE"
+            or post_private["youtube_current_privacy_live_rechecked"] is not False):
+        raise AssertionError("Post-private Pi review not SHA/video bound.")
+    recorded = record_post_private_draft_review(
+        **review_args, review_root=str(note_dir),
+        review_outcome="REVISION_REQUIRED",
+        reviewer_notes="CI SIMULATED ONLY — no human watched this fake video",
+        reviewed_private_youtube_draft=True, save_review=True)
+    saved_note = note_dir / recorded["review_evidence_name"]
+    saved = json.loads(saved_note.read_text(encoding="utf-8"))
+    if (recorded["status"] != "PI_PRIVATE_DRAFT_REVIEW_RECORDED"
+            or saved["video_sha256"] != expected_sha256
+            or saved["youtube_video_id"] != _FAKE_VIDEO_ID
+            or saved["publication_approved"] is not False
+            or saved_note.stat().st_mode & 0o077):
+        raise AssertionError("Post-PRIVATE local review proof is not safely bound.")
+    # Legacy optional Mac note remains available, but does NOT authorize
+    # upload or public release. No actual human observed the sample.
     review = record_mac_pilot_review(
         evidence_root=str(proof), evidence_name=evidence_name,
         video_root=str(ready), video_name=video_name,
@@ -221,6 +250,7 @@ def check_offline_full_private_chain(
         "real_media_bytes_passed_to_actual_pi_receiver_code": True,
         "real_private_upload_chunk_and_journal_logic_exercised": True,
         "private_upload_happened_before_simulated_owner_review": True,
+        "pi_private_draft_note_sha_video_id_bound": True,
         "human_owner_review_actually_performed": False,
         "mock_ssh_no_network": True,
         "mock_google_no_network_no_oauth": True,
