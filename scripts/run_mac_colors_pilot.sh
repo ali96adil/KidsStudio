@@ -151,5 +151,10 @@ echo "The Pi upload is a separate explicit PRIVATE-only OAuth action; no upload 
 echo "AFTER the PRIVATE YouTube draft, personally review the video and leave notes."
 echo "Optional local review tool: $PYTHON -m kidsstudio.mac_pilot_review_shortcut guided"
 echo "Neither a local preview nor a private upload is permission for PUBLIC release."
-# Open only the local result for the owner's immediate visual/audio review.
-open "$TARGET"
+# Normally open the local file for optional viewing. Hosted CI may choose
+# KIDSSTUDIO_SKIP_OPEN=1, never evidence that a real person viewed it.
+if [[ "${KIDSSTUDIO_SKIP_OPEN:-}" == "1" ]]; then
+  echo "Local open skipped explicitly (CI/no GUI; human content review NOT completed)."
+else
+  open "$TARGET"
+fi
