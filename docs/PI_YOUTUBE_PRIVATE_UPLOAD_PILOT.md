@@ -1,5 +1,7 @@
 # Raspberry Pi — YouTube PRIVATE resumable upload pilot (operator-only)
 
+> **PRIVATE draft first, owner review second (Batch 60):** an authenticated explicit PRIVATE upload may happen after automated technical SHA/codec checks and verified Pi receipt, even before the owner watches the video. The owner reviews the resulting PRIVATE YouTube draft and decides on revision or later **separate** public publication. The OAuth/upload capability still requires explicit user consent and remains untested with real credentials.
+
 **Status:** explicit foreground uploader implementation with mock-tested Google API interactions. The Pi has NOT used it with real credentials. It has NOT uploaded a real video. No unattended publishing service or public release is implemented.
 
 Official APIs consulted:
@@ -71,3 +73,9 @@ python -m kidsstudio.pi_youtube_private_upload \
 GitHub CI now runs the real first-colors 24-second FFmpeg MP4 all the way through Mac private sidecar creation, an explicitly **simulated** owner acceptance, the existing reviewed-transfer gate, the Pi receiver *in-process* on a temporary private folder, and the **real resumable uploader implementation with an injected FAKE Google backend and token**. It verifies exact bytes and SHA across the mock Mac/Pi boundary, the final private-only fake upload response and the journal's confirmed state. The fake backend refuses `public`, `unlisted`, missing `selfDeclaredMadeForKids`, or `publishAt` metadata in tests.
 
 This test must never be called a real YouTube upload or a real user review: no DNS, SSH, Google OAuth credentials, network traffic or persistent CI media are involved, and the fake video ID is not a YouTube resource. The Pi's genuine Google OAuth and actual PRIVATE upload **still require an explicit supervised device test** following the independent Mac/Pi receipt verification procedure.
+
+## Batch 60 — human review AFTER YouTube PRIVATE upload
+
+The intended KidsStudio flow is **automated technical QC on Mac → securely stage SHA-checked video on Pi → upload an authorized PRIVATE YouTube draft → owner watches/reviews that PRIVATE draft and records notes**. A pre-YouTube `ACCEPTED_PRIVATE` manual review note is **not required** to stage technical QA-passed content on Pi. This distinction is important: `private` is a visibility state, not publication approval. The uploader already forces `privacyStatus=private`, `selfDeclaredMadeForKids=true`, no public scheduling, and explicit operator authorization; the user must independently authorize Google OAuth first and verify the correct channel/audience.
+
+`scripts/ci_full_private_chain_smoke.py` now tests this correct order on a real locally encoded MP4: it mocks only host role, Pi SSH network and Google service; it does **not** create a fake pre-upload owner approval. It records a simulated revision note **after** fake private upload solely to verify program flow (no one actually watched the video). No actual YouTube account is contacted, no media is uploaded and no public release occurs.
