@@ -65,3 +65,23 @@ Every record is a separate mode-0600 JSON outside Git with the exact video ID, o
 ## What this does not do
 
 This tool does not set, schedule or update YouTube visibility and never issues an upload. ACCEPTED_PRIVATE is not a publication credential. You must separately decide on public release after completing any channel/content policy review. Automated CI checks with a *fake* YouTube provider only prove local end-to-end code wiring, not privacy status, Arabic pronunciation or user approval.
+
+## Batch 64 — one-command local PRIVATE drafts inbox (read-only)
+
+On the Pi, after creating your existing owner-only `inbox`, `journals` and `reviews` directories, run:
+
+~~~bash
+python3 -m kidsstudio.pi_private_draft_inbox
+~~~
+
+This displays a **terminal status board**, generated ONLY from existing private upload journals, current SHA-verified Pi MP4 files, and the exact review notes recorded by `pi_private_draft_review`. It can show `NEEDS REVIEW`, `REVISION`, `ACCEPTED PRIVATE`, `UPLOAD UNCERTAIN` or `BLOCKED`. It never contacts YouTube or SSH, changes a file, resumes an upload, or grants public publication permission. The table does not print OAuth secrets, resumable session URLs, review-note text, or video IDs.
+
+For a JSON overview:
+
+~~~bash
+python3 -m kidsstudio.pi_private_draft_inbox --format json
+~~~
+
+For a deliberate **local** inspection including the exact private YouTube video IDs, use `--format json --show-video-ids`. Avoid pasting that output into public logs. Multi-version episodes stay separate by exact upload journal, video ID, original source SHA and review-note binding. Any revision note takes priority over older local acceptance notes for the same version.
+
+The board uses **historical local PRIVATE-confirmed upload evidence only**, not the current YouTube visibility. Verify PRIVATE status in YouTube Studio before clicking on a video, and treat accepted private notes as human *assertions*, not authenticated public publication authority. If the tool prints `BLOCKED`, the media, journal, or review note failed local validation. Do **not** delete or reset a journal and retry Google to make the board green; investigate evidence safely and reconcile ambiguous uploads manually.
