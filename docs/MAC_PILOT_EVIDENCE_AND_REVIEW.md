@@ -1,5 +1,7 @@
 # Mac colors pilot — private technical evidence and owner review
 
+> **Current workflow (Batch 60):** local human review is OPTIONAL before Mac→Pi staging. The user reviews the **YouTube PRIVATE draft after upload**. The commands below remain available for local pre-review, but do not have to run before technical QA-only transfer via `kidsstudio.technical_mac_pi_handoff`. No public release is automatic.
+
 **Status:** code and Linux CI checks only; no actual Mac render, actual Arabic voice, real Pi transfer, Google OAuth or YouTube upload has been performed by these tools. This is a supervised local pilot, not an autonomous production pipeline.
 
 ## One Mac command
@@ -125,3 +127,7 @@ python3 -m kidsstudio.mac_pilot_review_shortcut guided
 The guided command is deliberately interactive and **requires an actual input/output terminal**; piped stdin, scheduled CI, or unattended invocations cannot record a decision. It lists up to 10 existing, SHA-matched private pilot evidence files and requires you to type the number of the exact video. There is **no default/latest selection**. After showing that video's name, you must separately choose `R` (needs revision) or `A` (accept as a *local private pilot*). A revision requires a nonempty written note. Acceptance requires you to explicitly type `YES` for having watched the **entire** video, then type `YES` for personally checking **all Arabic speech**. Both choices require a final exact `SAVE` before the software writes one separate private review JSON.
 
 Typing `0`, `C`, an invalid selection, an incomplete/EOF prompt or anything other than the exact required confirmation **cancels without creating any review**. Right before saving, the shortcut **checks the original technical sidecar and hashes the selected MP4 again**; tampering between the list display and the final `SAVE` fails closed. The old `list` and `record` CLI remain supported for advanced use. The Mac launcher now prints the guided command after it generates a valid local video; it does **not** run guided mode or accept a video by itself. These are operator assertions, not independently authenticated reviewer identities, and never grant permission to transfer, upload or publish.
+
+## Batch 60 — when to use local guided review
+
+The human-first review described earlier is **optional** on the Mac. For the normal KidsStudio PRIVATE-first path, no review confirmation is needed before Pi staging. The Mac launcher prints the exact technical evidence file; follow the *technical* handoff procedure in [MAC_PI_TRANSFER_PILOT.md](MAC_PI_TRANSFER_PILOT.md), then separately authorize YouTube PRIVATE upload on the Pi. Watch the resulting PRIVATE draft on YouTube, enter notes/feedback and make a distinct decision about any later public publication. Neither the `guided` local review command nor `ACCEPTED_PRIVATE` grants permission to make a video public.
