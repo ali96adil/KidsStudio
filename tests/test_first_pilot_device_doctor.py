@@ -174,6 +174,38 @@ class FirstPilotDoctorTests(unittest.TestCase):
                         role=role, mac_voice=voice, artifact_root=str(self.root))
             host.assert_not_called()
 
+    def test_explicit_original_wav_mode_does_not_require_apple_voice(self):
+        with patch("kidsstudio.first_pilot_device_doctor.qualify_host",
+                   return_value=qualified()), patch(
+                       "kidsstudio.first_pilot_device_doctor._mac_preflight",
+                       return_value={
+                           "status": "MAC_COLORS_PREFLIGHT_READY",
+                           "blockers": [],
+                           "local_arabic_voice_available": False,
+                           "supplied_wav_six_beats_sha_verified": True,
+                       }) as source, patch(
+                           "kidsstudio.first_pilot_device_doctor.shutil.which",
+                           return_value="/usr/bin/ssh"):
+            report = inspect_first_pilot_device(
+                role="mac", artifact_root=str(self.root),
+                voice_mode="supplied_wav", narration_root="/private/narration",
+                narration_name="original.wav", narration_sha256="a" * 64)
+        self.assertEqual(report["status"],
+                         "FIRST_PILOT_OFFLINE_DEVICE_PREFLIGHT_READY")
+        self.assertFalse(report["installed_mac_arabic_voice_qualified"])
+        self.assertTrue(report["original_supplied_wav_sha_energy_qualified"])
+        self.assertEqual(source.call_args.kwargs["voice_mode"], "supplied_wav")
+        self.assertEqual(source.call_args.kwargs["narration_name"], "original.wav")
+        self.assertFalse(report["publication_approved"])
+
+    def test_doctor_pi_rejects_mac_wav_arguments(self):
+        with patch("kidsstudio.first_pilot_device_doctor.qualify_host") as probe:
+            with self.assertRaises(ValueError):
+                inspect_first_pilot_device(
+                    role="pi", artifact_root=str(self.root),
+                    voice_mode="supplied_wav")
+            probe.assert_not_called()
+
     def test_cli_redacts_exception_and_returns_error_code_without_side_effects(self):
         target = self.root / "secret-private"
         before = list(self.root.iterdir())
