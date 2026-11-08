@@ -44,11 +44,15 @@ def build_private_draft_inbox(
     """Offline status per uploaded version, conservative under any ambiguity."""
     if type(show_video_ids) is not bool:
         raise PrivateDraftInboxError("Only explicit display preferences allowed.")
-    journals = _private_review_root(journal_root)
-    reviews = _private_review_root(review_root)
-    # Verify even with no journals: a missing/public/symlinked Pi inbox must
-    # never yield the reassuring appearance of an empty healthy system.
-    _private_review_root(private_root)
+    try:
+        journals = _private_review_root(journal_root)
+        reviews = _private_review_root(review_root)
+        # Verify even with no journals: missing/public/symlinked Pi inbox must
+        # never yield the appearance of an empty healthy system.
+        _private_review_root(private_root)
+    except (ValueError, OSError, TypeError) as exc:
+        raise PrivateDraftInboxError(
+            "Private Pi journals, inbox or reviews directory is unsafe.") from exc
     names = sorted(
         child.name for child in journals.iterdir()
         if child.name.endswith(".json")
