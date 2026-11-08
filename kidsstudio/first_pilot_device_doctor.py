@@ -52,7 +52,13 @@ _HINTS = {
     "pinned_clean_git_checkout_required":
         "Check out the exact reviewed commit and ensure git status is clean.",
     "installed_arabic_voice_missing_or_invalid":
-        "Install/select an Arabic Apple say voice locally; do not synthesize if absent.",
+        "Install/select an Arabic Apple say voice, or explicitly choose a verified original WAV.",
+    "supplied_wav_missing_unverified_or_silent":
+        "Use an existing private, SHA-verified 24s mono 16-bit PCM WAV with all six beats audible.",
+    "unexpected_supplied_wav_arguments":
+        "Use only one mode: do not add WAV parameters to the Apple say voice mode.",
+    "unexpected_macos_voice_argument":
+        "Use only one mode: do not mix KIDSSTUDIO_MAC_VOICE with supplied-WAV mode.",
     "pillow_or_audio_dependency_missing":
         "Use a Python 3.11+ environment with Pillow and KidsStudio installed.",
     "ssh_client_missing":
@@ -61,22 +67,36 @@ _HINTS = {
 
 
 def _mac_preflight(*, artifact_root: str, min_free_gib: float,
-                   mac_voice: str | None) -> dict:
+                   mac_voice: str | None, voice_mode: str = "macos",
+                   narration_root: str | None = None,
+                   narration_name: str | None = None,
+                   narration_sha256: str | None = None) -> dict:
     # Avoid importing Pillow-dependent episode code on Raspberry Pi: the
     # upload-only device does not need a graphics rendering dependency.
     from .mac_colors_preflight import inspect_mac_colors_preflight
     return inspect_mac_colors_preflight(
         artifact_root=artifact_root, min_free_gib=min_free_gib,
-        mac_voice=mac_voice)
+        mac_voice=mac_voice, voice_mode=voice_mode,
+        narration_root=narration_root, narration_name=narration_name,
+        narration_sha256=narration_sha256)
 
 
 def inspect_first_pilot_device(*, role: str, artifact_root: str | None = None,
                                min_free_gib: float = 2.0,
-                               mac_voice: str | None = None) -> dict:
+                               mac_voice: str | None = None,
+                               voice_mode: str = "macos",
+                               narration_root: str | None = None,
+                               narration_name: str | None = None,
+                               narration_sha256: str | None = None) -> dict:
     if role not in ("mac", "pi"):
         raise ValueError("Choose the Mac or Pi role.")
-    if role == "pi" and mac_voice is not None:
-        raise ValueError("Mac-only Arabic voice cannot be selected for Pi.")
+    if voice_mode not in ("macos", "supplied_wav"):
+        raise ValueError("Unsupported voice mode.")
+    if role == "pi" and (
+            mac_voice is not None or voice_mode != "macos"
+            or any(x is not None for x in (
+                narration_root, narration_name, narration_sha256))):
+        raise ValueError("Mac-only narration options cannot be selected for Pi.")
     if min_free_gib < 0 or min_free_gib > 1024:
         raise ValueError("Invalid disk threshold.")
     path = artifact_root or str(Path.home() / "kidsstudio-private" /
@@ -90,16 +110,21 @@ def inspect_first_pilot_device(*, role: str, artifact_root: str | None = None,
         failed.add("offline_review_selftest_failed")
 
     voice_found = None
+    wav_found = None
     if role == "mac":
         try:
             mac = _mac_preflight(
                 artifact_root=path, min_free_gib=min_free_gib,
-                mac_voice=mac_voice)
+                mac_voice=mac_voice, voice_mode=voice_mode,
+                narration_root=narration_root, narration_name=narration_name,
+                narration_sha256=narration_sha256)
             failed.update(mac["blockers"])
             voice_found = mac["local_arabic_voice_available"] is True
+            wav_found = mac.get("supplied_wav_six_beats_sha_verified", False) is True
         except ImportError:
             failed.add("pillow_or_audio_dependency_missing")
             voice_found = False
+            wav_found = False
         if not shutil.which("ssh"):
             failed.add("ssh_client_missing")
     if qualification["status"] != "SUPERVISED_TESTS_READY" and not failed:
@@ -122,7 +147,9 @@ def inspect_first_pilot_device(*, role: str, artifact_root: str | None = None,
         "source_checkout_clean": qualification["source_checkout_clean"] is True,
         "failed_check_count": len(blockers),
         "blockers": blockers,
+        "voice_mode": voice_mode if role == "mac" else None,
         "installed_mac_arabic_voice_qualified": voice_found,
+        "original_supplied_wav_sha_energy_qualified": wav_found,
         "same_revision_on_other_device_verified": False,
         "actual_mac_arabic_speech_rendered": False,
         "actual_pi_ssh_transfer_tested": False,
@@ -141,11 +168,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact-root")
     parser.add_argument("--min-free-gib", type=float, default=2.0)
     parser.add_argument("--mac-voice")
+    parser.add_argument("--voice-mode", choices=("macos", "supplied_wav"),
+                        default="macos")
+    parser.add_argument("--narration-root")
+    parser.add_argument("--narration-name")
+    parser.add_argument("--narration-sha256")
     args = parser.parse_args(argv)
     try:
         result = inspect_first_pilot_device(
             role=args.role, artifact_root=args.artifact_root,
-            min_free_gib=args.min_free_gib, mac_voice=args.mac_voice)
+            min_free_gib=args.min_free_gib, mac_voice=args.mac_voice,
+            voice_mode=args.voice_mode, narration_root=args.narration_root,
+            narration_name=args.narration_name,
+            narration_sha256=args.narration_sha256)
     except (OSError, ValueError, TypeError, KeyError, AssertionError,
             ImportError, OverflowError):
         print(json.dumps({
