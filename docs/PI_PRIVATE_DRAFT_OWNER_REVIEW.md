@@ -85,3 +85,25 @@ python3 -m kidsstudio.pi_private_draft_inbox --format json
 For a deliberate **local** inspection including the exact private YouTube video IDs, use `--format json --show-video-ids`. Avoid pasting that output into public logs. Multi-version episodes stay separate by exact upload journal, video ID, original source SHA and review-note binding. Any revision note takes priority over older local acceptance notes for the same version.
 
 The board uses **historical local PRIVATE-confirmed upload evidence only**, not the current YouTube visibility. Verify PRIVATE status in YouTube Studio before clicking on a video, and treat accepted private notes as human *assertions*, not authenticated public publication authority. If the tool prints `BLOCKED`, the media, journal, or review note failed local validation. Do **not** delete or reset a journal and retry Google to make the board green; investigate evidence safely and reconcile ambiguous uploads manually.
+
+## Batch 65 — phone-friendly private review page (opt-in, localhost only)
+
+The local Pi terminal board from Batch 64 now has a **responsive Arabic browser interface** with real append-only review forms, using the exact same SHA/journal/version checks as the trusted CLI. This is **NOT a publicly exposed website or an automatically running service**. The dashboard binds exclusively to `127.0.0.1:8844` on the Pi and prints a newly generated password to the **Pi operator's terminal for that session only**. It never stores that password in Git, a file, Google or a log. The username is `owner`; possession of this local session password is an access gate, **not verified human identity**.
+
+On the Pi itself, once the owner-private `inbox`, `journals` and `reviews` directories already exist:
+
+~~~bash
+python3 -m kidsstudio.pi_private_draft_web
+~~~
+
+The page is available only at `http://127.0.0.1:8844/` **on the Pi**. For secure viewing from another device (including a phone), first set up an authenticated SSH client with **local TCP port forwarding** from that device's localhost port 8844 to `127.0.0.1:8844` on the Pi. Then open `http://127.0.0.1:8844/` in that device's browser. On a Mac with a trusted, already-verified SSH Pi host key, the tunnel example is:
+
+~~~bash
+ssh -N -L 8844:127.0.0.1:8844 PI_USER@VERIFIED_PI_LAN_HOST
+~~~
+
+For a phone, use an SSH client that supports **local port forwarding** and configure the equivalent forward. Simply typing the Pi's Wi-Fi IP into Safari will **not** work by design, and you should **never** forward this port directly on the router or bind the server to 0.0.0.0. The HTTP portion is loopback-only; its remote-device transit is encrypted by the *separate SSH tunnel*, not by the HTTP server itself.
+
+The page requires its new session-only HTTP Basic password, applies strict Host/Origin/CSRF browser checks and no-store/no-script/no-external-resource security headers. It displays counts and per-version state in Arabic. For a validated local PRIVATE draft, the owner can write a revision note or select ACCEPTED_PRIVATE, explicitly attest reviewing the YouTube PRIVATE draft, and for acceptance also confirm full-video viewing and all Arabic speech listening. Saving calls the existing mode-0600 append-only review writer. It does **not** play or stream videos and does not show private note bodies, OAuth/session URLs, or YouTube IDs; watch the video in YouTube Studio separately first.
+
+Nothing here connects to Google, initiates uploads, retries incomplete uploads, gives public approval, edits remote visibility, or runs in the background. The page only reads local evidence and writes an explicitly requested owner review note. The Pi owner must still manually confirm that the actual YouTube video is PRIVATE **now**; a historical uploader journal is not live privacy evidence. Stop the foreground server with Ctrl+C when done.
