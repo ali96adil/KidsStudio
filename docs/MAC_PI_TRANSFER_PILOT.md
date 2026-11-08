@@ -67,3 +67,20 @@ Require `VERIFIED`. Then separately run the private-only YouTube upload prefligh
 - No remote directories are implicitly created. The server needs no incoming TCP port beyond its existing SSH port. No retries happen in the background; reruns are explicit and do not silently alter a completed destination.
 - This is a **foreground MVP pilot**: the Mac must stay running while video is streamed, but can be shut down once Pi receipt + independent checksum are verified. The Pi can later upload independently.
 - Current test status is MOCK/CI ONLY. A real Mac→Pi LAN test, power interruption test, transfer timing measurement and OAuth upload remain **NOT_RUN** until the operator actually executes them.
+
+## Batch 58 — reviewed colors pilot handoff (recommended path)
+
+For the **first original Arabic colors pilot**, use `kidsstudio.reviewed_mac_pi_handoff` instead of directly calling the generic low-level transfer utility. The original video must have (1) a validated private technical evidence file saved by the real Mac render, (2) at least one `ACCEPTED_PRIVATE` review note for the **exact same SHA-256, source commit and file bytes**, including explicit owner assertions that the *whole video and Arabic speech* were reviewed, and (3) **no** `REVISION_REQUIRED` note for that version. A previous acceptance never cancels a revision request: fix the issue and produce/review a **new** episode file. If evidence is missing, edited, mismatched, symlinked, publicly readable or contradictory, the handoff is blocked **before SSH**.
+
+After the real owner Mac render and explicit local guided review, the owner selects the exact evidence filename from `python3 -m kidsstudio.mac_pilot_review_shortcut list`. To preview the handoff with **NO SSH connection**, run on the Mac:
+
+```bash
+python3 -m kidsstudio.reviewed_mac_pi_handoff \
+  --evidence-name ACTUAL_GENERATED_NAME.evidence.json \
+  --pi-host YOUR_VERIFIED_PI_LAN_NAME_OR_IPV4 \
+  --pi-user YOUR_PI_SSH_USER
+```
+
+A successful preview returns `MAC_PI_REVIEWED_TRANSFER_PREVIEW_ONLY`, the source SHA/byte count, and `ssh_connection_performed: false`. This only validates an **operator-asserted** local acceptance and prepares the existing sender: it does **not** authenticate the operator's identity, contact the Pi or upload anything. Only **after** independently confirming Pi host key, SSH identity, same trusted KidsStudio commit, storage/inbox and the exact selected video, the owner may explicitly repeat the same invocation with `--execute-transfer`. That deliberately calls the existing host-key-pinned, foreground SSH sender and verifies Pi receiver receipt. It is **not** executed by the Mac render launcher, guided review, CI or any background agent. The successful *real* result would be `MAC_PI_REVIEWED_PRIVATE_TRANSFER_VERIFIED`; local CI mock receipt tests do **not** establish that physical result.
+
+After real SSH, independently run the Pi-side `kidsstudio.transfer_verify` SHA command before considering a separately authorized **PRIVATE** YouTube upload. No review record, transfer plan or Pi inbox receipt gives permission to upload or publish, and a local acceptance can be asserted by an unauthenticated filesystem user: this workflow is procedural gating, **not cryptographic owner identity verification**. The generic `mac_to_pi_transfer` remains a lower-level utility, but bypasses the review-note gate, so do not use it for the supervised colors pilot.
