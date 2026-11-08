@@ -32,6 +32,7 @@ from kidsstudio.pi_youtube_private_upload import (
 from kidsstudio.pi_private_draft_review import (
     inspect_uploaded_private_draft, record_post_private_draft_review,
 )
+from kidsstudio.pi_private_draft_inbox import build_private_draft_inbox
 
 
 _SESSION = ("https://www.googleapis.com/upload/youtube/v3/videos?"
@@ -219,6 +220,16 @@ def check_offline_full_private_chain(
     if (post_private["status"] != "PI_PRIVATE_DRAFT_REVIEW_ELIGIBLE_OFFLINE"
             or post_private["youtube_current_privacy_live_rechecked"] is not False):
         raise AssertionError("Post-private Pi review not SHA/video bound.")
+    # Batch 64: assemble the REAL Pi inbox status from the actual uploader
+    # journal and exact SHA, before any (simulated) owner review.
+    inbox_params = dict(
+        journal_root=str(journal_root), private_root=str(inbox),
+        review_root=str(note_dir))
+    before_review = build_private_draft_inbox(**inbox_params)
+    if (before_review["counts"]["NEEDS_OWNER_REVIEW_PRIVATE"] != 1
+            or before_review["counts"]["BLOCKED_LOCAL_EVIDENCE"] != 0
+            or before_review["youtube_current_privacy_live_rechecked"] is not False):
+        raise AssertionError("Fresh fake PRIVATE upload missing from local inbox.")
     recorded = record_post_private_draft_review(
         **review_args, review_root=str(note_dir),
         review_outcome="REVISION_REQUIRED",
@@ -232,6 +243,13 @@ def check_offline_full_private_chain(
             or saved["publication_approved"] is not False
             or saved_note.stat().st_mode & 0o077):
         raise AssertionError("Post-PRIVATE local review proof is not safely bound.")
+    after_review = build_private_draft_inbox(**inbox_params)
+    if (after_review["counts"]["REVISION_REQUIRED_PRIVATE"] != 1
+            or after_review["counts"]["NEEDS_OWNER_REVIEW_PRIVATE"] != 0
+            or after_review["counts"]["BLOCKED_LOCAL_EVIDENCE"] != 0
+            or after_review["items"][0]["youtube_video_id"] is not None
+            or after_review["publication_approved"] is not False):
+        raise AssertionError("Post-private local inbox ignored a revision or leaked ID.")
     # Legacy optional Mac note remains available, but does NOT authorize
     # upload or public release. No actual human observed the sample.
     review = record_mac_pilot_review(
@@ -251,6 +269,7 @@ def check_offline_full_private_chain(
         "real_private_upload_chunk_and_journal_logic_exercised": True,
         "private_upload_happened_before_simulated_owner_review": True,
         "pi_private_draft_note_sha_video_id_bound": True,
+        "pi_private_draft_inbox_pending_to_revision_verified": True,
         "human_owner_review_actually_performed": False,
         "mock_ssh_no_network": True,
         "mock_google_no_network_no_oauth": True,
