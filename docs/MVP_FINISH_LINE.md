@@ -103,3 +103,7 @@ Added a full hosted-macOS `voice_mode=macos` CI integration using **six syntheti
 ## Batch 56 — simpler supervised review without relaxing owner approval
 
 Added `kidsstudio.mac_pilot_review_shortcut`, whose read-only `list` subcommand displays only private, original, validated SHA-matched Mac colors evidence. Its `record` subcommand takes **one exact evidence filename** and an explicit review outcome, derives video filename and SHA-256 from that validated proof and reuses the immutable-by-tool private review-note writer. Accepting a draft still requires separate assertions that the owner watched the complete video and listened to the Arabic voice. The helper performs no transfer, OAuth, upload, publication or implicit newest-video acceptance; it does not count as real owner device validation.
+
+## Batch 57 — guided real-operator review gate
+
+Added `python3 -m kidsstudio.mac_pilot_review_shortcut guided` as a foreground, **TTY-only** Mac pilot review assistant. It requires exact numbered video selection, a separate explicit revise/private-accept outcome, and final `SAVE`; private acceptance additionally requires separate `YES` attestations for watching the entire video and listening to Arabic voice. It rechecks media SHA and sidecar immediately before writing an append-only-by-tool private review note. Invalid choices, no terminal, missing evidence, or EOF never create an approval. This removes error-prone manual SHA/filename copying without replacing actual owner review or authorizing Pi/YouTube/publication.
