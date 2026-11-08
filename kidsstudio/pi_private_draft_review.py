@@ -17,9 +17,8 @@ import os
 from pathlib import Path
 import re
 import secrets
-import stat
 
-from .optional_tool_evidence import read_private_json
+from .optional_tool_evidence import private_evidence_file, read_private_json
 from .pi_youtube_private_upload import _load_journal, _private_journal_path
 from .transfer_verify import verify_staged_file
 
@@ -82,6 +81,9 @@ def inspect_uploaded_private_draft(
             or "session_url" in journal):
         raise PrivateDraftReviewError(
             "Journal is not a confirmed PRIVATE upload for this exact version.")
+    # Pi inbox must remain mode 0700 and the MP4 regular, owned, mode 0600.
+    # Generic digest verification alone does not enforce private path safety.
+    private_evidence_file(private_root, relative_path, max_bytes=20 * 1024**3)
     verified = verify_staged_file(
         root=private_root, relative_path=relative_path,
         expected_sha256=expected_sha256)
