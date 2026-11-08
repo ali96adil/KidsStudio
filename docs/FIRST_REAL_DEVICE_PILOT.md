@@ -58,3 +58,28 @@ If an Arabic \`say\` voice is missing, install or select it in macOS Settings **
 4. **After the video is PRIVATE in YouTube Studio**, watch/listen to the whole episode, record notes or request a new version. Keep public release disabled until a later, separate affirmative decision.
 
 **Still NOT_RUN:** a real Mac Arabic TTS render/review, real Pi SSH/throughput/receipt, initial channel OAuth enrollment, real PRIVATE YouTube upload and owner review. GitHub CI never substitutes for those.
+
+## Batch 62 — offline original WAV route when Apple Arabic say is absent
+
+The one-command Mac launcher now has **two explicit, mutually exclusive original-audio sources**. Its default remains an already-installed Arabic macOS `say` voice. If the Mac has no suitable local voice, prepare your **own original** spoken-Arabic WAV, 24.00 seconds long, uncompressed PCM **16-bit mono**, 16–96 kHz, with six 4-second speech beats matching the pictured colors. The source must be in an existing private mode-0700 directory outside Git, with the WAV file mode 0600. Do not upload the WAV or private paths to GitHub.
+
+From the Mac's trusted KidsStudio checkout, for a WAV actually named `colors_ar_01.wav`:
+
+```bash
+umask 077
+# Prepare your original narration separately. This does NOT synthesize speech.
+export KIDSSTUDIO_NARRATION_ROOT="$HOME/kidsstudio-private/narration"
+export KIDSSTUDIO_NARRATION_NAME="colors_ar_01.wav"
+export KIDSSTUDIO_NARRATION_SHA256="$(shasum -a 256 "$KIDSSTUDIO_NARRATION_ROOT/$KIDSSTUDIO_NARRATION_NAME" | awk '{print $1}')"
+python3 -m kidsstudio.first_pilot_device_doctor --role mac \
+  --voice-mode supplied_wav \
+  --narration-root "$KIDSSTUDIO_NARRATION_ROOT" \
+  --narration-name "$KIDSSTUDIO_NARRATION_NAME" \
+  --narration-sha256 "$KIDSSTUDIO_NARRATION_SHA256"
+# ONLY AFTER the offline doctor reports READY:
+bash scripts/run_mac_colors_pilot.sh
+```
+
+The launcher itself now routes the *same* three environment values to the non-render preflight, the no-write preview and the real render, and blocks incomplete inputs or `KIDSSTUDIO_MAC_VOICE` mixed with WAV mode. The preflight checks the private file mode/owner, file name, SHA256, exact six-beat 24s mono PCM format and at least 60ms of audible signal per beat. It **does not require Apple say** when the supplied-WAV mode is explicitly selected, and never silently falls back between sources. The production code independently rechecks file SHA/format before muxing; wrong/changed bytes abort.
+
+The energy check only detects missing/near-silent beats, not spoken Arabic, natural pronunciation, intelligibility, age-appropriate teaching, or music rights. Human review still happens after the PRIVATE YouTube draft. The script does not contact Pi or YouTube. A hosted macOS CI test runs the actual shell with an **FFmpeg synthetic sine tone WAV**, not a real Arabic recording, and `KIDSSTUDIO_SKIP_OPEN=1` disables GUI launch only in that controlled test; it never claims real owner review.
