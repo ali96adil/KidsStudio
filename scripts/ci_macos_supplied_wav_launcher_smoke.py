@@ -24,7 +24,11 @@ def run() -> dict:
     repo = Path(__file__).resolve().parents[1]
     bash = repo / "scripts" / "run_mac_colors_pilot.sh"
     with tempfile.TemporaryDirectory(prefix="kidsstudio-ci-private-") as home:
-        h = Path(home)
+        # macOS tempfile paths often begin /var/folders, where /var is a
+        # symlink to /private/var. The production private-file validator
+        # intentionally rejects ALL symlink components: use the canonical
+        # absolute path for the CI-only HOME and original WAV.
+        h = Path(home).resolve(strict=True)
         original = h / "kidsstudio-private" / "narration"
         original.mkdir(parents=True, mode=0o700)
         wav = original / "ci_original_sound_NOT_speech.wav"
