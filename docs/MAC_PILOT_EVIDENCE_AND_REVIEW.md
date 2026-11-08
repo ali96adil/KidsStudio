@@ -83,3 +83,33 @@ KIDSSTUDIO_MAC_VOICE=Maged bash scripts/run_mac_colors_pilot.sh
 A supplied name is checked against the installed Arabic voice list both during preflight and rendering. The launcher uses branches rather than empty Bash arrays to support the system Bash included with macOS, and each output filename has both timestamp and a random retry suffix to avoid collisions when two attempts happen within one second. Do **not** share your speech files or generated clip publicly while reviewing them.
 
 This change improves local operational reliability; it does not prove correct Arabic pronunciation or replace the full owner listening/playback check. Actual owner Mac, Pi transfer, YouTube PRIVATE upload and later publication decisions remain separate human-supervised steps.
+
+## Batch 56 — SHA-free local review shortcut (no automatic approval)
+
+After an **actual successful Mac run**, the launcher prints the exact recorded evidence filename and the command to list available local proofs. You do not need to retype the 64-character video SHA or video filename. This convenience layer re-reads the owner's private technical evidence, validates its original source SHA/clean state, its expected video name/bytes and exact current MP4 SHA-256, and only then delegates to the existing review record writer.
+
+Run this in the checked-out KidsStudio directory on the same Mac:
+
+```bash
+# Read-only: show the latest 10 actual, hash-verified local pilot entries.
+python3 -m kidsstudio.mac_pilot_review_shortcut list
+
+# After full viewing, record a revision note tied to ONE EXACT evidence file.
+python3 -m kidsstudio.mac_pilot_review_shortcut record \
+  --evidence-name ACTUAL_GENERATED_NAME.evidence.json \
+  --review-outcome REVISION_REQUIRED \
+  --reviewer-notes "مثلاً: الصوت يحتاج تعديل"
+```
+
+If and only if you have watched the **entire** MP4 and listened to **every** Arabic line yourself, the same exact evidence name can be marked locally accepted for private review with all of:
+
+```bash
+python3 -m kidsstudio.mac_pilot_review_shortcut record \
+  --evidence-name ACTUAL_GENERATED_NAME.evidence.json \
+  --review-outcome ACCEPTED_PRIVATE \
+  --reviewed-full-video \
+  --reviewed-arabic-voice \
+  --reviewer-notes "مقبول كتجربة محلية خاصة فقط"
+```
+
+The shortcut **never chooses a review candidate implicitly by timestamp**. It does not open the video, assert you watched it, upload files or publish anything. Listing is strictly read-only and omits invalid/mismatched sidecars. Any request to record review must supply an exact technical sidecar filename, an outcome and, for acceptance, the two explicit reviewed flags. It still writes a distinct 0600 note, refuses tampered/untrusted input and rechecks the current media hash. *Acceptance here is not transfer permission, upload permission or publication approval.* The full manual SHA-based command earlier in this runbook remains supported.
