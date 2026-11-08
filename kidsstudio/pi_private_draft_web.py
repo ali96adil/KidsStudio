@@ -301,9 +301,9 @@ def make_private_dashboard_handler(*, journal_root: str, private_root: str,
             if self.path != "/review":
                 self._send(404, b"Not found.")
                 return
-            if self.headers.get("Origin") not in {
-                "http://" + host for host in self._allowed_hosts()
-            }:
+            browser_host = self.headers.get("Host")
+            if (browser_host not in self._allowed_hosts()
+                    or self.headers.get("Origin") != "http://" + browser_host):
                 self._send(403, b"Untrusted browser origin.")
                 return
             if (self.headers.get("Content-Type") != "application/x-www-form-urlencoded"
