@@ -102,6 +102,11 @@ EVIDENCE_NAME="${BASENAME%.mp4}.evidence.json"
 echo "Video (private, NOT uploaded): $TARGET"
 echo "Final MP4 SHA256: $MOVIE_SHA"
 echo "Private technical evidence (review pending): $EVIDENCE_DIR/$EVIDENCE_NAME"
+echo "After actually reviewing the ENTIRE video and all Arabic speech:"
+echo "Review choices: $PYTHON -m kidsstudio.mac_pilot_review_shortcut list"
+printf 'Request revision: %s -m kidsstudio.mac_pilot_review_shortcut record --evidence-name %q --review-outcome REVISION_REQUIRED --reviewer-notes %q\n' "$PYTHON" "$EVIDENCE_NAME" 'Describe the issue'
+echo "Private acceptance requires explicit --reviewed-full-video AND --reviewed-arabic-voice."
+echo "No review command is run automatically, and review never authorizes upload."
 echo "Listen and watch the ENTIRE clip before any Pi transfer or upload."
 # Open only the local result for the owner's immediate visual/audio review.
 open "$TARGET"
