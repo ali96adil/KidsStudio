@@ -21,6 +21,7 @@ from kidsstudio.first_colors_episode import DURATION, run_first_colors_episode
 from kidsstudio.audio_pcm_energy import AudioPresenceError, check_six_beat_pcm_energy
 from kidsstudio.mac_episode_audio import _check_video, _probe
 from kidsstudio.mp4_playback_preflight import inspect_mp4_playback
+from ci_full_private_chain_smoke import check_offline_full_private_chain
 
 
 def _wav_silence(path: Path) -> str:
@@ -114,6 +115,14 @@ def run_real_colors_smoke() -> dict:
         assert red[0] > 170 and red[0] > red[1] * 2
         assert yellow[0] > 200 and yellow[1] > 140 and yellow[2] < 110
         assert blue[2] > 160 and blue[2] > blue[0] * 2
+        # Reuse the ACTUAL encoded MP4 for a full offline simulated chain;
+        # real owner review, SSH and Google credentials are never present.
+        chain = check_offline_full_private_chain(
+            base=base, ready=ready, video_name=movie.name,
+            expected_sha256=report["final_mp4_sha256"])
+        assert (chain["status"]
+                == "OFFLINE_REAL_MP4_TO_FAKE_PI_TO_FAKE_YOUTUBE_PRIVATE_PASSED")
+        assert chain["actual_youtube_upload_performed"] is False
         return {
             "status": "REAL_FFMPEG_COLORS_SMOKE_PASSED_NO_HUMAN_VOICE",
             "video_seconds": round(duration, 3),
@@ -126,6 +135,9 @@ def run_real_colors_smoke() -> dict:
             "sha256_verified": True,
             "synthetic_silent_audio_only": True,
             "synthetic_silence_correctly_rejected_as_voice": True,
+            "real_mp4_to_fake_pi_to_fake_private_youtube_chain": chain["status"],
+            "ci_owner_review_only_simulated": True,
+            "ci_ssh_and_google_network_calls": False,
             "mac_hardware_tested": False,
             "arabic_voice_tested": False,
             "pi_transfer_performed": False,
