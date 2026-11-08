@@ -62,11 +62,11 @@ class PostPrivateDraftReviewTests(unittest.TestCase):
 
     def record(self, outcome="REVISION_REQUIRED", notes="لون السماء يحتاج مراجعة",
                **changes):
+        extras = dict(reviewed_private_youtube_draft=True, save_review=True)
+        extras.update(changes)
         return record_post_private_draft_review(
             **self.params(), review_root=str(self.notes),
-            review_outcome=outcome, reviewer_notes=notes,
-            reviewed_private_youtube_draft=True, save_review=True,
-            **changes)
+            review_outcome=outcome, reviewer_notes=notes, **extras)
 
     def files(self):
         return list(self.notes.iterdir())
