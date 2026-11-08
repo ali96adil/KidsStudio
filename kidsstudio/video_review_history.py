@@ -5,6 +5,7 @@ Stores metadata receipts only; not an owner authentication or publishing system.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import re
 import sqlite3
 import stat
 import time
+from typing import Iterator
 
 from .video_review_receipt import build_video_review_receipt
 
@@ -48,7 +50,7 @@ class VideoReviewHistory:
         fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(fd)
         try:
-            with sqlite3.connect(self.path) as db:
+            with self._connection() as db:
                 db.executescript("""
                     CREATE TABLE reviews (
                         review_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +73,16 @@ class VideoReviewHistory:
             return sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
         return sqlite3.connect(self.path)
 
+    @contextmanager
+    def _connection(self, *, readonly: bool = False) -> Iterator[sqlite3.Connection]:
+        """Preserve SQLite transaction semantics and close every connection."""
+        db = self._connect(readonly=readonly)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
     def record(self, *, episode_id: str, video_root: str, relative_path: str,
                expected_sha256: str, reviewer_notes: str = "",
                review_outcome: str = "NEEDS_REVIEW") -> dict:
@@ -78,7 +90,7 @@ class VideoReviewHistory:
             episode_id=episode_id, video_root=video_root,
             relative_path=relative_path, expected_sha256=expected_sha256,
             reviewer_notes=reviewer_notes, review_outcome=review_outcome)
-        with self._connect() as db:
+        with self._connection() as db:
             cur = db.execute(
                 "INSERT INTO reviews(episode_id,video_sha256,video_bytes,outcome,"
                 "reviewer_notes,recorded_at) VALUES(?,?,?,?,?,?)",
@@ -94,7 +106,7 @@ class VideoReviewHistory:
     def list_reviews(self, *, episode_id: str) -> list[dict]:
         if not isinstance(episode_id, str) or not _EPISODE.fullmatch(episode_id):
             raise ValueError("invalid episode id")
-        with self._connect(readonly=True) as db:
+        with self._connection(readonly=True) as db:
             rows = db.execute(
                 "SELECT review_id,video_sha256,video_bytes,outcome,reviewer_notes,"
                 "recorded_at FROM reviews WHERE episode_id=? ORDER BY review_id",

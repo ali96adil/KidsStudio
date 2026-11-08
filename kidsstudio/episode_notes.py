@@ -5,11 +5,13 @@ Separate SQLite database; never writes to StudioQueue or YouTube.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import re
 import sqlite3
 import time
+from typing import Iterator
 
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}\Z")
 
@@ -37,7 +39,7 @@ class EpisodeNotes:
         fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         os.close(fd)
         try:
-            with sqlite3.connect(self.path) as db:
+            with self._connection() as db:
                 db.executescript("""
                     CREATE TABLE notes (
                         note_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,11 +62,21 @@ class EpisodeNotes:
             return sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
         return sqlite3.connect(self.path)
 
+    @contextmanager
+    def _connection(self, *, readonly: bool = False) -> Iterator[sqlite3.Connection]:
+        """Commit or roll back as before, then always release the file handle."""
+        db = self._connect(readonly=readonly)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
     def add(self, *, episode_id: str, text: str) -> int:
         _validate_id(episode_id)
         if not isinstance(text, str) or not 1 <= len(text.strip()) <= 2000:
             raise ValueError("invalid note text")
-        with self._connect() as db:
+        with self._connection() as db:
             cur = db.execute(
                 "INSERT INTO notes(episode_id,event_type,note_text,target_note_id,created_at) "
                 "VALUES(?,'ADD',?,NULL,?)",
@@ -76,7 +88,7 @@ class EpisodeNotes:
         _validate_id(episode_id)
         if type(note_id) is not int or note_id <= 0:
             raise ValueError("invalid note id")
-        with self._connect() as db:
+        with self._connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT note_id FROM notes WHERE note_id=? AND episode_id=? "
@@ -98,7 +110,7 @@ class EpisodeNotes:
 
     def list_notes(self, *, episode_id: str) -> list[dict]:
         _validate_id(episode_id)
-        with self._connect(readonly=True) as db:
+        with self._connection(readonly=True) as db:
             rows = db.execute(
                 "SELECT note_id,event_type,note_text,target_note_id FROM notes "
                 "WHERE episode_id=? ORDER BY note_id", (episode_id,)

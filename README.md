@@ -33,7 +33,12 @@ This initial QA does **not** judge artistic quality, seams, motion, IP originali
     python3 -m venv .venv
     source .venv/bin/activate
     pip install -e .
-    python -m unittest discover -s tests -v
+    python scripts/run_tests.py
+
+The test runner canonicalizes only its temporary directory so macOS's system
+`/var` → `/private/var` alias does not look like untrusted private evidence.
+Production path checks remain strict and continue to reject symlinked media,
+journals, credentials and review records.
 
 Create generation instructions from the example character blueprint:
 

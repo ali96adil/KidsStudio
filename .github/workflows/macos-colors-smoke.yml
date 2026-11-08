@@ -35,6 +35,11 @@ jobs:
       - name: Validate supervised Mac launcher syntax
         shell: bash
         run: bash -n scripts/run_mac_colors_pilot.sh
+      - name: Full unit suite on macOS with canonical private test temp root
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run_tests.py
       - name: Real macOS 24-second original colors MP4 (synthetic silent WAV)
         shell: bash
         run: |

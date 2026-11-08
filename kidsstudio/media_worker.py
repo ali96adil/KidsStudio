@@ -6,6 +6,7 @@ A crashed STARTED record is quarantined and NEVER auto-executed again.
 """
 from __future__ import annotations
 
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -138,15 +139,16 @@ class MediaJournal:
         if not self.path.exists():
             fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             os.close(fd)
-        with sqlite3.connect(self.path) as con:
-            con.execute("""
-                CREATE TABLE IF NOT EXISTS attempts (
-                  job_id TEXT PRIMARY KEY, request_sha TEXT NOT NULL,
-                  kind TEXT NOT NULL, recipe_id TEXT NOT NULL,
-                  state TEXT NOT NULL, result TEXT
-                )
-            """)
-            con.execute("PRAGMA synchronous=FULL")
+        with closing(sqlite3.connect(self.path)) as con:
+            with con:
+                con.execute("""
+                    CREATE TABLE IF NOT EXISTS attempts (
+                      job_id TEXT PRIMARY KEY, request_sha TEXT NOT NULL,
+                      kind TEXT NOT NULL, recipe_id TEXT NOT NULL,
+                      state TEXT NOT NULL, result TEXT
+                    )
+                """)
+                con.execute("PRAGMA synchronous=FULL")
 
     def begin(self, job_id: str, digest: str, kind: str,
               recipe_id: str) -> tuple[str, dict[str, Any] | None]:
@@ -182,14 +184,14 @@ class MediaJournal:
 
     def done(self, job_id: str, result: dict[str, Any]) -> None:
         payload = json.dumps(result, sort_keys=True)
-        with sqlite3.connect(self.path, timeout=10) as con:
-            cur = con.execute(
-                "UPDATE attempts SET state='DONE',result=? "
-                "WHERE job_id=? AND state='STARTED'", (payload, job_id)
-            )
-            if cur.rowcount != 1:
-                raise MediaError("Journal state was not STARTED.")
-            con.commit()
+        with closing(sqlite3.connect(self.path, timeout=10)) as con:
+            with con:
+                cur = con.execute(
+                    "UPDATE attempts SET state='DONE',result=? "
+                    "WHERE job_id=? AND state='STARTED'", (payload, job_id)
+                )
+                if cur.rowcount != 1:
+                    raise MediaError("Journal state was not STARTED.")
 
 
 class MediaExecutor:

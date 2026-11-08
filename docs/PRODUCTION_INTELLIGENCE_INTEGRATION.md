@@ -59,3 +59,19 @@ G5 enable only after documented review and owner authorization.
 - `filmcraft_baseline_compare.py`: independently hash and ffprobe two private delivery MP4s, confirm H.264/AAC technical requirements, matching nominal frame rates and <=0.10-second duration delta. This is **not** a full visual or audio comparison.
 - `filmcraft_frame_compare.py`: after the technical check, use local ffmpeg to decode six in-memory 320×180 frames at three relative timeline positions; report frame differences, then rehash both files. This checks **samples only**, not complete quality or subtitles.
 - No installation, remote tool, real alpha-tool execution, publication, queue mutation or transfer was performed. Source identity is unverified; physical Mac/Pi G4 remains NOT_RUN. Runbooks and thresholds are documented in `CRAFT_FILMCRAFT_OPTIONAL_PILOTS.md`.
+
+## Batch 66 — macOS test reproducibility and SQLite lifecycle (2026-11-08)
+
+- Baseline/rollback point: local tag `codex-restore-20261108-batch65` at
+  `b9ce3eed1e9d8f310d6c7fb3e357a9bc0a954eb1` before this batch.
+- `scripts/run_tests.py` canonicalizes the **test-only** temporary root. This
+  accommodates macOS's `/var` system alias without weakening any production
+  symlink rejection or private-path policy.
+- CI now runs Python 3.11, 3.12 and 3.13, compiles source/tests/scripts, and
+  executes the complete unit suite on the hosted macOS job before media smokes.
+- Episode notes, private video-review history and the Mac media journal now
+  close every SQLite connection explicitly after commit/rollback. Regression
+  tests track initialization, read and write connection lifecycles.
+- Rollback is one revert of this batch or checkout of the tagged baseline. No
+  queue schema, worker capability, episode state, media recipe, upload policy,
+  credential, device service or publication gate changed.
