@@ -79,6 +79,72 @@ class HostQualificationTests(unittest.TestCase):
         self.assertFalse(report["checks"]["role_matches_os_machine"])
         self.assertEqual(report["status"], "SUPERVISED_TESTS_BLOCKED")
 
+    def test_dirty_mac_checkout_is_not_ready_even_when_media_tests_pass(self):
+        with patch("kidsstudio.host_qualification.inspect_host",
+                   return_value={
+                       "ready_for_supervised_tests": True,
+                       "host_system": "Darwin", "machine": "arm64",
+                       "checks": {"artifact_root_private": True},
+                   }), patch("kidsstudio.host_qualification._source_checkout",
+                             return_value=("a" * 40, False)), patch(
+                                 "kidsstudio.host_qualification.run_review_pipeline_qualification",
+                                 return_value={"status": "OFFLINE_REVIEW_PIPELINE_PASS"}):
+            result = qualify_host(role="mac-render",
+                                  artifact_root=str(self.root), min_free_gib=0)
+        self.assertEqual(result["status"], "SUPERVISED_TESTS_BLOCKED")
+        self.assertTrue(result["checks"]["source_commit_sha40"])
+        self.assertFalse(result["checks"]["source_checkout_clean"])
+
+    def test_pi_missing_commit_blocks_even_with_true_hardware(self):
+        with patch("kidsstudio.host_qualification.inspect_host",
+                   return_value={
+                       "ready_for_supervised_tests": True,
+                       "host_system": "Linux", "machine": "aarch64",
+                       "checks": {"artifact_root_private": True},
+                   }), patch("kidsstudio.host_qualification._raspberry_pi_model_present",
+                             return_value=True), patch(
+                                 "kidsstudio.host_qualification._source_checkout",
+                                 return_value=(None, False)), patch(
+                                     "kidsstudio.host_qualification.run_review_pipeline_qualification",
+                                     return_value={"status": "OFFLINE_REVIEW_PIPELINE_PASS"}):
+            result = qualify_host(role="pi-private-handoff",
+                                  artifact_root=str(self.root), min_free_gib=0)
+        self.assertEqual(result["status"], "SUPERVISED_TESTS_BLOCKED")
+        self.assertFalse(result["checks"]["source_commit_sha40"])
+        self.assertFalse(result["checks"]["source_checkout_clean"])
+
+    def test_malformed_sha_blocks_even_if_git_claims_clean(self):
+        with patch("kidsstudio.host_qualification.inspect_host",
+                   return_value={
+                       "ready_for_supervised_tests": True,
+                       "host_system": "Darwin", "machine": "arm64",
+                       "checks": {"artifact_root_private": True},
+                   }), patch("kidsstudio.host_qualification._source_checkout",
+                             return_value=("not-a-commit", True)), patch(
+                                 "kidsstudio.host_qualification.run_review_pipeline_qualification",
+                                 return_value={"status": "OFFLINE_REVIEW_PIPELINE_PASS"}):
+            result = qualify_host(role="mac-render",
+                                  artifact_root=str(self.root), min_free_gib=0)
+        self.assertEqual(result["status"], "SUPERVISED_TESTS_BLOCKED")
+        self.assertFalse(result["checks"]["source_commit_sha40"])
+
+    def test_clean_commit_is_necessary_but_not_production_approval(self):
+        with patch("kidsstudio.host_qualification.inspect_host",
+                   return_value={
+                       "ready_for_supervised_tests": True,
+                       "host_system": "Darwin", "machine": "arm64",
+                       "checks": {"artifact_root_private": True},
+                   }), patch("kidsstudio.host_qualification._source_checkout",
+                             return_value=("a" * 40, True)), patch(
+                                 "kidsstudio.host_qualification.run_review_pipeline_qualification",
+                                 return_value={"status": "OFFLINE_REVIEW_PIPELINE_PASS"}):
+            result = qualify_host(role="mac-render",
+                                  artifact_root=str(self.root), min_free_gib=0)
+        self.assertEqual(result["status"], "SUPERVISED_TESTS_READY")
+        self.assertTrue(result["checks"]["source_commit_sha40"])
+        self.assertTrue(result["checks"]["source_checkout_clean"])
+        self.assertFalse(result["publication_approved"])
+
     def test_invalid_role_rejected(self):
         with self.assertRaises(ValueError):
             qualify_host(role="youtube-public", artifact_root=str(self.root),
