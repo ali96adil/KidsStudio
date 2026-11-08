@@ -195,13 +195,13 @@ class PrivateDraftWebTests(unittest.TestCase):
                          fields=self.fields(), origin=False)[0], 403)
         self.assertEqual(self.notes(), [])
 
-    def test_same_origin_post_to_localhost_host_is_rejected_if_origin_differs(self):
+    def test_both_trusted_loopback_hosts_support_authenticated_forms(self):
+        # Both 127.0.0.1 and localhost represent trusted local-only URLs.
+        # They still require the correct Basic password and CSRF.
         self.assertEqual(
             self.request("POST", "/review",
-                         fields=self.fields(), host=f"localhost:{self.port}")[0],
-            200 if False else 200 if False else 422 if False else 303)
-        # Both 127.0.0.1 and localhost origins are accepted for a verified
-        # loopback tunnel; the same local password/CSRF still applies.
+                         fields=self.fields(),
+                         host=f"localhost:{self.port}")[0], 303)
         self.assertEqual(self.status(), "REVISION_REQUIRED_PRIVATE")
 
     def test_explicit_review_requires_private_draft_checkbox(self):
