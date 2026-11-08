@@ -372,7 +372,11 @@ def execute_private_upload(
             record = {"schema_version": 1, "intent_sha256": fingerprint,
                       "state": "INITIATION_UNCERTAIN",
                       "media_sha256": preview["artifact_sha256"],
-                      "media_bytes": total}
+                      "media_bytes": total,
+                      # Non-sensitive exact content/version anchors for the
+                      # offline post-PRIVATE owner review on this Pi.
+                      "media_name": relative_path,
+                      "episode_id": episode_id}
             # Refreshing OAuth cannot itself create a video. Do it before
             # persisting the upload-initiation uncertainty journal, so an
             # invalid/expired refresh token does not block a never-started upload.
