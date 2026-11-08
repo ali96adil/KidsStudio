@@ -1,5 +1,7 @@
 # G4 Mac → Pi private video transfer — supervised pilot
 
+> **Current default — PRIVATE-first workflow (Batch 60):** For the colors pilot, use `kidsstudio.technical_mac_pi_handoff`. It verifies the local Mac technical evidence and exact SHA before staging a PRIVATE draft on the Pi; human review is **after** YouTube PRIVATE upload. The older `reviewed_mac_pi_handoff` below remains an optional stricter manual-before-transfer route, **not a mandatory prerequisite for PRIVATE staging**. Neither command authorizes public publication.
+
 **Status:** implemented as two opt-in Python commands using authenticated SSH. The code is covered by isolated mock tests; no SSH connection to the user's Pi has been performed.
 
 The Mac renders the MP4 locally. Only the completed MP4 is sent to Pi using an already configured SSH key. The Pi receiver is fixed to its local home directory `~/kidsstudio-private/inbox` and atomically installs the file *only after* SHA-256 and byte count match. No SQLite queue, API key, Pi upload service, ComfyUI, YouTube or public publication action is triggered.
@@ -84,3 +86,22 @@ python3 -m kidsstudio.reviewed_mac_pi_handoff \
 A successful preview returns `MAC_PI_REVIEWED_TRANSFER_PREVIEW_ONLY`, the source SHA/byte count, and `ssh_connection_performed: false`. This only validates an **operator-asserted** local acceptance and prepares the existing sender: it does **not** authenticate the operator's identity, contact the Pi or upload anything. Only **after** independently confirming Pi host key, SSH identity, same trusted KidsStudio commit, storage/inbox and the exact selected video, the owner may explicitly repeat the same invocation with `--execute-transfer`. That deliberately calls the existing host-key-pinned, foreground SSH sender and verifies Pi receiver receipt. It is **not** executed by the Mac render launcher, guided review, CI or any background agent. The successful *real* result would be `MAC_PI_REVIEWED_PRIVATE_TRANSFER_VERIFIED`; local CI mock receipt tests do **not** establish that physical result.
 
 After real SSH, independently run the Pi-side `kidsstudio.transfer_verify` SHA command before considering a separately authorized **PRIVATE** YouTube upload. No review record, transfer plan or Pi inbox receipt gives permission to upload or publish, and a local acceptance can be asserted by an unauthenticated filesystem user: this workflow is procedural gating, **not cryptographic owner identity verification**. The generic `mac_to_pi_transfer` remains a lower-level utility, but bypasses the review-note gate, so do not use it for the supervised colors pilot.
+
+## Batch 60 — correct PRIVATE-first technical staging (current recommended route)
+
+Owner's intended order is **Mac render → automated technical QA → Pi staging → separately authorized YouTube PRIVATE upload → owner watches PRIVATE draft → owner notes/revises/decides on a later public release**. Do not force manual Mac approval before the PRIVATE draft is available.
+
+The Mac launcher records an exact 0600 technical sidecar after a real local FFmpeg/ffprobe playback gate and clean source qualification. The new `kidsstudio.technical_mac_pi_handoff` verifies the selected private sidecar's source revision, host role/OS, 3 video and 2 audio decoded samples, faststart, owner-review-pending flags, exact SHA256 and file size. **No `ACCEPTED_PRIVATE` human review note is required**, because no public release is happening. It does not call YouTube or schedule a release.
+
+On the real Mac, with the verified Pi SSH host key and user correctly configured, preview the handoff **without any SSH**:
+
+```bash
+python3 -m kidsstudio.technical_mac_pi_handoff \
+  --evidence-name ACTUAL_GENERATED_NAME.evidence.json \
+  --pi-host YOUR_VERIFIED_PI_LAN_NAME_OR_IPV4 \
+  --pi-user YOUR_PI_SSH_USER
+```
+
+Only when the user explicitly decides to transfer the technically checked PRIVATE source, add `--execute-transfer` to that same command; it uses existing authenticated SSH/strict host key/SHA-checked atomic Pi receiver. **Sending to Pi is not an upload to YouTube.** On Pi, independently verify exact SHA and, after separate OAuth authorization/consent, use `pi_youtube_private_upload` to upload **PRIVATE only**. The owner then reviews the PRIVATE YouTube draft, records notes and may request revision. A separate explicit publication decision is always required.
+
+No actual Pi or Google credentials are exercised by the CI test. The earlier `reviewed_mac_pi_handoff` remains supported for users who personally choose to inspect the local clip *before* transferring; it must not be represented as the only path.
