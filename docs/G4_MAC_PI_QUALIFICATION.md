@@ -93,7 +93,7 @@ After an independently authorized private transfer, obtain the expected SHA256 f
 
 ```bash
 python -m kidsstudio.transfer_verify \
-  --root "$HOME/kidsstudio-private/incoming" \
+  --root "$HOME/kidsstudio-private/inbox" \
   --relative-path "episode.mp4" \
   --expected-sha256 EXPECTED_MAC_SHA256
 ```
@@ -383,3 +383,8 @@ This mechanism reduces accidental version skew but is **not attestation**: repor
 Before collecting SHA-bound Mac technical evidence or comparing Mac/Pi reports, `host_qualification` now reads the full Git commit via `git rev-parse --verify HEAD^{commit}` and inspects **the entire checkout**, not merely `kidsstudio/` and `tests/`. Its read-only `git status --porcelain=v1 --untracked-files=all` rejects any tracked modification or untracked *non-ignored* file under the repo, including changes to scripts, docs and CI workflows. Only a Git-tracked clean source checkout produces `source_checkout_clean: true`; an installed package without `.git`, an invalid commit or a failed Git read remains false.
 
 This is an operator consistency signal, **not cryptographic attestation of hardware, builds, dependencies or ignored files**. If the checkout is dirty, inspect `git status --short` locally and resolve it under your own change-management process; never delete local production material simply to pass a check. Media and evidence should remain in the private directory **outside Git**. Actual Mac/Pi physical tests and YouTube PRIVATE upload remain NOT_RUN.
+
+
+## Batch 61 — first real-device source verification
+
+Use the dedicated [FIRST_REAL_DEVICE_PILOT.md](FIRST_REAL_DEVICE_PILOT.md) checklist for Mac and Pi `first_pilot_device_doctor` read-only commands. Host qualification now **blocks** a dirty or absent Git checkout instead of merely reporting it, and two local READY reports do not automatically prove the devices have the SAME commit: compare `source_commit` before Pi staging. The previously illustrated Pi verification path `~/kidsstudio-private/incoming` was historical and did not match the actual fixed Pi SSH receiver. The corrected path is **`~/kidsstudio-private/inbox`**. This does not execute any real SSH or Google API operation.
