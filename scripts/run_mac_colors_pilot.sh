@@ -21,27 +21,51 @@ if ! "$PYTHON" -c 'import sys; import PIL; assert sys.version_info >= (3, 11)' 2
   echo "MAC_COLORS_BLOCKED: Python 3.11+ with Pillow is required."
   exit 2
 fi
-for program in ffmpeg ffprobe say shasum; do
+# A supplied original WAV is an explicit alternative if macOS has no
+# installed Arabic say voice. Never silently fall back or use stale inputs.
+NARRATION_ENABLED=0
+if [[ -n "${KIDSSTUDIO_NARRATION_ROOT+x}" || -n "${KIDSSTUDIO_NARRATION_NAME+x}" || -n "${KIDSSTUDIO_NARRATION_SHA256+x}" ]]; then
+  if [[ -z "${KIDSSTUDIO_NARRATION_ROOT:-}" || -z "${KIDSSTUDIO_NARRATION_NAME:-}" || -z "${KIDSSTUDIO_NARRATION_SHA256:-}" ]]; then
+    echo "MAC_COLORS_BLOCKED: WAV mode needs narration root, name and SHA256 together."
+    exit 2
+  fi
+  if [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
+    echo "MAC_COLORS_BLOCKED: Choose one voice mode; cannot mix native voice and WAV."
+    exit 2
+  fi
+  NARRATION_ENABLED=1
+fi
+
+for program in ffmpeg ffprobe shasum git; do
   if ! command -v "$program" >/dev/null 2>&1; then
     echo "MAC_COLORS_BLOCKED: Missing local executable: $program"
     exit 2
   fi
 done
+if [[ "$NARRATION_ENABLED" -eq 0 ]] && ! command -v say >/dev/null 2>&1; then
+  echo "MAC_COLORS_BLOCKED: Native mode requires locally installed macOS say."
+  exit 2
+fi
 
 OUTPUT_DIR="$HOME/kidsstudio-private/ready"
 mkdir -p "$OUTPUT_DIR"
 chmod 700 "$OUTPUT_DIR"
 
-# Explicitly selected voice is optional, and must already be installed.
-# Use separate calls (no empty arrays) for compatibility with macOS Bash 3.2.
-# No shell evaluation; an invalid voice name fails in Python.
-echo "Gate 0/4: check installed Arabic voice, Git source and private Mac readiness"
-if [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
+# Separate calls rather than arrays keep this compatible with Bash 3.2.
+# Neither preflight nor preview launches TTS or renders any media.
+echo "Gate 0/4: verify clean Git, private output, tools and selected original voice source"
+if [[ "$NARRATION_ENABLED" -eq 1 ]]; then
   "$PYTHON" -m kidsstudio.mac_colors_preflight \
-    --artifact-root "$OUTPUT_DIR" --mac-voice "$KIDSSTUDIO_MAC_VOICE"
+    --artifact-root "$OUTPUT_DIR" --voice-mode supplied_wav \
+    --narration-root "$KIDSSTUDIO_NARRATION_ROOT" \
+    --narration-name "$KIDSSTUDIO_NARRATION_NAME" \
+    --narration-sha256 "$KIDSSTUDIO_NARRATION_SHA256"
+elif [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
+  "$PYTHON" -m kidsstudio.mac_colors_preflight \
+    --artifact-root "$OUTPUT_DIR" --voice-mode macos --mac-voice "$KIDSSTUDIO_MAC_VOICE"
 else
   "$PYTHON" -m kidsstudio.mac_colors_preflight \
-    --artifact-root "$OUTPUT_DIR"
+    --artifact-root "$OUTPUT_DIR" --voice-mode macos
 fi
 
 # Include random per-invocation suffix so even same-second retries cannot
@@ -52,8 +76,18 @@ TARGET="$OUTPUT_DIR/$BASENAME"
 echo "Source checkout: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "Step 1/4: local preflight (no render, no network)"
 set +e
-PREVIEW="$("$PYTHON" -m kidsstudio.first_colors_episode \
-  --output-root "$OUTPUT_DIR" --output-name "$BASENAME" 2>&1)"
+if [[ "$NARRATION_ENABLED" -eq 1 ]]; then
+  PREVIEW="$("$PYTHON" -m kidsstudio.first_colors_episode \
+    --output-root "$OUTPUT_DIR" --output-name "$BASENAME" \
+    --voice-mode supplied_wav \
+    --narration-root "$KIDSSTUDIO_NARRATION_ROOT" \
+    --narration-name "$KIDSSTUDIO_NARRATION_NAME" \
+    --narration-sha256 "$KIDSSTUDIO_NARRATION_SHA256" 2>&1)"
+else
+  PREVIEW="$("$PYTHON" -m kidsstudio.first_colors_episode \
+    --output-root "$OUTPUT_DIR" --output-name "$BASENAME" \
+    --voice-mode macos 2>&1)"
+fi
 PREVIEW_EXIT=$?
 set -e
 printf '%s\n' "$PREVIEW"
@@ -62,8 +96,16 @@ if [[ "$PREVIEW_EXIT" -ne 1 ]] || [[ "$PREVIEW" != *COLORS_EPISODE_PREVIEW_ONLY*
   exit 2
 fi
 
-echo "Step 2/4: owner-invoked local render and macOS Arabic voice"
-if [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
+echo "Step 2/4: owner-invoked local render with explicitly selected original narration"
+if [[ "$NARRATION_ENABLED" -eq 1 ]]; then
+  "$PYTHON" -m kidsstudio.first_colors_episode \
+    --output-root "$OUTPUT_DIR" \
+    --output-name "$BASENAME" \
+    --voice-mode supplied_wav \
+    --narration-root "$KIDSSTUDIO_NARRATION_ROOT" \
+    --narration-name "$KIDSSTUDIO_NARRATION_NAME" \
+    --narration-sha256 "$KIDSSTUDIO_NARRATION_SHA256" --execute
+elif [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
   "$PYTHON" -m kidsstudio.first_colors_episode \
     --output-root "$OUTPUT_DIR" \
     --output-name "$BASENAME" \
