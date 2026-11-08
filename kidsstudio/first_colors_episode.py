@@ -272,14 +272,21 @@ def run_first_colors_episode(
     # expensive video encode. Bad/missing native Arabic voice must not waste
     # video rendering or create a misleading final MP4. The supplied-WAV
     # route was already SHA/duration-qualified above and remains independent.
-    voice_path = _synthesize_wav(stage, voice=mac_voice) if checked_wav is None else checked_wav
-    voice_root = str(stage) if checked_wav is None else str(Path(narration_root))
-    voice_name = "arabic_voice.wav" if checked_wav is None else narration_name
+    if checked_wav is None:
+        voice_path = _synthesize_wav(stage, voice=mac_voice)
+        voice_root = str(stage)
+        voice_name = voice_path.name
+        narration_sha256 = _sha(voice_path)
+    else:
+        voice_root = str(checked_wav.parent)
+        voice_name = checked_wav.name
+    # Carry the verified input digest across picture encoding. The mux checks
+    # that exact digest before and after reading the narration.
     movie = _render_silent(stage)
     muxed = mux_episode_pilot(
         video_root=str(stage), video_name=movie.name, video_sha256=_sha(movie),
         narration_root=voice_root, narration_name=voice_name,
-        narration_sha256=_sha(voice_path),
+        narration_sha256=narration_sha256,
         output_root=str(root), output_name=output_name, execute=True)
     if muxed["status"] != "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED":
         raise EpisodeMuxError("Original colors video/audio mux did not complete.")

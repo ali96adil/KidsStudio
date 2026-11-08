@@ -75,3 +75,14 @@ G5 enable only after documented review and owner authorization.
 - Rollback is one revert of this batch or checkout of the tagged baseline. No
   queue schema, worker capability, episode state, media recipe, upload policy,
   credential, device service or publication gate changed.
+
+## Batch 67 — keep supplied narration pinned through Mac encoding
+
+- The colors pilot carries the original verified WAV SHA-256 into the mux.
+  A regression replaces the WAV during picture encoding and verifies that
+  the real mux gate rejects it before probing media or creating a final MP4.
+- The full Linux unit suite and real FFmpeg colors smoke passed. The smoke
+  uses synthetic audio and simulated Pi, YouTube PRIVATE and owner review.
+- Rollback point: Batch 66 (`0bfba51875afba71dfe0552479b7f64a47d55880`).
+  Revert the batch on the integration branch if needed. Physical Mac/Pi
+  qualification, Arabic listening, real OAuth/upload and owner review are NOT_RUN.

@@ -87,6 +87,25 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                 narration_root=str(self.audio_root), narration_name=self.audio.name,
                 narration_sha256=self.audio_sha)
 
+    def test_supplied_wav_replaced_during_picture_encode_is_rejected(self):
+        def render_and_replace_audio(stage):
+            write_wav(self.audio, sample_rate=24000)
+            movie = stage / "silent.mp4"
+            movie.write_bytes(b"synthetic silent video")
+            movie.chmod(0o600)
+            return movie
+
+        with patch("kidsstudio.first_colors_episode._render_silent",
+                   side_effect=render_and_replace_audio), \
+             patch("kidsstudio.mac_episode_audio._probe") as probe:
+            with self.assertRaisesRegex(EpisodeMuxError, "Input checksum mismatch"):
+                run_first_colors_episode(
+                    output_root=str(self.private), voice_mode="supplied_wav",
+                    narration_root=str(self.audio_root), narration_name=self.audio.name,
+                    narration_sha256=self.audio_sha, execute=True)
+        probe.assert_not_called()
+        self.assertFalse((self.private / "colors_ar_01.mp4").exists())
+
     def test_public_audio_directory_rejected(self):
         self.audio_root.chmod(0o755)
         with self.assertRaises(ValueError):
