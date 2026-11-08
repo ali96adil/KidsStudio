@@ -71,6 +71,14 @@ def qualify_host(*, role: str, artifact_root: str,
             checks["role_matches_os_machine"] and _raspberry_pi_model_present())
     synthetic = run_review_pipeline_qualification()
     revision, clean = _source_checkout()
+    # A host must not be labelled READY when its actual source cannot be
+    # compared to the other device or when local edits may change behavior.
+    # Previously these two facts were reported but DID NOT gate readiness.
+    checks["source_commit_sha40"] = (
+        isinstance(revision, str)
+        and re.fullmatch(r"[a-f0-9]{40}", revision) is not None
+    )
+    checks["source_checkout_clean"] = clean is True
     ready = (
         readiness["ready_for_supervised_tests"]
         and all(checks.values())
