@@ -105,3 +105,13 @@ G5 enable only after documented review and owner authorization.
 - The Linux unit suite, Bash syntax, compile checks and real FFmpeg colors
   smoke passed. Rollback is a revert to Batch 68
   (`ca6310b9d22f03301da635293ea13429e61e4693`).
+
+## Batch 70 — bind launcher evidence to the pre-render source revision
+
+- The Mac launcher captures the clean Git commit from its preflight and
+  compares it before rendering and during evidence collection. A different
+  clean checkout cannot be substituted as the source of that sidecar.
+- The standalone collector retains its existing interface and accepts an
+  optional expected commit. Hosted macOS smoke checks the sidecar against the
+  workflow checkout. Rollback is a revert to Batch 69
+  (`e37d748b6be1edc03878764b8f243a96dec43470`).

@@ -51,51 +51,6 @@ OUTPUT_DIR="$HOME/kidsstudio-private/ready"
 EVIDENCE_DIR="$HOME/kidsstudio-private/qualification"
 "$PYTHON" -m kidsstudio.mac_pilot_evidence prepare-launcher-dirs --home "$HOME"
 
-# Neither preflight nor preview launches TTS or renders any media.
-echo "Gate 0/4: verify clean Git, private output, tools and selected original voice source"
-if [[ "$NARRATION_ENABLED" -eq 1 ]]; then
-  "$PYTHON" -m kidsstudio.mac_colors_preflight \
-    --artifact-root "$OUTPUT_DIR" --voice-mode supplied_wav \
-    --narration-root "$KIDSSTUDIO_NARRATION_ROOT" \
-    --narration-name "$KIDSSTUDIO_NARRATION_NAME" \
-    --narration-sha256 "$KIDSSTUDIO_NARRATION_SHA256"
-elif [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
-  "$PYTHON" -m kidsstudio.mac_colors_preflight \
-    --artifact-root "$OUTPUT_DIR" --voice-mode macos --mac-voice "$KIDSSTUDIO_MAC_VOICE"
-else
-  "$PYTHON" -m kidsstudio.mac_colors_preflight \
-    --artifact-root "$OUTPUT_DIR" --voice-mode macos
-fi
-
-# Include random per-invocation suffix so even same-second retries cannot
-# silently reuse a failed staging directory. All output remains non-overwriting.
-BASENAME="colors_ar_01_test_$(date '+%Y%m%d_%H%M%S')_${RANDOM}${RANDOM}.mp4"
-TARGET="$OUTPUT_DIR/$BASENAME"
-
-echo "Source checkout: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-echo "Step 1/4: local preflight (no render, no network)"
-set +e
-if [[ "$NARRATION_ENABLED" -eq 1 ]]; then
-  PREVIEW="$("$PYTHON" -m kidsstudio.first_colors_episode \
-    --output-root "$OUTPUT_DIR" --output-name "$BASENAME" \
-    --voice-mode supplied_wav \
-    --narration-root "$KIDSSTUDIO_NARRATION_ROOT" \
-    --narration-name "$KIDSSTUDIO_NARRATION_NAME" \
-    --narration-sha256 "$KIDSSTUDIO_NARRATION_SHA256" 2>&1)"
-else
-  PREVIEW="$("$PYTHON" -m kidsstudio.first_colors_episode \
-    --output-root "$OUTPUT_DIR" --output-name "$BASENAME" \
-    --voice-mode macos 2>&1)"
-fi
-PREVIEW_EXIT=$?
-set -e
-printf '%s\n' "$PREVIEW"
-if [[ "$PREVIEW_EXIT" -ne 1 ]] || [[ "$PREVIEW" != *COLORS_EPISODE_PREVIEW_ONLY* ]]; then
-  echo "MAC_COLORS_BLOCKED: preflight did not pass."
-  exit 2
-fi
-
-echo "Step 2/4: owner-invoked local render with explicitly selected original narration"
 if [[ "$NARRATION_ENABLED" -eq 1 ]]; then
   VOICE_ARGS=(--voice-mode supplied_wav
     --narration-root "$KIDSSTUDIO_NARRATION_ROOT"
@@ -107,6 +62,59 @@ else
     VOICE_ARGS+=(--mac-voice "$KIDSSTUDIO_MAC_VOICE")
   fi
 fi
+
+# Read a fixed hex field from a successful local stage report.
+report_sha() {
+  "$PYTHON" -c '
+import json, re, sys
+status, field, length = sys.argv[1:]
+try:
+    report = json.load(sys.stdin)
+    digest = report[field]
+    if report["status"] != status or not re.fullmatch("[0-9a-f]{" + length + "}", digest):
+        raise ValueError
+except (KeyError, TypeError, ValueError):
+    sys.exit(2)
+print(digest)
+' "$@"
+}
+
+# Neither preflight nor preview launches TTS or renders any media.
+echo "Gate 0/4: verify clean Git, private output, tools and selected original voice source"
+if ! PREFLIGHT_REPORT="$("$PYTHON" -m kidsstudio.mac_colors_preflight \
+    --artifact-root "$OUTPUT_DIR" "${VOICE_ARGS[@]}")"; then
+  printf '%s\n' "$PREFLIGHT_REPORT"
+  exit 2
+fi
+printf '%s\n' "$PREFLIGHT_REPORT"
+if ! SOURCE_COMMIT="$(report_sha MAC_COLORS_PREFLIGHT_READY source_commit 40 <<< "$PREFLIGHT_REPORT")"; then
+  echo "MAC_COLORS_BLOCKED: Missing valid pre-render source commit."
+  exit 2
+fi
+
+# Include random per-invocation suffix so even same-second retries cannot
+# silently reuse a failed staging directory. All output remains non-overwriting.
+BASENAME="colors_ar_01_test_$(date '+%Y%m%d_%H%M%S')_${RANDOM}${RANDOM}.mp4"
+TARGET="$OUTPUT_DIR/$BASENAME"
+
+echo "Source checkout: ${SOURCE_COMMIT:0:12}"
+echo "Step 1/4: local preflight (no render, no network)"
+set +e
+PREVIEW="$("$PYTHON" -m kidsstudio.first_colors_episode \
+  --output-root "$OUTPUT_DIR" --output-name "$BASENAME" "${VOICE_ARGS[@]}" 2>&1)"
+PREVIEW_EXIT=$?
+set -e
+printf '%s\n' "$PREVIEW"
+if [[ "$PREVIEW_EXIT" -ne 1 ]] || [[ "$PREVIEW" != *COLORS_EPISODE_PREVIEW_ONLY* ]]; then
+  echo "MAC_COLORS_BLOCKED: preflight did not pass."
+  exit 2
+fi
+
+if [[ "$(git rev-parse --verify 'HEAD^{commit}')" != "$SOURCE_COMMIT" ]]; then
+  echo "MAC_COLORS_BLOCKED: Source commit changed before render."
+  exit 2
+fi
+echo "Step 2/4: owner-invoked local render with explicitly selected original narration"
 if ! RENDER_REPORT="$("$PYTHON" -m kidsstudio.first_colors_episode \
     --output-root "$OUTPUT_DIR" --output-name "$BASENAME" \
     "${VOICE_ARGS[@]}" --execute)"; then
@@ -117,18 +125,8 @@ printf '%s\n' "$RENDER_REPORT"
 
 # Keep the encoder's identity for the whole handoff. QA must hash the
 # current bytes against it, even if the file was replaced after encoding.
-if ! MOVIE_SHA="$(printf '%s\n' "$RENDER_REPORT" | "$PYTHON" -c '
-import json, re, sys
-try:
-    report = json.load(sys.stdin)
-    digest = report["final_mp4_sha256"]
-    if (report["status"] != "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED"
-            or not re.fullmatch(r"[0-9a-f]{64}", digest)):
-        raise ValueError
-except (KeyError, TypeError, ValueError):
-    sys.exit(2)
-print(digest)
-')"; then
+if ! MOVIE_SHA="$(report_sha COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED \
+    final_mp4_sha256 64 <<< "$RENDER_REPORT")"; then
   echo "MAC_COLORS_BLOCKED: Missing valid encoder SHA256."
   exit 2
 fi
@@ -142,6 +140,7 @@ echo "Step 4/4: persist immutable private evidence (owner review pending)"
 EVIDENCE_NAME="${BASENAME%.mp4}.evidence.json"
 "$PYTHON" -m kidsstudio.mac_pilot_evidence collect \
   --episode-id colors_ar_01 \
+  --expected-source-commit "$SOURCE_COMMIT" \
   --video-root "$OUTPUT_DIR" \
   --video-name "$BASENAME" \
   --expected-sha256 "$MOVIE_SHA" \

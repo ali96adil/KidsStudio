@@ -23,6 +23,8 @@ def run() -> dict:
         raise RuntimeError("This hosted launcher smoke requires macOS.")
     repo = Path(__file__).resolve().parents[1]
     bash = repo / "scripts" / "run_mac_colors_pilot.sh"
+    revision = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repo, text=True, timeout=5).strip()
     with tempfile.TemporaryDirectory(prefix="kidsstudio-ci-private-") as home:
         # macOS tempfile paths often begin /var/folders, where /var is a
         # symlink to /private/var. The production private-file validator
@@ -114,6 +116,7 @@ def run() -> dict:
                 or movie.stat().st_size < 100_000
                 or data["video_sha256"] != sha
                 or data["video_name"] != movie.name
+                or data["source_commit"] != revision
                 or data["source_checkout_clean"] is not True
                 or data["technical_preflight"] !=
                    "MP4_PLAYBACK_PREFLIGHT_PASSED_UNREVIEWED"

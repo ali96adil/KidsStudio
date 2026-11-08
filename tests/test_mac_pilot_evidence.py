@@ -93,14 +93,14 @@ class MacPilotEvidenceTests(unittest.TestCase):
             "audio_samples_decoded": 2,
         }
 
-    def collect(self, *, host=None, playback=None):
+    def collect(self, *, host=None, playback=None, **overrides):
         with patch("kidsstudio.mac_pilot_evidence.platform.system",
                    return_value="Darwin"), patch(
                     "kidsstudio.mac_pilot_evidence.qualify_host",
                     return_value=self.host() if host is None else host) as host_probe, patch(
                     "kidsstudio.mac_pilot_evidence.inspect_mp4_playback",
                     return_value=self.playback() if playback is None else playback) as media_probe:
-            out = collect_mac_pilot_evidence(**self.collect_args)
+            out = collect_mac_pilot_evidence(**{**self.collect_args, **overrides})
         host_probe.assert_called_once()
         media_probe.assert_called_once()
         return out
@@ -116,7 +116,7 @@ class MacPilotEvidenceTests(unittest.TestCase):
             reviewed_arabic_voice=listened)
 
     def test_collect_persists_private_immutable_sha_bound_metadata(self):
-        result = self.collect()
+        result = self.collect(expected_source_commit=SHA)
         self.assertEqual(result["status"],
                          "MAC_PILOT_EVIDENCE_RECORDED_REVIEW_PENDING")
         self.assertTrue(result["owner_review_pending"])
@@ -148,6 +148,11 @@ class MacPilotEvidenceTests(unittest.TestCase):
                      self.host(status="SUPERVISED_TESTS_BLOCKED")):
             with self.subTest(host=host), self.assertRaises(MacPilotEvidenceError):
                 self.collect(host=host)
+        self.assertEqual(list(self.evidence_root.iterdir()), [])
+
+    def test_clean_but_different_source_commit_blocks_sidecar(self):
+        with self.assertRaisesRegex(MacPilotEvidenceError, "source commit changed"):
+            self.collect(host=self.host(revision="b" * 40), expected_source_commit=SHA)
         self.assertEqual(list(self.evidence_root.iterdir()), [])
 
     def test_codec_gate_failure_does_not_persist(self):

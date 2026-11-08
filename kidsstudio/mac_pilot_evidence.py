@@ -108,7 +108,7 @@ def _video_inputs(video_name: str, expected_sha256: str) -> None:
 def collect_mac_pilot_evidence(
     *, episode_id: str, video_root: str, video_name: str,
     expected_sha256: str, evidence_root: str, evidence_name: str,
-    min_free_gib: float = 2.0,
+    min_free_gib: float = 2.0, expected_source_commit: str | None = None,
 ) -> dict:
     """Write one non-replaceable sidecar after actual local video/host checks."""
     if not isinstance(episode_id, str) or not _EPISODE.fullmatch(episode_id):
@@ -128,6 +128,8 @@ def collect_mac_pilot_evidence(
             or host.get("source_checkout_clean") is not True
             or not isinstance(revision, str) or not _COMMIT.fullmatch(revision)):
         raise MacPilotEvidenceError("Clean pinned Mac checkout and readiness required.")
+    if expected_source_commit is not None and revision != expected_source_commit:
+        raise MacPilotEvidenceError("Mac source commit changed after preflight.")
     playback = inspect_mp4_playback(
         root=video_root, relative_path=video_name,
         expected_sha256=expected_sha256)
@@ -257,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     prepare.add_argument("--home", required=True)
     collect = sub.add_parser("collect")
     collect.add_argument("--episode-id", required=True)
+    collect.add_argument("--expected-source-commit")
     collect.add_argument("--min-free-gib", type=float, default=2.0)
     review = sub.add_parser("review")
     review.add_argument("--review-outcome", required=True,
@@ -279,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
             report = collect_mac_pilot_evidence(
                 episode_id=args.episode_id,
                 min_free_gib=args.min_free_gib,
+                expected_source_commit=args.expected_source_commit,
                 video_root=args.video_root,
                 video_name=args.video_name,
                 expected_sha256=args.expected_sha256,
