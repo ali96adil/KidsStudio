@@ -159,8 +159,11 @@ class MacPilotShortcutTests(unittest.TestCase):
                 self.save()
 
     def test_sidecar_rename_to_different_video_blocks(self):
+        # Move the ORIGINAL sidecar instead of creating a second file:
+        # a valid original copy would (correctly) remain selectable.
+        previous = self.proof / self.name
         self.name = "renamed.evidence.json"
-        self.save()
+        previous.rename(self.proof / self.name)
         self.assertEqual(self.list()["pilots"], [])
         with self.assertRaises(MacPilotShortcutError):
             self.record()
