@@ -33,11 +33,14 @@ def inspect_reviewed_transfer_candidate(
     *, video_root: str, evidence_root: str, evidence_name: str,
 ) -> dict:
     """Read-only SHA-verified acceptance gate for one exact private MP4."""
-    evidence = _validate_bound_pilot(
-        evidence_root=evidence_root,
-        evidence_name=evidence_name,
-        video_root=video_root)
-    root = _private_evidence_dir(evidence_root)
+    try:
+        evidence = _validate_bound_pilot(
+            evidence_root=evidence_root,
+            evidence_name=evidence_name,
+            video_root=video_root)
+        root = _private_evidence_dir(evidence_root)
+    except (ValueError, OSError, TypeError, KeyError) as exc:
+        raise MacPiReviewGateError("Source technical evidence is missing or invalid.") from exc
     prefix = evidence_name.removesuffix(".json") + ".review."
     inspected = 0
     accepted = 0
@@ -54,7 +57,10 @@ def inspect_reviewed_transfer_candidate(
         inspected += 1
         if inspected > 256:
             raise MacPiReviewGateError("Too many local review records to qualify.")
-        review = read_private_json(evidence_root, name)
+        try:
+            review = read_private_json(evidence_root, name)
+        except (ValueError, OSError, TypeError, KeyError) as exc:
+            raise MacPiReviewGateError("Review note is missing or unsafe.") from exc
         if (review.get("schema_version") != 1
                 or review.get("status") != "MAC_PILOT_LOCAL_REVIEW_RECORDED_UNAUTHENTICATED"
                 or review.get("source_evidence_name") != evidence_name
@@ -171,7 +177,9 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError, TypeError, KeyError, json.JSONDecodeError):
         print(json.dumps({
             "status": "MAC_PI_REVIEWED_TRANSFER_BLOCKED_OR_UNCERTAIN",
-            "ssh_connection_performed": False,
+            # On an attempted real transfer, a failure can happen AFTER
+            # sending bytes; never incorrectly claim SSH was not attempted.
+            "ssh_connection_performed": None if args.execute_transfer else False,
             "youtube_upload_submitted": False,
             "publication_approved": False,
         }, sort_keys=True))
