@@ -113,3 +113,15 @@ python3 -m kidsstudio.mac_pilot_review_shortcut record \
 ```
 
 The shortcut **never chooses a review candidate implicitly by timestamp**. It does not open the video, assert you watched it, upload files or publish anything. Listing is strictly read-only and omits invalid/mismatched sidecars. Any request to record review must supply an exact technical sidecar filename, an outcome and, for acceptance, the two explicit reviewed flags. It still writes a distinct 0600 note, refuses tampered/untrusted input and rechecks the current media hash. *Acceptance here is not transfer permission, upload permission or publication approval.* The full manual SHA-based command earlier in this runbook remains supported.
+
+## Batch 57 — guided local review in one command (Terminal only)
+
+After the pilot opens your new local MP4, **watch all 24 seconds and listen to every Arabic sentence yourself**. From the same trusted, checked-out KidsStudio repository on the Mac, run:
+
+```bash
+python3 -m kidsstudio.mac_pilot_review_shortcut guided
+```
+
+The guided command is deliberately interactive and **requires an actual input/output terminal**; piped stdin, scheduled CI, or unattended invocations cannot record a decision. It lists up to 10 existing, SHA-matched private pilot evidence files and requires you to type the number of the exact video. There is **no default/latest selection**. After showing that video's name, you must separately choose `R` (needs revision) or `A` (accept as a *local private pilot*). A revision requires a nonempty written note. Acceptance requires you to explicitly type `YES` for having watched the **entire** video, then type `YES` for personally checking **all Arabic speech**. Both choices require a final exact `SAVE` before the software writes one separate private review JSON.
+
+Typing `0`, `C`, an invalid selection, an incomplete/EOF prompt or anything other than the exact required confirmation **cancels without creating any review**. Right before saving, the shortcut **checks the original technical sidecar and hashes the selected MP4 again**; tampering between the list display and the final `SAVE` fails closed. The old `list` and `record` CLI remain supported for advanced use. The Mac launcher now prints the guided command after it generates a valid local video; it does **not** run guided mode or accept a video by itself. These are operator assertions, not independently authenticated reviewer identities, and never grant permission to transfer, upload or publish.
