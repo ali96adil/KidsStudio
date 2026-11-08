@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from kidsstudio.mac_pilot_evidence import (
     MacPilotEvidenceError, collect_mac_pilot_evidence,
-    record_mac_pilot_review, main,
+    record_mac_pilot_review, main, prepare_launcher_dirs,
 )
 
 SHA = "a" * 40
@@ -37,6 +37,42 @@ class MacPilotEvidenceTests(unittest.TestCase):
             video_name=self.video.name, expected_sha256=self.sha,
             evidence_root=str(self.evidence_root), evidence_name=self.evidence_name,
         )
+
+    def test_launcher_creates_private_destinations_and_reuses_them(self):
+        base = self.base / "kidsstudio-private"
+        for _ in range(2):
+            prepare_launcher_dirs(str(self.base))
+            for directory in (base, base / "ready", base / "qualification"):
+                self.assertTrue(directory.is_dir())
+                self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+
+    def test_launcher_rejects_symlinked_qualification_before_making_ready(self):
+        base = self.base / "kidsstudio-private"
+        base.mkdir(mode=0o700)
+        self.evidence_root.chmod(0o755)
+        (base / "qualification").symlink_to(self.evidence_root, target_is_directory=True)
+        with self.assertRaises(MacPilotEvidenceError):
+            prepare_launcher_dirs(str(self.base))
+        self.assertEqual(self.evidence_root.stat().st_mode & 0o777, 0o755)
+        self.assertFalse((base / "ready").exists())
+
+    def test_launcher_rejects_symlinked_parent_without_writing_to_target(self):
+        base = self.base / "kidsstudio-private"
+        base.symlink_to(self.evidence_root, target_is_directory=True)
+        with self.assertRaises(MacPilotEvidenceError):
+            prepare_launcher_dirs(str(self.base))
+        self.assertEqual(list(self.evidence_root.iterdir()), [])
+
+    def test_launcher_rejects_existing_nonprivate_dir_without_chmod(self):
+        base = self.base / "kidsstudio-private"
+        base.mkdir(mode=0o700)
+        ready = base / "ready"
+        ready.mkdir()
+        ready.chmod(0o755)
+        with self.assertRaises(MacPilotEvidenceError):
+            prepare_launcher_dirs(str(self.base))
+        self.assertEqual(ready.stat().st_mode & 0o777, 0o755)
+        self.assertFalse((base / "qualification").exists())
 
     @staticmethod
     def host(*, clean=True, status="SUPERVISED_TESTS_READY", revision=SHA):

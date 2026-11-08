@@ -86,3 +86,12 @@ G5 enable only after documented review and owner authorization.
 - Rollback point: Batch 66 (`0bfba51875afba71dfe0552479b7f64a47d55880`).
   Revert the batch on the integration branch if needed. Physical Mac/Pi
   qualification, Arabic listening, real OAuth/upload and owner review are NOT_RUN.
+
+## Batch 68 — validate both Mac destinations before render
+
+- The Mac launcher validates private output and evidence directories together
+  before rendering. Missing directories are created with owner-only access.
+  Existing symlinks and unsafe directories are rejected without changing
+  permissions or creating files through those paths.
+- Rollback: revert this batch to Batch 67
+  (`9a856f15d2525bd64b4b3bb6f34fc6a893600a1e`). Physical Mac/Pi remains NOT_RUN.

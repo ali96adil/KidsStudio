@@ -48,8 +48,8 @@ if [[ "$NARRATION_ENABLED" -eq 0 ]] && ! command -v say >/dev/null 2>&1; then
 fi
 
 OUTPUT_DIR="$HOME/kidsstudio-private/ready"
-mkdir -p "$OUTPUT_DIR"
-chmod 700 "$OUTPUT_DIR"
+EVIDENCE_DIR="$HOME/kidsstudio-private/qualification"
+"$PYTHON" -m kidsstudio.mac_pilot_evidence prepare-launcher-dirs --home "$HOME"
 
 # Separate calls rather than arrays keep this compatible with Bash 3.2.
 # Neither preflight nor preview launches TTS or renders any media.
@@ -121,7 +121,6 @@ if [[ ! -s "$TARGET" ]]; then
   echo "MAC_COLORS_BLOCKED: finished video missing."
   exit 2
 fi
-chmod 600 "$TARGET"
 MOVIE_SHA="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
 echo "Step 3/4: inspect actual MP4 faststart, H264/AAC and decoded samples"
 "$PYTHON" -m kidsstudio.mp4_playback_preflight \
@@ -130,9 +129,6 @@ echo "Step 3/4: inspect actual MP4 faststart, H264/AAC and decoded samples"
   --expected-sha256 "$MOVIE_SHA"
 echo "Local technical compatibility preflight passed (not an owner review)."
 echo "Step 4/4: persist immutable private evidence (owner review pending)"
-EVIDENCE_DIR="$HOME/kidsstudio-private/qualification"
-mkdir -p "$EVIDENCE_DIR"
-chmod 700 "$EVIDENCE_DIR"
 EVIDENCE_NAME="${BASENAME%.mp4}.evidence.json"
 "$PYTHON" -m kidsstudio.mac_pilot_evidence collect \
   --episode-id colors_ar_01 \

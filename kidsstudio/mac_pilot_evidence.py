@@ -46,6 +46,31 @@ def _private_evidence_dir(root: str) -> Path:
     return path
 
 
+def prepare_launcher_dirs(home: str) -> None:
+    """Create the two fixed pilot destinations after checking both paths."""
+    parent = Path(home)
+    if not parent.is_absolute() or ".." in parent.parts or not parent.is_dir():
+        raise MacPilotEvidenceError("Existing absolute home directory required.")
+    base = parent / "kidsstudio-private"
+    destinations = (base / "ready", base / "qualification")
+    for path in (*destinations, base, *base.parents):
+        marker = path / ".git"
+        if path.is_symlink() or marker.is_symlink() or marker.exists():
+            raise MacPilotEvidenceError("Launcher directories must be outside Git and symlink-free.")
+    if base.exists():
+        info = base.stat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022
+                or (os.name == "posix" and info.st_uid != os.getuid())):
+            raise MacPilotEvidenceError("Launcher directory parent must be owner-controlled.")
+    for path in destinations:
+        if path.exists():
+            _private_evidence_dir(str(path))
+    base.mkdir(mode=0o700, exist_ok=True)
+    for path in destinations:
+        path.mkdir(mode=0o700, exist_ok=True)
+        _private_evidence_dir(str(path))
+
+
 def _write_new_evidence(root: str, name: str, obj: dict) -> None:
     if not isinstance(name, str) or not _JSON_NAME.fullmatch(name):
         raise MacPilotEvidenceError("Invalid evidence file name.")
@@ -228,6 +253,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Offline Mac pilot evidence and explicit private review notes")
     sub = parser.add_subparsers(dest="action", required=True)
+    prepare = sub.add_parser("prepare-launcher-dirs")
+    prepare.add_argument("--home", required=True)
     collect = sub.add_parser("collect")
     collect.add_argument("--episode-id", required=True)
     collect.add_argument("--min-free-gib", type=float, default=2.0)
@@ -245,7 +272,10 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--evidence-name", required=True)
     args = parser.parse_args(argv)
     try:
-        if args.action == "collect":
+        if args.action == "prepare-launcher-dirs":
+            prepare_launcher_dirs(args.home)
+            report = {"status": "MAC_PILOT_PRIVATE_DIRS_READY"}
+        elif args.action == "collect":
             report = collect_mac_pilot_evidence(
                 episode_id=args.episode_id,
                 min_free_gib=args.min_free_gib,

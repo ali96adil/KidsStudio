@@ -26,10 +26,10 @@ The probes require these **existing** owner-private directories outside Git:
 
 Mac:
 ~~~bash
-umask 077
-mkdir -p "$HOME/kidsstudio-private/ready" "$HOME/kidsstudio-private/qualification"
-chmod 700 "$HOME/kidsstudio-private/ready" "$HOME/kidsstudio-private/qualification"
+python3 -m kidsstudio.mac_pilot_evidence prepare-launcher-dirs --home "$HOME"
 ~~~
+
+The Mac setup and launcher check both destinations before creating missing directories with mode 0700. If an existing destination fails the checks, correct its permissions or location before retrying.
 
 Pi:
 ~~~bash

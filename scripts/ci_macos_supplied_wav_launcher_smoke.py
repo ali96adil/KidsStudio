@@ -87,6 +87,7 @@ def run() -> dict:
                 "Mac launcher CI failed, safe gates: " + ",".join(safe_statuses))
         output = proc.stdout
         for expected in (
+            "MAC_PILOT_PRIVATE_DIRS_READY",
             "MAC_COLORS_PREFLIGHT_READY",
             "COLORS_EPISODE_PREVIEW_ONLY",
             "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED",
