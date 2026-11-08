@@ -95,3 +95,13 @@ G5 enable only after documented review and owner authorization.
   permissions or creating files through those paths.
 - Rollback: revert this batch to Batch 67
   (`9a856f15d2525bd64b4b3bb6f34fc6a893600a1e`). Physical Mac/Pi remains NOT_RUN.
+
+## Batch 69 — pin the actual mux output through launcher QA
+
+- The mux reports the digest and length of its checked staging MP4. The
+  launcher uses that digest for playback QA and the private evidence sidecar.
+  Regressions exercise replacement after staging and after the renderer
+  returns. A substituted file cannot obtain a new digest from the launcher.
+- The Linux unit suite, Bash syntax, compile checks and real FFmpeg colors
+  smoke passed. Rollback is a revert to Batch 68
+  (`ca6310b9d22f03301da635293ea13429e61e4693`).

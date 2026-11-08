@@ -205,6 +205,8 @@ def mux_episode_pilot(
         if _hash(video) != video_sha256.lower() or _hash(narration) != narration_sha256.lower():
             raise EpisodeMuxError("Source bytes changed while muxing.")
         with temp.open("rb") as inp:
+            final_bytes = os.fstat(inp.fileno()).st_size
+            final_sha256 = hashlib.file_digest(inp, "sha256").hexdigest()
             os.fsync(inp.fileno())
         # Publish by hard-link only after complete checks; never replace.
         os.link(temp, target, follow_symlinks=False)
@@ -215,8 +217,8 @@ def mux_episode_pilot(
             os.close(dirfd)
         report["status"] = "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED"
         report["ffmpeg_executed"] = True
-        report["final_mp4_sha256"] = _hash(target)
-        report["final_mp4_bytes"] = target.stat().st_size
+        report["final_mp4_sha256"] = final_sha256
+        report["final_mp4_bytes"] = final_bytes
     finally:
         temp.unlink(missing_ok=True)
     return report

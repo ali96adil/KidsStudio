@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -106,6 +107,27 @@ class MacEpisodeAudioTests(unittest.TestCase):
         self.assertEqual(command[command.index("-ar") + 1], "48000")
         self.assertEqual(command[command.index("-ac") + 1], "2")
         self.assertEqual(sorted(p.name for p in self.out.iterdir()), ["colors_ar_01.mp4"])
+
+    def test_mux_reports_checked_bytes_when_ready_filename_is_replaced(self):
+        checked_bytes = b"verified mux output"
+        link = os.link
+
+        def fake_ffmpeg(command, **kwargs):
+            Path(command[-1]).write_bytes(checked_bytes)
+            return subprocess.CompletedProcess(command, 0)
+
+        def link_then_replace(source, target, **kwargs):
+            link(source, target, **kwargs)
+            target.unlink()
+            target.write_bytes(b"different file at ready name")
+
+        with patch("kidsstudio.mac_episode_audio._probe",
+                   side_effect=lambda path: media_metadata(with_audio=path.parent == self.out)), \
+             patch("kidsstudio.mac_episode_audio.subprocess.run", side_effect=fake_ffmpeg), \
+             patch("kidsstudio.mac_episode_audio.os.link", side_effect=link_then_replace):
+            result = mux_episode_pilot(**self.args(execute=True))
+        self.assertEqual(result["final_mp4_sha256"], hashlib.sha256(checked_bytes).hexdigest())
+        self.assertEqual(result["final_mp4_bytes"], len(checked_bytes))
 
     def test_second_run_never_overwrites(self):
         (self.out / "colors_ar_01.mp4").write_bytes(b"original")

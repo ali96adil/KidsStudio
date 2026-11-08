@@ -48,7 +48,7 @@ _HINTS = {
     "mac_platform_architecture_mismatch":
         "The Mac pilot supports macOS arm64 or x86_64 only.",
     "local_media_or_git_executable_missing":
-        "Install or select local ffmpeg, ffprobe, say, shasum and git binaries.",
+        "Install or select local ffmpeg, ffprobe, say and git binaries.",
     "pinned_clean_git_checkout_required":
         "Check out the exact reviewed commit and ensure git status is clean.",
     "installed_arabic_voice_missing_or_invalid":

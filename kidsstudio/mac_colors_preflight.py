@@ -20,7 +20,7 @@ from .host_qualification import _source_checkout
 from .host_readiness import inspect_host
 
 _COMMIT = re.compile(r"[a-f0-9]{40}\Z")
-_COMMON_BINARIES = ("ffmpeg", "ffprobe", "shasum", "git")
+_COMMON_BINARIES = ("ffmpeg", "ffprobe", "git")
 
 
 def _valid_supplied_wav(*, narration_root: str | None,

@@ -36,7 +36,7 @@ if [[ -n "${KIDSSTUDIO_NARRATION_ROOT+x}" || -n "${KIDSSTUDIO_NARRATION_NAME+x}"
   NARRATION_ENABLED=1
 fi
 
-for program in ffmpeg ffprobe shasum git; do
+for program in ffmpeg ffprobe git; do
   if ! command -v "$program" >/dev/null 2>&1; then
     echo "MAC_COLORS_BLOCKED: Missing local executable: $program"
     exit 2
@@ -51,7 +51,6 @@ OUTPUT_DIR="$HOME/kidsstudio-private/ready"
 EVIDENCE_DIR="$HOME/kidsstudio-private/qualification"
 "$PYTHON" -m kidsstudio.mac_pilot_evidence prepare-launcher-dirs --home "$HOME"
 
-# Separate calls rather than arrays keep this compatible with Bash 3.2.
 # Neither preflight nor preview launches TTS or renders any media.
 echo "Gate 0/4: verify clean Git, private output, tools and selected original voice source"
 if [[ "$NARRATION_ENABLED" -eq 1 ]]; then
@@ -98,30 +97,41 @@ fi
 
 echo "Step 2/4: owner-invoked local render with explicitly selected original narration"
 if [[ "$NARRATION_ENABLED" -eq 1 ]]; then
-  "$PYTHON" -m kidsstudio.first_colors_episode \
-    --output-root "$OUTPUT_DIR" \
-    --output-name "$BASENAME" \
-    --voice-mode supplied_wav \
-    --narration-root "$KIDSSTUDIO_NARRATION_ROOT" \
-    --narration-name "$KIDSSTUDIO_NARRATION_NAME" \
-    --narration-sha256 "$KIDSSTUDIO_NARRATION_SHA256" --execute
-elif [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
-  "$PYTHON" -m kidsstudio.first_colors_episode \
-    --output-root "$OUTPUT_DIR" \
-    --output-name "$BASENAME" \
-    --voice-mode macos --mac-voice "$KIDSSTUDIO_MAC_VOICE" --execute
+  VOICE_ARGS=(--voice-mode supplied_wav
+    --narration-root "$KIDSSTUDIO_NARRATION_ROOT"
+    --narration-name "$KIDSSTUDIO_NARRATION_NAME"
+    --narration-sha256 "$KIDSSTUDIO_NARRATION_SHA256")
 else
-  "$PYTHON" -m kidsstudio.first_colors_episode \
-    --output-root "$OUTPUT_DIR" \
-    --output-name "$BASENAME" \
-    --voice-mode macos --execute
+  VOICE_ARGS=(--voice-mode macos)
+  if [[ -n "${KIDSSTUDIO_MAC_VOICE:-}" ]]; then
+    VOICE_ARGS+=(--mac-voice "$KIDSSTUDIO_MAC_VOICE")
+  fi
 fi
-
-if [[ ! -s "$TARGET" ]]; then
-  echo "MAC_COLORS_BLOCKED: finished video missing."
+if ! RENDER_REPORT="$("$PYTHON" -m kidsstudio.first_colors_episode \
+    --output-root "$OUTPUT_DIR" --output-name "$BASENAME" \
+    "${VOICE_ARGS[@]}" --execute)"; then
+  printf '%s\n' "$RENDER_REPORT"
   exit 2
 fi
-MOVIE_SHA="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
+printf '%s\n' "$RENDER_REPORT"
+
+# Keep the encoder's identity for the whole handoff. QA must hash the
+# current bytes against it, even if the file was replaced after encoding.
+if ! MOVIE_SHA="$(printf '%s\n' "$RENDER_REPORT" | "$PYTHON" -c '
+import json, re, sys
+try:
+    report = json.load(sys.stdin)
+    digest = report["final_mp4_sha256"]
+    if (report["status"] != "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED"
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+        raise ValueError
+except (KeyError, TypeError, ValueError):
+    sys.exit(2)
+print(digest)
+')"; then
+  echo "MAC_COLORS_BLOCKED: Missing valid encoder SHA256."
+  exit 2
+fi
 echo "Step 3/4: inspect actual MP4 faststart, H264/AAC and decoded samples"
 "$PYTHON" -m kidsstudio.mp4_playback_preflight \
   --root "$OUTPUT_DIR" \
