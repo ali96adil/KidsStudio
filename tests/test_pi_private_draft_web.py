@@ -77,7 +77,7 @@ class PrivateDraftWebTests(unittest.TestCase):
         if auth:
             headers["Authorization"] = self.auth
         if origin:
-            headers["Origin"] = self.origin
+            headers["Origin"] = (self.origin if origin is True else origin)
         if fields is not None:
             data = urlencode(fields).encode("utf-8")
             content_type = content_type or "application/x-www-form-urlencoded"
@@ -195,13 +195,19 @@ class PrivateDraftWebTests(unittest.TestCase):
                          fields=self.fields(), origin=False)[0], 403)
         self.assertEqual(self.notes(), [])
 
-    def test_both_trusted_loopback_hosts_support_authenticated_forms(self):
-        # Both 127.0.0.1 and localhost represent trusted local-only URLs.
-        # They still require the correct Basic password and CSRF.
+    def test_both_trusted_loopback_hosts_support_same_origin_forms(self):
+        # Both 127.0.0.1 and localhost are trusted independently, but a
+        # form must originate from the EXACT host used in its browser URL.
         self.assertEqual(
             self.request("POST", "/review",
                          fields=self.fields(),
-                         host=f"localhost:{self.port}")[0], 303)
+                         host=f"localhost:{self.port}")[0], 403)
+        self.assertEqual(self.notes(), [])
+        self.assertEqual(
+            self.request("POST", "/review",
+                         fields=self.fields(),
+                         host=f"localhost:{self.port}",
+                         origin=f"http://localhost:{self.port}")[0], 303)
         self.assertEqual(self.status(), "REVISION_REQUIRED_PRIVATE")
 
     def test_explicit_review_requires_private_draft_checkbox(self):
