@@ -33,6 +33,7 @@ from kidsstudio.pi_private_draft_review import (
     inspect_uploaded_private_draft, record_post_private_draft_review,
 )
 from kidsstudio.pi_private_draft_inbox import build_private_draft_inbox
+from kidsstudio.pi_private_draft_web import render_mobile_dashboard
 
 
 _SESSION = ("https://www.googleapis.com/upload/youtube/v3/videos?"
@@ -230,6 +231,14 @@ def check_offline_full_private_chain(
             or before_review["counts"]["BLOCKED_LOCAL_EVIDENCE"] != 0
             or before_review["youtube_current_privacy_live_rechecked"] is not False):
         raise AssertionError("Fresh fake PRIVATE upload missing from local inbox.")
+    # Render the same real-MP4 status using the mobile HTML page's production
+    # renderer; all identifiers and review-note bodies stay local/private.
+    html_before = render_mobile_dashboard(
+        before_review, csrf="CI-only-long-cryptographic-frontend-nonce-001")
+    if ("بانتظار المراجعة" not in html_before
+            or _FAKE_VIDEO_ID in html_before
+            or "youtube.com" in html_before.lower()):
+        raise AssertionError("Private mobile HTML did not show pending state safely.")
     recorded = record_post_private_draft_review(
         **review_args, review_root=str(note_dir),
         review_outcome="REVISION_REQUIRED",
@@ -250,6 +259,12 @@ def check_offline_full_private_chain(
             or after_review["items"][0]["youtube_video_id"] is not None
             or after_review["publication_approved"] is not False):
         raise AssertionError("Post-private local inbox ignored a revision or leaked ID.")
+    html_after = render_mobile_dashboard(
+        after_review, csrf="CI-only-long-cryptographic-frontend-nonce-001")
+    if ("يحتاج تعديل" not in html_after
+            or recorded["review_evidence_name"] in html_after
+            or _FAKE_VIDEO_ID in html_after):
+        raise AssertionError("Private mobile HTML did not reflect revision safely.")
     # Legacy optional Mac note remains available, but does NOT authorize
     # upload or public release. No actual human observed the sample.
     review = record_mac_pilot_review(
@@ -270,6 +285,7 @@ def check_offline_full_private_chain(
         "private_upload_happened_before_simulated_owner_review": True,
         "pi_private_draft_note_sha_video_id_bound": True,
         "pi_private_draft_inbox_pending_to_revision_verified": True,
+        "mobile_private_html_pending_to_revision_verified": True,
         "human_owner_review_actually_performed": False,
         "mock_ssh_no_network": True,
         "mock_google_no_network_no_oauth": True,
