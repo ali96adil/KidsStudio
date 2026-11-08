@@ -117,7 +117,7 @@ def render_mobile_dashboard(report: dict, *, csrf: str,
         f'<style nonce="{nonce}">{_CSS}</style></head><body><main>',
         '<header><h1>KidsStudio — المسودات الخاصة</h1>'
         '<a class="refresh" href="/">تحديث الحالة</a></header>',
-        '<p>عرض محلي مشفّر أثناء نفق SSH فقط؛ السجلات تاريخية وليست '
+        '<p>عرض محلي؛ للوصول من الموبايل استخدم نفق SSH مشفراً. السجلات تاريخية وليست '
         'فحصاً مباشراً لحالة يوتيوب.</p>',
     ]
     if saved:
@@ -213,9 +213,6 @@ def make_private_dashboard_handler(*, journal_root: str, private_root: str,
     expected_auth = (
         "Basic " + base64.b64encode(
             ("owner:" + password).encode("utf-8")).decode("ascii"))
-    valid_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
-    valid_origins = {"http://" + host for host in valid_hosts}
-
     class PrivateDashboardHandler(BaseHTTPRequestHandler):
         server_version = "KidsStudio-Private"
         sys_version = ""
@@ -252,8 +249,14 @@ def make_private_dashboard_handler(*, journal_root: str, private_root: str,
             if body:
                 self.wfile.write(payload)
 
+        def _allowed_hosts(self) -> set[str]:
+            actual_port = self.server.server_port
+            if port not in (0, actual_port):
+                raise ValueError("Dashboard port mismatch.")
+            return {f"127.0.0.1:{actual_port}", f"localhost:{actual_port}"}
+
         def _gate(self) -> bool:
-            if self.headers.get("Host") not in valid_hosts:
+            if self.headers.get("Host") not in self._allowed_hosts():
                 self._send(421, b"Local host only.")
                 return False
             auth = self.headers.get("Authorization", "")
@@ -298,7 +301,9 @@ def make_private_dashboard_handler(*, journal_root: str, private_root: str,
             if self.path != "/review":
                 self._send(404, b"Not found.")
                 return
-            if self.headers.get("Origin") not in valid_origins:
+            if self.headers.get("Origin") not in {
+                "http://" + host for host in self._allowed_hosts()
+            }:
                 self._send(403, b"Untrusted browser origin.")
                 return
             if (self.headers.get("Content-Type") != "application/x-www-form-urlencoded"
