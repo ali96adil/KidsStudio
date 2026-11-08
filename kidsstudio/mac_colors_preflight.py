@@ -33,7 +33,7 @@ def _valid_supplied_wav(*, narration_root: str | None,
     """
     if (not isinstance(narration_root, str) or not narration_root
             or not isinstance(narration_name, str)
-            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,150}\\.wav", narration_name)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,150}\.wav", narration_name)
             or not isinstance(narration_sha256, str)
             or not _SHA.fullmatch(narration_sha256)):
         return False
