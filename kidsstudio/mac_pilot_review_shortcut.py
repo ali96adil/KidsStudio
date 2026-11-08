@@ -11,6 +11,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import sys
 
 from .mac_pilot_evidence import record_mac_pilot_review, _private_evidence_dir
 from .optional_tool_evidence import read_private_json, private_evidence_file
@@ -134,6 +135,84 @@ def record_mac_pilot_review_shortcut(
     )
 
 
+def _interactive_terminal() -> bool:
+    """No piped responses, unattended approvals or background sessions."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _guided_cancelled() -> dict:
+    return {
+        "status": "MAC_PILOT_GUIDED_REVIEW_CANCELLED_NO_WRITE",
+        "review_recorded": False,
+        "publication_approved": False,
+        "pi_transfer_performed": False,
+        "youtube_upload_performed": False,
+    }
+
+
+def guided_mac_pilot_review(*, video_root: str, evidence_root: str,
+                            limit: int = 10) -> dict:
+    """TTY-only explicit selection and local private review of one pilot.
+
+    Video checks/approval are assertions made by the operator, not checks
+    performed by this prompt. No default selection or unattended mode.
+    """
+    if not _interactive_terminal():
+        raise MacPilotShortcutError("A real interactive terminal is required.")
+    choices = list_mac_pilot_evidence(
+        video_root=video_root, evidence_root=evidence_root, limit=limit)["pilots"]
+    if not choices:
+        return {
+            **_guided_cancelled(),
+            "status": "MAC_PILOT_GUIDED_NO_VALID_PRIVATE_PILOTS",
+        }
+
+    print("KidsStudio — اختيار حلقة للمراجعة المحلية فقط")
+    print("الأرقام للاختيار، ولا توجد موافقة أو رفع تلقائي.")
+    for number, item in enumerate(choices, 1):
+        print(f"{number}) {item['video_name']} "
+              f"({item['duration_seconds']}s, SHA {item['video_sha256'][:12]}...)")
+    try:
+        number_text = input("رقم الحلقة المطلوب مراجعتها (0 للإلغاء): ").strip()
+        if not number_text.isascii() or not number_text.isdigit():
+            return _guided_cancelled()
+        number = int(number_text)
+        if not 1 <= number <= len(choices):
+            return _guided_cancelled()
+        selected = choices[number - 1]
+        print(f"الفيديو المختار: {selected['video_name']}")
+        print("شاهد كل الفيديو واستمع لكل الجمل العربية قبل القبول.")
+        decision = input("اكتب R إذا تحتاج تعديل، أو A لقبول محلي خاص، أو C للإلغاء: ").strip().upper()
+        if decision not in ("R", "A"):
+            return _guided_cancelled()
+        notes = input("الملاحظات (حتى 2000 حرف): ").strip()
+        if len(notes) > 2000 or (decision == "R" and not notes):
+            return _guided_cancelled()
+        accepted = decision == "A"
+        if accepted:
+            if input("هل شاهدت الفيديو كاملاً؟ اكتب YES فقط إن كان صحيحاً: ").strip() != "YES":
+                return _guided_cancelled()
+            if input("هل راجعت الاستماع لكل الصوت العربي؟ اكتب YES فقط إن كان صحيحاً: ").strip() != "YES":
+                return _guided_cancelled()
+        print("هذا يحفظ ملاحظة محلية فقط. لا ينقل أو يرفع أو ينشر الفيديو.")
+        if input("لتسجيل القرار المحدد على هذا الملف فقط اكتب SAVE: ").strip() != "SAVE":
+            return _guided_cancelled()
+    except (EOFError, KeyboardInterrupt):
+        return _guided_cancelled()
+
+    # Re-validate sidecar and actual bytes AFTER all prompts: a file change
+    # between selection and commit MUST block recording.
+    return record_mac_pilot_review_shortcut(
+        video_root=video_root,
+        evidence_root=evidence_root,
+        evidence_name=selected["evidence_name"],
+        review_outcome="ACCEPTED_PRIVATE" if accepted else "REVISION_REQUIRED",
+        reviewer_notes=notes,
+        reviewed_full_video=accepted,
+        reviewed_arabic_voice=accepted,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Local Mac colors pilot review without manually copying SHA256")
@@ -147,7 +226,10 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("--reviewer-notes", default="")
     record.add_argument("--reviewed-full-video", action="store_true")
     record.add_argument("--reviewed-arabic-voice", action="store_true")
-    for selected in (listing, record):
+    guided = sub.add_parser("guided",
+                            help="Interactive TTY-only exact-video selection and private review")
+    guided.add_argument("--limit", type=int, default=10)
+    for selected in (listing, record, guided):
         selected.add_argument("--video-root", default=str(
             Path.home() / "kidsstudio-private" / "ready"))
         selected.add_argument("--evidence-root", default=str(
@@ -156,6 +238,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.action == "list":
             result = list_mac_pilot_evidence(
+                video_root=args.video_root,
+                evidence_root=args.evidence_root,
+                limit=args.limit)
+        elif args.action == "guided":
+            result = guided_mac_pilot_review(
                 video_root=args.video_root,
                 evidence_root=args.evidence_root,
                 limit=args.limit)
