@@ -15,7 +15,7 @@ class HostQualificationTests(unittest.TestCase):
         self.root.mkdir(mode=0o700)
 
     def test_mac_host_ready_for_supervised_tests(self):
-        with patch("kidsstudio.host_qualification.inspect_host") as readiness:
+        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._source_checkout", return_value=("a" * 40, True)):
             readiness.return_value = {
                 "ready_for_supervised_tests": True, "host_system": "Darwin",
                 "machine": "arm64", "checks": {"artifact_root_private": True}}
@@ -26,7 +26,7 @@ class HostQualificationTests(unittest.TestCase):
         self.assertFalse(report["production_approved"])
 
     def test_pi_host_blocked_if_private_root_missing(self):
-        with patch("kidsstudio.host_qualification.inspect_host") as readiness:
+        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._source_checkout", return_value=("a" * 40, True)):
             readiness.return_value = {
                 "ready_for_supervised_tests": False, "host_system": "Linux",
                 "machine": "aarch64", "checks": {"artifact_root_private": False}}
@@ -36,7 +36,7 @@ class HostQualificationTests(unittest.TestCase):
         self.assertFalse(report["publication_approved"])
 
     def test_linux_arm_machine_cannot_claim_mac_role(self):
-        with patch("kidsstudio.host_qualification.inspect_host") as readiness:
+        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._source_checkout", return_value=("a" * 40, True)):
             readiness.return_value = {
                 "ready_for_supervised_tests": True, "host_system": "Linux",
                 "machine": "aarch64", "checks": {"artifact_root_private": True}}
@@ -46,7 +46,7 @@ class HostQualificationTests(unittest.TestCase):
         self.assertEqual(report["status"], "SUPERVISED_TESTS_BLOCKED")
 
     def test_non_pi_linux_arm_machine_blocked(self):
-        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._raspberry_pi_model_present",
+        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._source_checkout", return_value=("a" * 40, True)), patch("kidsstudio.host_qualification._raspberry_pi_model_present",
                    return_value=False):
             readiness.return_value = {
                 "ready_for_supervised_tests": True, "host_system": "Linux",
@@ -57,7 +57,7 @@ class HostQualificationTests(unittest.TestCase):
         self.assertEqual(report["status"], "SUPERVISED_TESTS_BLOCKED")
 
     def test_pi_hardware_confirmed_but_not_production_approved(self):
-        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._raspberry_pi_model_present",
+        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._source_checkout", return_value=("a" * 40, True)), patch("kidsstudio.host_qualification._raspberry_pi_model_present",
                    return_value=True):
             readiness.return_value = {
                 "ready_for_supervised_tests": True, "host_system": "Linux",
@@ -70,7 +70,7 @@ class HostQualificationTests(unittest.TestCase):
         self.assertEqual(report["real_mac_pi_transfer_test"], "NOT_RUN")
 
     def test_wrong_os_for_pi_role_rejected(self):
-        with patch("kidsstudio.host_qualification.inspect_host") as readiness:
+        with patch("kidsstudio.host_qualification.inspect_host") as readiness, patch("kidsstudio.host_qualification._source_checkout", return_value=("a" * 40, True)):
             readiness.return_value = {
                 "ready_for_supervised_tests": True, "host_system": "Darwin",
                 "machine": "arm64", "checks": {"artifact_root_private": True}}
