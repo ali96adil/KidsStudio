@@ -54,8 +54,33 @@ def run() -> dict:
             ["/bin/bash", str(bash)], cwd=repo, env=env,
             capture_output=True, text=True, timeout=1000, check=False)
         if proc.returncode:
-            # Never print raw local errors or any private paths to CI stdout.
-            raise RuntimeError("Real Mac launcher supplied-WAV route failed.")
+            # Extract only constant safety status codes, never user paths,
+            # video names, voice names or raw potentially-sensitive stderr.
+            safe_statuses = []
+            for line in proc.stdout.splitlines():
+                if line.startswith("{"):
+                    try:
+                        item = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(item, dict):
+                        status = item.get("status")
+                        if isinstance(status, str) and status.isascii():
+                            safe_statuses.append(status[:100])
+                        safe_statuses.extend(
+                            item.get("blockers", [])
+                            if isinstance(item.get("blockers"), list) else [])
+                elif line.startswith("MAC_COLORS_BLOCKED:"):
+                    # This fixed launcher prefix includes only safe static
+                    # diagnostics. Never serialize raw shell stderr.
+                    safe_statuses.append("MAC_COLORS_BLOCKED")
+            safe_statuses = [
+                value for value in safe_statuses if isinstance(value, str)
+                and len(value) <= 100
+                and all(c.isascii() and (c.isalnum() or c in "_-") for c in value)
+            ]
+            raise RuntimeError(
+                "Mac launcher CI failed, safe gates: " + ",".join(safe_statuses))
         output = proc.stdout
         for expected in (
             "MAC_COLORS_PREFLIGHT_READY",
