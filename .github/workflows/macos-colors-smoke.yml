@@ -50,6 +50,11 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/ci_macos_native_voice_mode_smoke.py
+      - name: Execute real Mac launcher with original synthetic WAV, no Apple voice or GUI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci_macos_supplied_wav_launcher_smoke.py
       # The tested MP4 and optional system-voice WAV are temporary, local to
       # the hosted runner, and NEVER uploaded as GitHub Actions artifacts.
       # A green job never qualifies the owner's actual Mac/voice or the Pi.
