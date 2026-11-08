@@ -99,3 +99,7 @@ The native macOS colors pilot builds and validates its six Arabic speech beats *
 ## Batch 55 — CI exercises native voice-mode piping, not spoken Arabic
 
 Added a full hosted-macOS `voice_mode=macos` CI integration using **six synthetic FFmpeg AIFF tones**, never fake spoken words or user media. It verifies the real production AIFF-to-PCM timing/energy, real illustrated 24-second render, AAC mux, H.264/AAC preflight and separately decodes all six beats from the **finished MP4**. It catches sound loss during final mux while making no claim that an actual installed Arabic `say` voice speaks correctly. Do not treat synthetic CI passing as a substitute for the supervised owner Mac render, voice listening and private video review.
+
+## Batch 56 — simpler supervised review without relaxing owner approval
+
+Added `kidsstudio.mac_pilot_review_shortcut`, whose read-only `list` subcommand displays only private, original, validated SHA-matched Mac colors evidence. Its `record` subcommand takes **one exact evidence filename** and an explicit review outcome, derives video filename and SHA-256 from that validated proof and reuses the immutable-by-tool private review-note writer. Accepting a draft still requires separate assertions that the owner watched the complete video and listened to the Arabic voice. The helper performs no transfer, OAuth, upload, publication or implicit newest-video acceptance; it does not count as real owner device validation.
