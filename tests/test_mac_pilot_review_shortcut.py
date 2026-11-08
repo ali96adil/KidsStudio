@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from kidsstudio.mac_pilot_review_shortcut import (
     MacPilotShortcutError, list_mac_pilot_evidence,
-    record_mac_pilot_review_shortcut, main,
+    record_mac_pilot_review_shortcut, guided_mac_pilot_review, main,
 )
 
 
@@ -237,6 +237,109 @@ class MacPilotShortcutTests(unittest.TestCase):
             self.record()
         storage.assert_called_once()
         self.assertNotIn("youtube", str(storage.call_args.kwargs).lower())
+
+
+    def guided(self, answers, *, terminal=True):
+        stream = io.StringIO()
+        with patch("kidsstudio.mac_pilot_review_shortcut._interactive_terminal",
+                   return_value=terminal), \
+             patch("builtins.input", side_effect=answers), \
+             contextlib.redirect_stdout(stream):
+            result = guided_mac_pilot_review(**self.args)
+        return result, stream.getvalue()
+
+    def test_guided_requires_a_real_interactive_tty(self):
+        with patch("kidsstudio.mac_pilot_review_shortcut._interactive_terminal",
+                   return_value=False), \
+             patch("builtins.input") as read:
+            with self.assertRaises(MacPilotShortcutError):
+                guided_mac_pilot_review(**self.args)
+        read.assert_not_called()
+        self.assertEqual(len(list(self.proof.iterdir())), 1)
+
+    def test_guided_revision_uses_exact_selected_sidecar_and_notes(self):
+        result, output = self.guided(["1", "R", "صوت الأزرق يحتاج تعديل", "SAVE"])
+        self.assertEqual(result["review_outcome"], "REVISION_REQUIRED")
+        self.assertEqual(json.loads(
+            (self.proof / result["review_evidence_name"]).read_text()
+        )["reviewer_notes"], "صوت الأزرق يحتاج تعديل")
+        self.assertIn(self.movie.name, output)
+        self.assertFalse(result["youtube_upload_performed"])
+
+    def test_guided_private_accept_requires_both_explicit_truthful_yes_and_save(self):
+        result, _ = self.guided(["1", "A", "مقبول للمراجعة الخاصة",
+                                 "YES", "YES", "SAVE"])
+        self.assertEqual(result["review_outcome"], "ACCEPTED_PRIVATE")
+        note = json.loads((self.proof / result["review_evidence_name"]).read_text())
+        self.assertTrue(note["reported_full_video_reviewed"])
+        self.assertTrue(note["reported_arabic_voice_reviewed"])
+        self.assertFalse(note["local_acceptance_is_upload_permission"])
+        self.assertFalse(note["publication_approved"])
+
+    def test_guided_accept_without_any_required_attestation_is_cancelled(self):
+        for answers in (
+            ["1", "A", "ok", "NO"],
+            ["1", "A", "ok", "YES", "NO"],
+            ["1", "A", "ok", "YES", "YES", "no"],
+            ["1", "R", "اللون غلط", "no"],
+        ):
+            with self.subTest(answers=answers):
+                result, _ = self.guided(answers)
+                self.assertEqual(result["status"],
+                                 "MAC_PILOT_GUIDED_REVIEW_CANCELLED_NO_WRITE")
+                self.assertEqual(len(list(self.proof.iterdir())), 1)
+
+    def test_guided_rejects_implicit_or_out_of_range_selection(self):
+        for answers in (["0"], ["2"], ["latest"], [""], ["1", "C"],
+                        ["1", "R", "", "SAVE"], ["-1"]):
+            with self.subTest(answers=answers):
+                result, _ = self.guided(answers)
+                self.assertFalse(result["review_recorded"])
+                self.assertEqual(len(list(self.proof.iterdir())), 1)
+
+    def test_guided_empty_private_list_does_not_prompt(self):
+        (self.proof / self.name).unlink()
+        with patch("kidsstudio.mac_pilot_review_shortcut._interactive_terminal",
+                   return_value=True), \
+             patch("builtins.input") as read:
+            report = guided_mac_pilot_review(**self.args)
+        self.assertEqual(report["status"],
+                         "MAC_PILOT_GUIDED_NO_VALID_PRIVATE_PILOTS")
+        read.assert_not_called()
+
+    def test_guided_abort_on_eof_does_not_save(self):
+        report, _ = self.guided([EOFError()])
+        self.assertFalse(report["review_recorded"])
+        self.assertEqual(len(list(self.proof.iterdir())), 1)
+
+    def test_guided_tamper_between_selection_and_save_fails_closed(self):
+        prompts = iter(["1", "R", "نطق يحتاج تعديل", "SAVE"])
+
+        def mutate_when_saving(prompt):
+            answer = next(prompts)
+            if answer == "SAVE":
+                self.movie.write_bytes(b"changed after initial display")
+            return answer
+
+        with patch("kidsstudio.mac_pilot_review_shortcut._interactive_terminal",
+                   return_value=True), patch("builtins.input",
+                   side_effect=mutate_when_saving), \
+             contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(MacPilotShortcutError):
+                guided_mac_pilot_review(**self.args)
+        self.assertEqual(len(list(self.proof.iterdir())), 1)
+
+    def test_guided_cli_returns_cancel_without_recording(self):
+        output = io.StringIO()
+        with patch("kidsstudio.mac_pilot_review_shortcut._interactive_terminal",
+                   return_value=True), patch("builtins.input",
+                   return_value="0"), contextlib.redirect_stdout(output):
+            code = main(["guided", "--video-root", str(self.videos),
+                         "--evidence-root", str(self.proof)])
+        self.assertEqual(code, 0)
+        self.assertIn("MAC_PILOT_GUIDED_REVIEW_CANCELLED_NO_WRITE",
+                      output.getvalue())
+        self.assertEqual(len(list(self.proof.iterdir())), 1)
 
 
 if __name__ == "__main__":
