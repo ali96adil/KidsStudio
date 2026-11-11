@@ -247,6 +247,47 @@ class StudioDirectorTests(unittest.TestCase):
         record = self.store.get(proposal_id=trial["proposal_id"])
         self.assertEqual(record["result"]["queue_state"], "COMPLETED")
 
+    def test_terminal_queue_result_survives_interruption_before_director_commit(self):
+        for mode in ("completed", "failed", "cancelled"):
+            with self.subTest(mode=mode):
+                trial = self.store.run_internal_script_trial(**self.trial_args(
+                    f"before-director-commit-{mode}", SyntheticRouter()))
+                queue = StudioQueue(self.queue_path)
+                if mode == "completed":
+                    lease = queue.claim(worker_id="before-commit", capabilities=["script_draft"])
+                    queue.complete(job_id=trial["queue_job_id"], worker_id="before-commit",
+                                   generation=lease["generation"],
+                                   result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+                    expected_state = "COMPLETED"
+                elif mode == "failed":
+                    lease = queue.claim(worker_id="before-commit", capabilities=["script_draft"])
+                    queue.fail(job_id=trial["queue_job_id"], worker_id="before-commit",
+                               generation=lease["generation"], error_code="SYNTHETIC_FAILURE")
+                    expected_state = "FAILED"
+                else:
+                    queue.cancel(trial["queue_job_id"])
+                    expected_state = "CANCELLED"
+
+                original_connection = self.store._connection
+
+                @contextmanager
+                def interrupt_before_commit(*, readonly=False):
+                    with original_connection(readonly=readonly) as db:
+                        yield db
+                        if not readonly:
+                            raise RuntimeError("simulated interruption before Director commit")
+
+                with patch.object(self.store, "_connection", new=interrupt_before_commit):
+                    with self.assertRaisesRegex(RuntimeError, "before Director commit"):
+                        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                       queue_database=self.queue_path)
+                record = self.store.get(proposal_id=trial["proposal_id"])
+                self.assertIsNone(record["result"])
+                resumed = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                         queue_database=self.queue_path)
+                self.assertEqual(resumed["status"], "RESULT_RECORDED")
+                self.assertEqual(resumed["queue_state"], expected_state)
+
     def test_concurrent_result_record_retries_are_idempotent(self):
         trial = self.store.run_internal_script_trial(**self.trial_args(
             "concurrent-result-record", SyntheticRouter()))
