@@ -290,6 +290,114 @@ class StudioDirectorTests(unittest.TestCase):
         record = self.store.get(proposal_id=trial["proposal_id"])
         self.assertEqual(record["result"]["queue_job_id"], trial["queue_job_id"])
 
+    def test_failed_and_cancelled_results_resume_after_commit(self):
+        for mode in ("failed", "cancelled"):
+            with self.subTest(mode=mode):
+                trial = self.store.run_internal_script_trial(**self.trial_args(
+                    f"terminal-{mode}-resume", SyntheticRouter()))
+                queue = StudioQueue(self.queue_path)
+                if mode == "failed":
+                    lease = queue.claim(worker_id="terminal-worker", capabilities=["script_draft"])
+                    queue.fail(job_id=trial["queue_job_id"], worker_id="terminal-worker",
+                               generation=lease["generation"], error_code="RENDER_FAILED")
+                    expected_state, expected_status = "FAILED", "RENDER_FAILED"
+                else:
+                    queue.cancel(trial["queue_job_id"])
+                    expected_state, expected_status = "CANCELLED", "CANCELLED"
+
+                original_connection = self.store._connection
+                interrupted = {"pending": True}
+
+                @contextmanager
+                def interrupt_after_commit(*, readonly=False):
+                    with original_connection(readonly=readonly) as db:
+                        yield db
+                    if not readonly and interrupted["pending"]:
+                        interrupted["pending"] = False
+                        raise RuntimeError("simulated interruption after terminal commit")
+
+                with patch.object(self.store, "_connection", new=interrupt_after_commit):
+                    with self.assertRaisesRegex(RuntimeError, "after terminal commit"):
+                        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                       queue_database=self.queue_path)
+                resumed = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                         queue_database=self.queue_path)
+                self.assertEqual(resumed["status"], "RESULT_EXISTS")
+                record = self.store.get(proposal_id=trial["proposal_id"])
+                self.assertEqual(record["result"]["queue_state"], expected_state)
+                self.assertEqual(record["result"]["result_status"], expected_status)
+
+    def test_concurrent_failed_and_cancelled_result_retries_are_idempotent(self):
+        for mode in ("failed", "cancelled"):
+            with self.subTest(mode=mode):
+                trial = self.store.run_internal_script_trial(**self.trial_args(
+                    f"concurrent-terminal-{mode}", SyntheticRouter()))
+                queue = StudioQueue(self.queue_path)
+                if mode == "failed":
+                    lease = queue.claim(worker_id="terminal-concurrent", capabilities=["script_draft"])
+                    queue.fail(job_id=trial["queue_job_id"], worker_id="terminal-concurrent",
+                               generation=lease["generation"], error_code="WORKER_FAILED")
+                else:
+                    queue.cancel(trial["queue_job_id"])
+
+                original_connection = self.store._connection
+                prior_reads = threading.Barrier(2)
+
+                @contextmanager
+                def synchronize_reads(*, readonly=False):
+                    with original_connection(readonly=readonly) as db:
+                        yield db
+                    if readonly:
+                        prior_reads.wait(timeout=5)
+
+                outcomes, errors = [], []
+
+                def record():
+                    try:
+                        outcomes.append(self.store.record_queue_result(
+                            proposal_id=trial["proposal_id"], queue_database=self.queue_path))
+                    except Exception as exc:
+                        errors.append(exc)
+
+                with patch.object(self.store, "_connection", new=synchronize_reads):
+                    threads = [threading.Thread(target=record) for _ in range(2)]
+                    for thread in threads:
+                        thread.start()
+                    for thread in threads:
+                        thread.join(timeout=10)
+
+                self.assertFalse(any(thread.is_alive() for thread in threads))
+                self.assertEqual(errors, [])
+                self.assertEqual(sorted(item["status"] for item in outcomes),
+                                 ["RESULT_EXISTS", "RESULT_RECORDED"])
+
+    def test_failed_and_cancelled_result_retries_reject_conflicting_terminal_state(self):
+        for mode in ("failed", "cancelled"):
+            with self.subTest(mode=mode):
+                trial = self.store.run_internal_script_trial(**self.trial_args(
+                    f"terminal-conflict-{mode}", SyntheticRouter()))
+                queue = StudioQueue(self.queue_path)
+                if mode == "failed":
+                    lease = queue.claim(worker_id="conflict-terminal", capabilities=["script_draft"])
+                    queue.fail(job_id=trial["queue_job_id"], worker_id="conflict-terminal",
+                               generation=lease["generation"], error_code="ORIGINAL_FAILURE")
+                else:
+                    queue.cancel(trial["queue_job_id"])
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+                original_get = StudioQueue.get
+
+                def conflicting_terminal_state(queue_instance, job_id):
+                    job = original_get(queue_instance, job_id)
+                    job["state"] = "COMPLETED" if mode == "failed" else "FAILED"
+                    job["error_code"] = "CHANGED_FAILURE"
+                    return job
+
+                with patch.object(StudioQueue, "get", new=conflicting_terminal_state):
+                    with self.assertRaises(ValueError):
+                        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                       queue_database=self.queue_path)
+
     def test_result_record_rejects_nonterminal_and_unlinked_jobs(self):
         proposal = self.create()
         with self.assertRaisesRegex(ValueError, "no linked queue job"):
