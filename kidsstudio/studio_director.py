@@ -30,6 +30,7 @@ _MANUAL_OUTCOMES = {"REJECTED", "DEFERRED"}
 _MAX_JSON_BYTES = 32_768
 _SECRET_VALUE = re.compile(r"(?:bearer\s+\S+|(?:token|secret|password|api[_-]?key)=\S+|://[^/@]+:[^/@]+@)", re.I)
 _EVIDENCE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z")
+_RESULT_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,79}\Z")
 INTERNAL_TRIAL_POLICY = "internal-script-draft-v1"
 
 
@@ -67,6 +68,13 @@ def _text(value: object, label: str, maximum: int = 2000) -> str:
     if _SECRET_VALUE.search(clean):
         raise ValueError(f"{label} appears to contain a credential")
     return clean
+
+
+def _result_code(value: object) -> str:
+    """Keep untrusted worker result labels bounded and free of arbitrary text."""
+    if not isinstance(value, str) or not _RESULT_CODE.fullmatch(value):
+        raise ValueError("queue result status must be a bounded uppercase code")
+    return value
 
 
 def _proposal_document(document: object) -> dict:
@@ -750,9 +758,12 @@ class StudioDirector:
             material = queue_job.get("result_json")
             if not isinstance(material, str):
                 raise ValueError("completed queue job has no result record")
-            result_status = json.loads(material).get("status", "COMPLETED")
+            decoded = json.loads(material)
+            if not isinstance(decoded, dict):
+                raise ValueError("completed queue result must be an object")
+            result_status = _result_code(decoded.get("status", "COMPLETED"))
         elif state == "FAILED":
-            result_status = queue_job.get("error_code") or "FAILED"
+            result_status = _result_code(queue_job.get("error_code") or "FAILED")
             material = json.dumps({"state": state, "error_code": result_status}, sort_keys=True)
         else:
             result_status = "CANCELLED"

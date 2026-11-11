@@ -7,7 +7,7 @@ import unittest
 
 from kidsstudio.studio_director import StudioDirector
 from kidsstudio.studio_queue import StudioQueue
-from kidsstudio.studio_director import INTERNAL_TRIAL_POLICY
+from kidsstudio.studio_director import INTERNAL_TRIAL_POLICY, _result_code
 
 
 class SyntheticRouter:
@@ -126,6 +126,12 @@ class StudioDirectorTests(unittest.TestCase):
         record = self.store.get(proposal_id=proposal["proposal_id"])
         self.assertFalse(record["evidence_verified"])
         self.assertFalse(record["owner_publication_approval"])
+
+    def test_result_ledger_accepts_only_bounded_status_codes(self):
+        self.assertEqual(_result_code("DRAFTED_UNREVIEWED"), "DRAFTED_UNREVIEWED")
+        for invalid in ("Bearer secret", "x" * 81, "FAILED\nInjected", None):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "uppercase code"):
+                _result_code(invalid)
 
     def test_rejected_or_deferred_proposals_cannot_enqueue(self):
         proposal = self.create()
