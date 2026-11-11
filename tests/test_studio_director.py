@@ -87,6 +87,13 @@ class StudioDirectorTests(unittest.TestCase):
     def create(self, **overrides):
         return self.store.propose(request_key="colors-topic-v1", proposal=self.proposal(**overrides))
 
+    def trial_args(self, request_key, router):
+        content = "Caller supplied curriculum text."
+        return {"router": router, "queue_database": self.queue_path,
+                "request_key": request_key, "brief": "Teach colors.",
+                "language": "en", "evidence": [{"id": "note1", "source": "note",
+                "observed_at": "2026-11-11", "claim": content, "content": content}]}
+
     def test_proposal_is_unique_and_idempotent(self):
         first = self.create()
         second = self.create()
@@ -240,11 +247,7 @@ class StudioDirectorTests(unittest.TestCase):
 
     def test_trial_recovers_if_process_stops_after_proposal_commit(self):
         router = SyntheticRouter()
-        content = "Caller supplied curriculum text."
-        args = {"router": router, "queue_database": self.queue_path,
-                "request_key": "crash-after-proposal", "brief": "Teach colors.",
-                "language": "en", "evidence": [{"id": "note1", "source": "note",
-                "observed_at": "2026-11-11", "claim": content, "content": content}]}
+        args = self.trial_args("crash-after-proposal", router)
         original_propose = self.store.propose
 
         def commit_then_interrupt(**kwargs):
@@ -258,6 +261,57 @@ class StudioDirectorTests(unittest.TestCase):
         self.assertEqual(resumed["status"], "INTERNAL_TRIAL_QUEUED")
         self.assertEqual([call["role"] for call in router.calls],
                          ["script_draft", "editorial_review"])
+
+    def test_trial_recovers_after_independent_review_is_persisted(self):
+        router = SyntheticRouter()
+        args = self.trial_args("crash-after-review", router)
+        original_review = self.store.record_agent_review
+
+        def review_then_interrupt(**kwargs):
+            original_review(**kwargs)
+            raise RuntimeError("simulated interruption after review commit")
+
+        with patch.object(self.store, "record_agent_review", side_effect=review_then_interrupt):
+            with self.assertRaisesRegex(RuntimeError, "after review commit"):
+                self.store.run_internal_script_trial(**args)
+        resumed = self.store.run_internal_script_trial(**args)
+        self.assertEqual(resumed["status"], "INTERNAL_TRIAL_QUEUED")
+        self.assertEqual([call["role"] for call in router.calls],
+                         ["script_draft", "editorial_review"])
+
+    def test_trial_recovers_after_policy_decision_is_persisted(self):
+        router = SyntheticRouter()
+        args = self.trial_args("crash-after-policy", router)
+        original_decide = self.store._policy_decide
+
+        def decide_then_interrupt(**kwargs):
+            original_decide(**kwargs)
+            raise RuntimeError("simulated interruption after policy commit")
+
+        with patch.object(self.store, "_policy_decide", side_effect=decide_then_interrupt):
+            with self.assertRaisesRegex(RuntimeError, "after policy commit"):
+                self.store.run_internal_script_trial(**args)
+        resumed = self.store.run_internal_script_trial(**args)
+        self.assertEqual(resumed["status"], "INTERNAL_TRIAL_QUEUED")
+        self.assertEqual(len(StudioQueue(self.queue_path).list_jobs()), 1)
+        self.assertEqual([call["role"] for call in router.calls],
+                         ["script_draft", "editorial_review"])
+
+    def test_trial_recovers_when_queue_enqueue_commits_before_dispatch_link(self):
+        router = SyntheticRouter()
+        args = self.trial_args("crash-between-queue-and-ledger", router)
+        original_enqueue = StudioQueue.enqueue
+
+        def enqueue_then_interrupt(queue, **kwargs):
+            original_enqueue(queue, **kwargs)
+            raise RuntimeError("simulated interruption after queue commit")
+
+        with patch.object(StudioQueue, "enqueue", enqueue_then_interrupt):
+            with self.assertRaisesRegex(RuntimeError, "after queue commit"):
+                self.store.run_internal_script_trial(**args)
+        resumed = self.store.run_internal_script_trial(**args)
+        self.assertEqual(resumed["status"], "INTERNAL_TRIAL_QUEUED")
+        self.assertEqual(len(StudioQueue(self.queue_path).list_jobs()), 1)
 
     def test_successor_links_old_proposal_for_re_evaluation(self):
         old = self.create()
