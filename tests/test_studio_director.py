@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from kidsstudio.studio_director import StudioDirector
@@ -213,6 +214,49 @@ class StudioDirectorTests(unittest.TestCase):
                                                         queue_database=self.queue_path)["status"],
                          "RESULT_EXISTS")
 
+    def test_result_record_recovers_after_commit_before_caller_observes_success(self):
+        router = SyntheticRouter()
+        args = self.trial_args("crash-after-result", router)
+        trial = self.store.run_internal_script_trial(**args)
+        StudioQueue(self.queue_path).claim(
+            worker_id="result-worker", capabilities=["script_draft"])
+        StudioQueue(self.queue_path).complete(
+            job_id=trial["queue_job_id"], worker_id="result-worker", generation=1,
+            result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+
+        original_connection = self.store._connection
+        interrupted = {"pending": True}
+
+        @contextmanager
+        def connection(*, readonly=False):
+            with original_connection(readonly=readonly) as db:
+                yield db
+            if not readonly and interrupted["pending"]:
+                interrupted["pending"] = False
+                raise RuntimeError("simulated interruption after result commit")
+
+        with patch.object(self.store, "_connection", new=connection):
+            with self.assertRaisesRegex(RuntimeError, "after result commit"):
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+        resumed = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                 queue_database=self.queue_path)
+        self.assertEqual(resumed["status"], "RESULT_EXISTS")
+        self.assertEqual(resumed["queue_job_id"], trial["queue_job_id"])
+        record = self.store.get(proposal_id=trial["proposal_id"])
+        self.assertEqual(record["result"]["queue_state"], "COMPLETED")
+
+    def test_result_record_rejects_nonterminal_and_unlinked_jobs(self):
+        proposal = self.create()
+        with self.assertRaisesRegex(ValueError, "no linked queue job"):
+            self.store.record_queue_result(proposal_id=proposal["proposal_id"],
+                                           queue_database=self.queue_path)
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "result-not-terminal", SyntheticRouter()))
+        with self.assertRaisesRegex(ValueError, "not terminal"):
+            self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                           queue_database=self.queue_path)
+
     def test_failed_independent_review_defers_without_queue(self):
         router = SyntheticRouter(verdict="REVISE")
         content = "The caller supplied this local note."
@@ -351,6 +395,68 @@ class StudioDirectorTests(unittest.TestCase):
         decision = migrated.decide(proposal_id=proposal["proposal_id"], outcome="DEFERRED",
                                    actor="legacy-reviewer", rationale="Needs new evidence.")
         self.assertEqual(decision["outcome"], "DEFERRED")
+
+    def test_legacy_unbound_proposal_cannot_reuse_trial_key(self):
+        legacy = self.create()
+        router = SyntheticRouter()
+        args = self.trial_args("colors-topic-v1", router)
+        with self.assertRaisesRegex(ValueError, "lacks atomic request/provenance binding"):
+            self.store.run_internal_script_trial(**args)
+        self.assertEqual(router.calls, [])
+        after = self.store.get(proposal_id=legacy["proposal_id"])
+        self.assertIsNone(after["decision"])
+        self.assertIsNone(after["ai_pipeline"])
+        self.assertEqual(StudioQueue(self.queue_path).list_jobs(), [])
+
+    def test_legacy_unbound_proposal_can_only_be_replaced_by_linked_successor(self):
+        legacy = self.create()
+        original_sha = self.store.get(proposal_id=legacy["proposal_id"])["proposal_sha256"]
+        router = SyntheticRouter()
+        args = self.trial_args("colors-successor-v2", router)
+        result = self.store.run_internal_script_trial(**args, supersedes_id=legacy["proposal_id"])
+        self.assertEqual(result["status"], "INTERNAL_TRIAL_QUEUED")
+        old_after = self.store.get(proposal_id=legacy["proposal_id"])
+        new_after = self.store.get(proposal_id=result["proposal_id"])
+        self.assertEqual(old_after["proposal_sha256"], original_sha)
+        self.assertIsNone(old_after["decision"])
+        self.assertEqual(new_after["proposal"]["supersedes_id"], legacy["proposal_id"])
+        self.assertIn(legacy["proposal_id"], router.calls[0]["user_prompt"])
+        self.assertNotIn("owner-research-note-01", router.calls[0]["user_prompt"])
+
+    def test_successor_to_missing_legacy_proposal_fails_before_model_call(self):
+        router = SyntheticRouter()
+        args = self.trial_args("missing-successor-parent", router)
+        with self.assertRaisesRegex(ValueError, "not found"):
+            self.store.run_internal_script_trial(**args, supersedes_id="0" * 32)
+        self.assertEqual(router.calls, [])
+        self.assertEqual(StudioQueue(self.queue_path).list_jobs(), [])
+
+    def test_legacy_unbound_proposal_with_pass_review_still_defers(self):
+        content = "Locally supplied learning objective excerpt."
+        proposal = self.store.propose(
+            request_key="legacy-reviewed-unbound",
+            proposal=self.proposal(
+                effort_estimate={"hours": 2, "basis": "Existing estimate."},
+                evidence=[{"source": "local note", "observed_at": "2026-11-11",
+                           "claim": content, "content": content, "sha256": None}]),
+        )
+        with self.store._connection() as db:
+            db.execute("""INSERT INTO ai_pipeline(
+                proposal_id,generator_provider_id,generator_model,generator_prompt_sha256,
+                generator_response_sha256,reviewer_provider_id,reviewer_model,
+                reviewer_prompt_sha256,reviewer_response_sha256,review_verdict,
+                review_rationale,evidence_supported,blocking_issues_json,
+                assessment_sha256,created_at,reviewed_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (proposal["proposal_id"], "writer-local", "model", "a" * 64, "b" * 64,
+                 "reviewer-local", "model", "c" * 64, "d" * 64, "PASS",
+                 "Synthetic legacy review.", 1, "[]", "e" * 64, 1.0, 1.0))
+        decision = self.store._policy_decide(proposal_id=proposal["proposal_id"])
+        self.assertEqual(decision["outcome"], "DEFERRED")
+        self.assertIsNone(decision["policy_id"])
+        with self.assertRaisesRegex(ValueError, "policy-approved"):
+            self.store.enqueue_accepted(proposal_id=proposal["proposal_id"],
+                                        queue_database=self.queue_path)
 
 
 if __name__ == "__main__":

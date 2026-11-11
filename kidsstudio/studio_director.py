@@ -669,7 +669,8 @@ class StudioDirector:
 
     def run_internal_script_trial(self, *, router, queue_database: str | Path,
                                   request_key: str, brief: str, language: str,
-                                  evidence: list[dict]) -> dict:
+                                  evidence: list[dict],
+                                  supersedes_id: str | None = None) -> dict:
         """Generate, independently review and policy-queue one bounded script draft."""
         if not isinstance(language, str) or language not in {"ar", "en"}:
             raise ValueError("language must be ar or en")
@@ -693,7 +694,16 @@ class StudioDirector:
             })
         if len({item["id"] for item in normalized}) != len(normalized):
             raise ValueError("evidence ids must be unique")
-        request_json = _pack({"brief": brief, "language": language, "evidence": normalized},
+        if supersedes_id is not None:
+            if not isinstance(supersedes_id, str) or not _ID.fullmatch(supersedes_id):
+                raise ValueError("invalid supersedes_id")
+            with self._connection(readonly=True) as db:
+                previous = db.execute("SELECT 1 FROM proposals WHERE proposal_id=?",
+                                      (supersedes_id,)).fetchone()
+            if previous is None:
+                raise ValueError("superseded proposal not found")
+        request_json = _pack({"brief": brief, "language": language, "evidence": normalized,
+                              "supersedes_id": supersedes_id},
                              "trial request")
         request_sha = hashlib.sha256(request_json.encode("utf-8")).hexdigest()
         if not hasattr(router, "local_free_provider_ids"):
@@ -710,11 +720,15 @@ class StudioDirector:
             raise ValueError("trial request key was already used for different input")
         if existing is None:
             user_input = json.dumps({"brief": brief, "language": language, "age_band": "4-6",
-                                     "evidence": normalized}, ensure_ascii=False, sort_keys=True)
+                                     "evidence": normalized,
+                                     "supersedes_id": supersedes_id},
+                                    ensure_ascii=False, sort_keys=True)
             writer_system = (
                 "You are the Kids Studio educational idea proposer. You have no browser or research tool. "
                 "Use ONLY caller-supplied evidence IDs; do not invent studies, market data, views, sources "
-                "or verification. Return one original idea as strict JSON with exactly: title, summary, "
+                "or verification. A supersedes_id is only an audit link, never evidence, provenance, or approval. "
+                "Return one original idea as strict JSON "
+                "with exactly: title, summary, "
                 "learning_objective, evidence_ids (array), alternatives (2-4 objects each option/rationale), "
                 "effort_estimate (hours 0-8 and basis), risks (1-5 strings). Suit ages 4-6 and the specified "
                 "language. The effort is an unverified planning estimate, not a budget or promise."
@@ -753,6 +767,8 @@ class StudioDirector:
                 "job_payload": {"language": language, "topic": f"{title}: {objective}"[:400],
                                 "auto_review": False},
             }
+            if supersedes_id is not None:
+                proposal["supersedes_id"] = supersedes_id
             created = self.propose(request_key=request_key, proposal=proposal,
                                    _generation_response=writer, _request_sha256=request_sha,
                                    _pipeline_capability=_PIPELINE_CAPABILITY)
