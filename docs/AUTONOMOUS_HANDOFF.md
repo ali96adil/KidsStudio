@@ -7,7 +7,8 @@ Updated: 2026-11-11
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Last verified branch head before this handoff update: `3c8bb098381957c02889a612cdb8987836659321`.
+- Code/test head: `3c8bb098381957c02889a612cdb8987836659321`.
+- Handoff-only revision currently on the branch before this update: `646b76cd5de00d4e62807248bcff4143a2b95492`.
 - Code rollback before Batch 74A: `56e488b86b3add00ee9746700642d4841cc042a9`.
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
@@ -31,7 +32,12 @@ Updated: 2026-11-11
   - macOS run `43082246373`.
   - Godot run `43082246432`.
   - FFmpeg run `43082246280`.
-- For code head `3c8bb098381957c02889a612cdb8987836659321`, the first GitHub check query returned no workflow runs/statuses yet. Treat CI as pending/unverified until rechecked; do not infer success from the base commit.
+- GitHub checks on code head `3c8bb098381957c02889a612cdb8987836659321` all completed successfully:
+  - CI run `43084519378` — success.
+  - macOS run `43084519277` — success.
+  - Godot run `43084519266` — success.
+  - FFmpeg run `43084519667` — success.
+- The macOS run used synthetic audio. It does not qualify the owner's Arabic episode workflow or prove a real AI model works.
 - Synthetic router tests are test doubles only. No real model was invoked.
 
 ## Existing system and boundaries
@@ -44,8 +50,8 @@ Updated: 2026-11-11
 
 ## Open work and priorities
 
-1. Recheck CI for `3c8bb098381957c02889a612cdb8987836659321`; investigate any failure before more changes.
-2. Continue regression review of Studio Director authority boundaries and interruption points, including terminal result conflicts and retry behavior.
+1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
+2. Add focused idempotency/conflict regression cases for successor request-key rebinding and terminal result retries; fix only if a test proves a defect.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
