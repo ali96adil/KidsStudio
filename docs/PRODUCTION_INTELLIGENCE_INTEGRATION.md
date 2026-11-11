@@ -60,6 +60,32 @@ G5 enable only after documented review and owner authorization.
 - `filmcraft_frame_compare.py`: after the technical check, use local ffmpeg to decode six in-memory 320×180 frames at three relative timeline positions; report frame differences, then rehash both files. This checks **samples only**, not complete quality or subtitles.
 - No installation, remote tool, real alpha-tool execution, publication, queue mutation or transfer was performed. Source identity is unverified; physical Mac/Pi G4 remains NOT_RUN. Runbooks and thresholds are documented in `CRAFT_FILMCRAFT_OPTIONAL_PILOTS.md`.
 
+## Batch 72 — bounded AI proposal and independent review
+
+- The optional `studio-director pilot` route uses the existing `ChatRouter` and
+  existing `StudioQueue`; it permits only explicitly free loopback providers,
+  disables failover, and requires different writer and reviewer providers.
+- The model receives only caller-supplied evidence. No web/research tool is
+  invoked. Evidence excerpts are SHA-256 bound to their stored bytes; this
+  verifies byte integrity only, not source authenticity or factual accuracy.
+  Unsupported/revision/block verdicts, unverified evidence, missing estimates,
+  or effort above eight hours defer the idea without creating a queue task.
+- Automatic internal acceptance is restricted to a reviewed `script_draft`
+  and carries `studio_no_paid` plus a versioned policy tag. Local and remote
+  workers enforce loopback/free provider filtering for that tag, regardless of
+  their normal paid-provider configuration. No cost, publishing or external
+  action is authorized. Manual actor strings can reject/defer only; they are
+  never owner credentials.
+- Proposal, assessment, decision, dispatch and terminal result digests are
+  recorded locally. Trial request keys bind the original brief/language/
+  evidence to prevent silently reusing a key with changed input. The result
+  ledger stores status and digest, not result content.
+- Synthetic end-to-end tests use a deterministic router double and queue
+  completion; they do not call a real model or prove Arabic quality. External
+  research and the owner's Arabic Mac episode remain NOT_RUN / Pending Physical
+  Qualification. Roll back by reverting the Batch 72 commit; no existing queue
+  state, media recipe, provider credentials or hardware deployment changes.
+
 ## Batch 66 — macOS test reproducibility and SQLite lifecycle (2026-11-08)
 
 - Baseline/rollback point: local tag `codex-restore-20261108-batch65` at

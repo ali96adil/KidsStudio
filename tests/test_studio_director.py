@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 from pathlib import Path
 import tempfile
@@ -6,6 +7,44 @@ import unittest
 
 from kidsstudio.studio_director import StudioDirector
 from kidsstudio.studio_queue import StudioQueue
+from kidsstudio.studio_director import INTERNAL_TRIAL_POLICY
+
+
+class SyntheticRouter:
+    """Deterministic provider double; never opens a model/API connection."""
+    def __init__(self, verdict="PASS"):
+        self.verdict = verdict
+        self.calls = []
+
+    def local_free_provider_ids(self, *, role):
+        return {"writer-local"} if role == "script_draft" else {"reviewer-local"}
+
+    def complete(self, **kwargs):
+        self.calls.append(kwargs)
+        role = kwargs["role"]
+        if role == "script_draft":
+            answer = json.dumps({
+                "title": "ألوان الحديقة", "summary": "قصة تميّز اللونين الأحمر والأزرق.",
+                "learning_objective": "أن يميز الطفل الأحمر والأزرق.",
+                "evidence_ids": ["note1"],
+                "alternatives": [
+                    {"option": "قصة حوارية", "rationale": "تربط اللون بأمثلة يومية."},
+                    {"option": "لعبة مطابقة", "rationale": "تدعم الاسترجاع النشط."},
+                ],
+                "effort_estimate": {"hours": 2, "basis": "تقدير اصطناعي للاختبار."},
+                "risks": ["يحتاج النص لمراجعة عربية قبل الإنتاج."],
+            }, ensure_ascii=False)
+            provider = "writer-local"
+        else:
+            answer = json.dumps({
+                "verdict": self.verdict, "rationale": "Synthetic independent review.",
+                "evidence_supported": True, "blocking_issues": [],
+            })
+            provider = "reviewer-local"
+        return {"provider_id": provider, "model": "test-only", "role": role,
+                "billing_policy": "free", "failover_used": False,
+                "prompt_sha256": hashlib.sha256(kwargs["user_prompt"].encode()).hexdigest(),
+                "answer": answer, "answer_sha256": hashlib.sha256(answer.encode()).hexdigest()}
 
 
 class StudioDirectorTests(unittest.TestCase):
@@ -76,17 +115,14 @@ class StudioDirectorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sensitive"):
             self.create(job_payload={"api_key": "x"})
 
-    def test_decision_binds_evidence_and_is_immutable(self):
+    def test_actor_text_cannot_claim_owner_or_auto_accept(self):
         proposal = self.create()
-        first = self.store.decide(proposal_id=proposal["proposal_id"], outcome="ACCEPTED",
-                                  actor="director.editorial", rationale="Evidence supports a story format.")
-        same = self.store.decide(proposal_id=proposal["proposal_id"], outcome="ACCEPTED",
-                                 actor="director.editorial", rationale="Evidence supports a story format.")
-        self.assertEqual(first["decision_id"], same["decision_id"])
-        self.assertEqual(len(first["evidence_sha256"]), 64)
-        with self.assertRaisesRegex(ValueError, "immutable"):
-            self.store.decide(proposal_id=proposal["proposal_id"], outcome="REJECTED",
-                              actor="director.editorial", rationale="New opinion.")
+        with self.assertRaisesRegex(ValueError, "never accept"):
+            self.store.decide(proposal_id=proposal["proposal_id"], outcome="ACCEPTED",
+                              actor="owner", rationale="Text is not authority.")
+        decision = self.store.decide(proposal_id=proposal["proposal_id"], outcome="DEFERRED",
+                                     actor="owner", rationale="Defer for more evidence.")
+        self.assertEqual(len(decision["evidence_sha256"]), 64)
         record = self.store.get(proposal_id=proposal["proposal_id"])
         self.assertFalse(record["evidence_verified"])
         self.assertFalse(record["owner_publication_approval"])
@@ -98,30 +134,84 @@ class StudioDirectorTests(unittest.TestCase):
         for current, outcome in ((proposal, "REJECTED"), (deferred, "DEFERRED")):
             self.store.decide(proposal_id=current["proposal_id"], outcome=outcome,
                               actor="director", rationale="Not supported now.")
-            with self.assertRaisesRegex(ValueError, "accepted"):
+            with self.assertRaisesRegex(ValueError, "policy-approved"):
                 self.store.enqueue_accepted(proposal_id=current["proposal_id"],
                                             queue_database=self.queue_path)
         jobs = StudioQueue(self.queue_path).list_jobs()
         self.assertEqual(jobs, [])
 
-    def test_only_explicitly_accepted_proposal_creates_idempotent_queue_job(self):
-        proposal = self.create()
-        with self.assertRaisesRegex(ValueError, "accepted"):
-            self.store.enqueue_accepted(proposal_id=proposal["proposal_id"],
-                                        queue_database=self.queue_path)
-        self.store.decide(proposal_id=proposal["proposal_id"], outcome="ACCEPTED",
-                          actor="director", rationale="Proceed with a bounded Arabic draft.")
-        first = self.store.enqueue_accepted(proposal_id=proposal["proposal_id"],
-                                            queue_database=self.queue_path)
-        second = self.store.enqueue_accepted(proposal_id=proposal["proposal_id"],
-                                             queue_database=self.queue_path)
-        self.assertEqual(first["queue_job_id"], second["queue_job_id"])
-        self.assertFalse(first["execution_started"])
+    def test_synthetic_ai_review_policy_queue_and_result_end_to_end(self):
+        router = SyntheticRouter()
+        content = "Owner-supplied curriculum note: children practice color recognition."
+        result = self.store.run_internal_script_trial(
+            router=router, queue_database=self.queue_path,
+            request_key="colors-synthetic-trial", brief="Create a short color-learning story.",
+            language="ar", evidence=[{"id": "note1", "source": "local curriculum note",
+                                       "observed_at": "2026-11-11", "claim": content,
+                                       "content": content}])
+        self.assertEqual(result["status"], "INTERNAL_TRIAL_QUEUED")
+        self.assertEqual(result["outcome"], "ACCEPTED")
+        self.assertEqual(len(router.calls), 2)
+        self.assertFalse(result["external_research_performed"])
+        self.assertFalse(result["owner_publication_approval"])
         jobs = StudioQueue(self.queue_path).list_jobs()
         self.assertEqual(len(jobs), 1)
         payload = json.loads(jobs[0]["payload"])
-        self.assertEqual(payload["studio_proposal_id"], proposal["proposal_id"])
-        self.assertEqual(payload["studio_decision_id"], first["decision_id"])
+        self.assertTrue(payload["studio_no_paid"])
+        self.assertEqual(payload["studio_trial_policy"], INTERNAL_TRIAL_POLICY)
+        self.assertEqual(payload["auto_review"], False)
+        self.assertEqual(StudioQueue(self.queue_path).claim(
+            worker_id="synthetic-worker", capabilities=["script_draft"])["job_id"],
+            result["queue_job_id"])
+        StudioQueue(self.queue_path).complete(
+            job_id=result["queue_job_id"], worker_id="synthetic-worker", generation=1,
+            result={"status": "SYNTHETIC_DRAFT_COMPLETED", "publication_approved": False})
+        recorded = self.store.record_queue_result(proposal_id=result["proposal_id"],
+                                                  queue_database=self.queue_path)
+        self.assertEqual(recorded["status"], "RESULT_RECORDED")
+        self.assertEqual(recorded["queue_state"], "COMPLETED")
+        self.assertFalse(recorded["result_content_stored"])
+        record = self.store.get(proposal_id=result["proposal_id"])
+        self.assertEqual(record["proposal"]["evidence"][0]["verification"],
+                         "LOCAL_CONTENT_HASH_VERIFIED")
+        self.assertEqual(record["internal_policy_approval"]["policy_id"],
+                         INTERNAL_TRIAL_POLICY)
+        self.assertEqual(self.store.record_queue_result(proposal_id=result["proposal_id"],
+                                                        queue_database=self.queue_path)["status"],
+                         "RESULT_EXISTS")
+
+    def test_failed_independent_review_defers_without_queue(self):
+        router = SyntheticRouter(verdict="REVISE")
+        content = "The caller supplied this local note."
+        result = self.store.run_internal_script_trial(
+            router=router, queue_database=self.queue_path, request_key="defer-review",
+            brief="Create a short lesson.", language="en",
+            evidence=[{"id": "note1", "source": "local note", "observed_at": "2026-11-11",
+                       "claim": content, "content": content}])
+        self.assertEqual(result["status"], "TRIAL_DEFERRED")
+        self.assertEqual(result["outcome"], "DEFERRED")
+        self.assertEqual(StudioQueue(self.queue_path).list_jobs(), [])
+
+    def test_remote_or_unverified_evidence_cannot_auto_approve(self):
+        router = SyntheticRouter()
+        result = self.store.run_internal_script_trial(
+            router=router, queue_database=self.queue_path, request_key="unverified-evidence",
+            brief="Create a short lesson.", language="en",
+            evidence=[{"id": "note1", "source": "web claim", "observed_at": "2026-11-11",
+                       "claim": "Caller supplied an unverified statement."}])
+        self.assertEqual(result["outcome"], "DEFERRED")
+        self.assertEqual(StudioQueue(self.queue_path).list_jobs(), [])
+
+    def test_trial_request_key_cannot_be_reused_for_different_input(self):
+        router = SyntheticRouter()
+        content = "Caller supplied curriculum text."
+        args = {"router": router, "queue_database": self.queue_path,
+                "request_key": "bound-trial-key", "brief": "Teach colors.",
+                "language": "en", "evidence": [{"id": "note1", "source": "note",
+                "observed_at": "2026-11-11", "claim": content, "content": content}]}
+        self.store.run_internal_script_trial(**args)
+        with self.assertRaisesRegex(ValueError, "different input"):
+            self.store.run_internal_script_trial(**{**args, "brief": "Teach shapes."})
 
     def test_successor_links_old_proposal_for_re_evaluation(self):
         old = self.create()

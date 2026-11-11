@@ -21,7 +21,8 @@ does not mark a physical Mac/Pi or public release as qualified.
 
 ### P2 — Evidence-backed Studio Director
 - [x] Local private ledger persists unique proposals, caller-supplied evidence references, alternatives and immutable accept/reject/defer rationale.
-- [x] Explicitly accepted proposals can link to an existing allowlisted queue job with a stable idempotency key; rejected/deferred proposals cannot enqueue.
+- [x] Bounded, optional zero-paid AI proposal/review path can enqueue only an internally approved script draft; ordinary actor labels cannot accept work.
+- [x] Record caller-supplied evidence provenance and byte hashes separately from source authenticity or factual verification.
 - [ ] Add authenticated authority, verified research-source adapters, transparent cost bounds and model-assisted recommendation/decision evaluation.
 - [ ] Keep decisions explainable, auditable and bounded by current worker allowlists and zero-paid defaults.
 
@@ -42,6 +43,11 @@ does not mark a physical Mac/Pi or public release as qualified.
 P1 device and account steps require the owner's supervised operation and explicit
 authorization where specified. Code can prepare those steps but cannot claim
 they passed.
+
+The Director synthetic pipeline is not an external research run or a real model
+qualification. The Arabic episode on the owner's Mac remains Pending Physical
+Qualification; a successful local/synthetic test does not establish script,
+voice, visual, educational or publication readiness.
 
 ## Milestone 0 — Foundation (merged)
 - [x] GitHub repository initial scaffold

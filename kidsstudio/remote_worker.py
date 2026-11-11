@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 from .ai_router import AIConfig, ChatRouter, AIRouterError
 from .local_worker import _prompts, WorkerError
+from .studio_director import INTERNAL_TRIAL_POLICY
 
 MAX_MESSAGE = 45_000
 SAFE_WORKER = re.compile(r"^[a-zA-Z0-9_./:-]{1,160}$")
@@ -125,10 +126,21 @@ class RemoteAIWorker:
                 payload["script_text"] = body
 
             system, prompt, original = _prompts(role, payload)
+            trial = payload.get("studio_no_paid", False)
+            if type(trial) is not bool:
+                raise WorkerError("studio_no_paid must be a boolean.")
+            allowed_providers = None
+            if trial:
+                if payload.get("studio_trial_policy") != INTERNAL_TRIAL_POLICY:
+                    raise WorkerError("Unknown internal trial policy.")
+                allowed_providers = self.ai.local_free_provider_ids(role=role)
+                if not allowed_providers:
+                    raise WorkerError("Internal trial requires an explicitly free loopback provider.")
             result = self.ai.complete(
                 role=role, system_prompt=system, user_prompt=prompt,
                 allow_paid=False, allow_fallback=False,
                 different_from=original, max_output_tokens=1200,
+                allowed_providers=allowed_providers,
             )
             self.pi.call("heartbeat", {
                 "job_id": job_id, "generation": generation,

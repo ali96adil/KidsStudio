@@ -253,6 +253,28 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.queue.get(job["job_id"])["attempts"], 1)
         self.assertFalse(self.queue.events(job["job_id"])[0]["event_type"] == "RETRY_SCHEDULED")
 
+    def test_director_trial_rejects_unrecognized_policy_before_provider(self):
+        job = self.queue.enqueue(
+            kind="script_draft", request_key="director-trial-bad-policy",
+            payload={"language": "ar", "topic": "الألوان", "studio_no_paid": True,
+                     "studio_trial_policy": "owner-approved-spend"},
+        )
+        result = self.worker.run_once()
+        self.assertEqual(result["status"], "FAILED")
+        self.assertEqual(self.queue.get(job["job_id"])["error_code"], "AI_WORKER_ERROR")
+        self.assertEqual(len(self.fake.requests), 0)
+
+    def test_director_trial_is_confined_to_loopback_free_route(self):
+        job = self.queue.enqueue(
+            kind="script_draft", request_key="director-trial-local-only",
+            payload={"language": "ar", "topic": "الألوان", "studio_no_paid": True,
+                     "studio_trial_policy": "internal-script-draft-v1"},
+        )
+        result = self.worker.run_once()
+        self.assertEqual(result["state"], "COMPLETED")
+        self.assertEqual(self.fake.requests[0].full_url,
+                         "http://127.0.0.1:9981/v1/chat/completions")
+
     def test_data_still_there_after_queue_reopen(self):
         job = self.queue.enqueue(
             kind="script_draft", request_key="episode-reopen",
