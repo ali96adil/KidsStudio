@@ -2,6 +2,7 @@ import json
 import hashlib
 import os
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -337,6 +338,19 @@ class StudioDirectorTests(unittest.TestCase):
         self.ledger_path.chmod(0o640)
         with self.assertRaisesRegex(ValueError, "private regular"):
             self.store.propose(request_key="colors-topic-v1", proposal=self.proposal())
+
+    def test_legacy_v1_ledger_adds_director_extensions_without_losing_proposals(self):
+        proposal = self.create()
+        with sqlite3.connect(self.ledger_path) as db:
+            for table in ("ai_pipeline", "policy_approvals", "results", "request_bindings"):
+                db.execute("DROP TABLE " + table)
+        migrated = StudioDirector(self.ledger_path)
+        record = migrated.get(proposal_id=proposal["proposal_id"])
+        self.assertEqual(record["proposal"]["title"], "Colors through play")
+        self.assertIsNone(record["ai_pipeline"])
+        decision = migrated.decide(proposal_id=proposal["proposal_id"], outcome="DEFERRED",
+                                   actor="legacy-reviewer", rationale="Needs new evidence.")
+        self.assertEqual(decision["outcome"], "DEFERRED")
 
 
 if __name__ == "__main__":
