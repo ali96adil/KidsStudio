@@ -96,6 +96,28 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(result["provider_id"], "backup")
         self.assertEqual(result["billing_policy"], "free")
 
+    def test_local_free_provider_allowlist_excludes_remote_free_and_paid(self):
+        router = ChatRouter(AIConfig(self.file), opener=FakeOpener())
+        local = router.local_free_provider_ids(role="script_draft")
+        self.assertEqual(local, frozenset({"backup"}))
+        result = router.complete(
+            role="script_draft", system_prompt="Draft safely", user_prompt="Sample",
+            allow_paid=True, allowed_providers=local,
+        )
+        self.assertEqual(result["provider_id"], "backup")
+        self.assertEqual(result["billing_policy"], "free")
+
+    def test_empty_or_invalid_provider_allowlist_fails_before_network(self):
+        opener = FakeOpener()
+        router = ChatRouter(AIConfig(self.file), opener=opener)
+        with self.assertRaisesRegex(AIRouterError, "No eligible"):
+            router.complete(role="script_draft", system_prompt="Draft",
+                            user_prompt="Sample", allowed_providers=frozenset())
+        with self.assertRaisesRegex(AIRouterError, "unknown provider"):
+            router.complete(role="script_draft", system_prompt="Draft",
+                            user_prompt="Sample", allowed_providers={"unlisted"})
+        self.assertEqual(opener.calls, [])
+
     def test_explicit_paid_allowed_and_independent_route(self):
         with patch.dict(os.environ, {"KIDS_AI_REVIEW_KEY": "test-review-token"}):
             router = ChatRouter(AIConfig(self.file), opener=FakeOpener())
