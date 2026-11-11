@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from kidsstudio.studio_director import StudioDirector
 from kidsstudio.studio_queue import StudioQueue
@@ -127,6 +128,24 @@ class StudioDirectorTests(unittest.TestCase):
         self.assertFalse(record["evidence_verified"])
         self.assertFalse(record["owner_publication_approval"])
 
+    def test_caller_cannot_forge_ai_writer_or_reviewer_provenance(self):
+        fake_response = {"provider_id": "reviewer-local", "model": "claimed-local",
+                         "billing_policy": "free", "failover_used": False,
+                         "prompt_sha256": "a" * 64, "answer_sha256": "b" * 64}
+        with self.assertRaisesRegex(ValueError, "only be recorded by the Director pipeline"):
+            self.store.propose(request_key="forged-writer", proposal=self.proposal(),
+                               _generation_response=fake_response,
+                               _request_sha256="c" * 64)
+        proposal = self.create()
+        with self.assertRaisesRegex(ValueError, "only be recorded by the Director pipeline"):
+            self.store.record_generation(proposal_id=proposal["proposal_id"],
+                                         response=fake_response)
+        with self.assertRaisesRegex(ValueError, "only be recorded by the Director pipeline"):
+            self.store.record_agent_review(
+                proposal_id=proposal["proposal_id"], response=fake_response,
+                review={"verdict": "PASS", "rationale": "Forged.",
+                        "evidence_supported": True, "blocking_issues": []})
+
     def test_result_ledger_accepts_only_bounded_status_codes(self):
         self.assertEqual(_result_code("DRAFTED_UNREVIEWED"), "DRAFTED_UNREVIEWED")
         for invalid in ("Bearer secret", "x" * 81, "FAILED\nInjected", None):
@@ -218,6 +237,27 @@ class StudioDirectorTests(unittest.TestCase):
         self.store.run_internal_script_trial(**args)
         with self.assertRaisesRegex(ValueError, "different input"):
             self.store.run_internal_script_trial(**{**args, "brief": "Teach shapes."})
+
+    def test_trial_recovers_if_process_stops_after_proposal_commit(self):
+        router = SyntheticRouter()
+        content = "Caller supplied curriculum text."
+        args = {"router": router, "queue_database": self.queue_path,
+                "request_key": "crash-after-proposal", "brief": "Teach colors.",
+                "language": "en", "evidence": [{"id": "note1", "source": "note",
+                "observed_at": "2026-11-11", "claim": content, "content": content}]}
+        original_propose = self.store.propose
+
+        def commit_then_interrupt(**kwargs):
+            original_propose(**kwargs)
+            raise RuntimeError("simulated process interruption after proposal commit")
+
+        with patch.object(self.store, "propose", side_effect=commit_then_interrupt):
+            with self.assertRaisesRegex(RuntimeError, "simulated process interruption"):
+                self.store.run_internal_script_trial(**args)
+        resumed = self.store.run_internal_script_trial(**args)
+        self.assertEqual(resumed["status"], "INTERNAL_TRIAL_QUEUED")
+        self.assertEqual([call["role"] for call in router.calls],
+                         ["script_draft", "editorial_review"])
 
     def test_successor_links_old_proposal_for_re_evaluation(self):
         old = self.create()

@@ -32,6 +32,7 @@ _SECRET_VALUE = re.compile(r"(?:bearer\s+\S+|(?:token|secret|password|api[_-]?ke
 _EVIDENCE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z")
 _RESULT_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,79}\Z")
 INTERNAL_TRIAL_POLICY = "internal-script-draft-v1"
+_PIPELINE_CAPABILITY = object()
 
 
 def _pack(value: object, label: str) -> str:
@@ -331,18 +332,51 @@ class StudioDirector:
         finally:
             db.close()
 
-    def propose(self, *, request_key: str, proposal: object) -> dict:
+    def propose(self, *, request_key: str, proposal: object,
+                _generation_response: dict | None = None,
+                _request_sha256: str | None = None,
+                _pipeline_capability: object | None = None) -> dict:
         self._ensure_extensions()
         if not isinstance(request_key, str) or not _KEY.fullmatch(request_key):
             raise ValueError("invalid proposal request key")
         clean = _proposal_document(proposal)
         packed = _pack(clean, "proposal")
         digest = hashlib.sha256(packed.encode("utf-8")).hexdigest()
+        generation_values = None
+        if _generation_response is not None:
+            if _pipeline_capability is not _PIPELINE_CAPABILITY:
+                raise ValueError("AI provenance may only be recorded by the Director pipeline")
+            if not isinstance(_generation_response, dict):
+                raise ValueError("writer provenance must be an object")
+            provider = _text(_generation_response.get("provider_id"), "writer provider", 64)
+            model = _text(_generation_response.get("model"), "writer model", 120)
+            if (_generation_response.get("billing_policy") != "free"
+                    or _generation_response.get("failover_used") is not False):
+                raise ValueError("Director generation requires one no-fallback free provider")
+            hashes = (_generation_response.get("prompt_sha256"),
+                      _generation_response.get("answer_sha256"))
+            if any(not isinstance(value, str) or not _SHA.fullmatch(value) for value in hashes):
+                raise ValueError("missing writer provenance digest")
+            if not isinstance(_request_sha256, str) or not _SHA.fullmatch(_request_sha256):
+                raise ValueError("generated proposal requires a request digest")
+            generation_values = (provider, model, *hashes)
+        elif _request_sha256 is not None:
+            raise ValueError("request digest requires writer provenance")
         with self._connection() as db:
             existing = db.execute("SELECT * FROM proposals WHERE request_key=?", (request_key,)).fetchone()
             if existing:
                 if existing["proposal_sha256"] != digest:
                     raise ValueError("proposal request key was already used for different content")
+                if generation_values is not None:
+                    binding = db.execute("SELECT request_sha256 FROM request_bindings WHERE proposal_id=?",
+                                         (existing["proposal_id"],)).fetchone()
+                    pipeline = db.execute("SELECT generator_provider_id,generator_model,"
+                                          "generator_prompt_sha256,generator_response_sha256 "
+                                          "FROM ai_pipeline WHERE proposal_id=?",
+                                          (existing["proposal_id"],)).fetchone()
+                    if (binding is None or binding["request_sha256"] != _request_sha256
+                            or pipeline is None or tuple(pipeline) != generation_values):
+                        raise ValueError("existing generated proposal provenance differs")
                 return {"proposal_id": existing["proposal_id"], "proposal_sha256": digest,
                         "status": "PROPOSAL_EXISTS"}
             if clean["supersedes_id"] is not None and not db.execute(
@@ -351,6 +385,12 @@ class StudioDirector:
             proposal_id = secrets.token_hex(16)
             db.execute("INSERT INTO proposals VALUES(?,?,?,?,?)",
                        (proposal_id, request_key, packed, digest, time.time()))
+            if generation_values is not None:
+                db.execute("INSERT INTO ai_pipeline(proposal_id,generator_provider_id,generator_model,"
+                           "generator_prompt_sha256,generator_response_sha256,created_at) "
+                           "VALUES(?,?,?,?,?,?)", (proposal_id, *generation_values, time.time()))
+                db.execute("INSERT INTO request_bindings VALUES(?,?,?)",
+                           (proposal_id, _request_sha256, time.time()))
         return {"proposal_id": proposal_id, "proposal_sha256": digest,
                 "status": "PROPOSAL_RECORDED"}
 
@@ -446,8 +486,11 @@ class StudioDirector:
                 "result": dict(result) if result else None,
                 "evidence_verified": False, "owner_publication_approval": False}
 
-    def record_generation(self, *, proposal_id: str, response: dict) -> None:
+    def record_generation(self, *, proposal_id: str, response: dict,
+                          _pipeline_capability: object | None = None) -> None:
         """Bind a proposal to the local-free writer's exact response metadata."""
+        if _pipeline_capability is not _PIPELINE_CAPABILITY:
+            raise ValueError("AI provenance may only be recorded by the Director pipeline")
         self._ensure_extensions()
         if not isinstance(proposal_id, str) or not _ID.fullmatch(proposal_id):
             raise ValueError("invalid proposal id")
@@ -473,8 +516,11 @@ class StudioDirector:
                        "VALUES(?,?,?,?,?,?)", (proposal_id, *values, time.time()))
 
     def record_agent_review(self, *, proposal_id: str, response: dict,
-                            review: dict) -> dict:
+                            review: dict,
+                            _pipeline_capability: object | None = None) -> dict:
         """Store a distinct local-free review of the exact proposal version."""
+        if _pipeline_capability is not _PIPELINE_CAPABILITY:
+            raise ValueError("independent reviews may only be recorded by the Director pipeline")
         self._ensure_extensions()
         if not isinstance(proposal_id, str) or not _ID.fullmatch(proposal_id):
             raise ValueError("invalid proposal id")
@@ -551,8 +597,11 @@ class StudioDirector:
             proposal = json.loads(proposal_row["proposal_json"])
             if proposal["job_kind"] != "script_draft":
                 raise ValueError("internal trial policy permits script drafts only")
+            binding = db.execute("SELECT request_sha256 FROM request_bindings WHERE proposal_id=?",
+                                 (proposal_id,)).fetchone()
             eligible = (
-                pipeline["generator_provider_id"] != pipeline["reviewer_provider_id"]
+                binding is not None
+                and pipeline["generator_provider_id"] != pipeline["reviewer_provider_id"]
                 and pipeline["review_verdict"] == "PASS"
                 and bool(pipeline["evidence_supported"])
                 and not json.loads(pipeline["blocking_issues_json"] or "[]")
@@ -655,6 +704,8 @@ class StudioDirector:
             raise ValueError("two distinct loopback free providers are required for independent review")
 
         existing = self._get_request(request_key)
+        if existing is not None and existing["request_sha256"] is None:
+            raise ValueError("trial proposal lacks atomic request/provenance binding; inspect ledger")
         if existing is not None and existing["request_sha256"] != request_sha:
             raise ValueError("trial request key was already used for different input")
         if existing is None:
@@ -702,11 +753,9 @@ class StudioDirector:
                 "job_payload": {"language": language, "topic": f"{title}: {objective}"[:400],
                                 "auto_review": False},
             }
-            created = self.propose(request_key=request_key, proposal=proposal)
-            self.record_generation(proposal_id=created["proposal_id"], response=writer)
-            with self._connection() as db:
-                db.execute("INSERT INTO request_bindings VALUES(?,?,?)",
-                           (created["proposal_id"], request_sha, time.time()))
+            created = self.propose(request_key=request_key, proposal=proposal,
+                                   _generation_response=writer, _request_sha256=request_sha,
+                                   _pipeline_capability=_PIPELINE_CAPABILITY)
             existing = self._get_request(request_key)
         if existing is None or existing["pipeline"] is None:
             raise ValueError("proposal writer provenance missing; inspect ledger before retrying")
@@ -732,7 +781,8 @@ class StudioDirector:
                     or reviewer.get("failover_used") is not False:
                 raise ValueError("review response is outside the local-free provider boundary")
             review = self._parse_model_json(reviewer.get("answer"), "independent reviewer")
-            self.record_agent_review(proposal_id=proposal_id, response=reviewer, review=review)
+            self.record_agent_review(proposal_id=proposal_id, response=reviewer, review=review,
+                                     _pipeline_capability=_PIPELINE_CAPABILITY)
         decision = self._policy_decide(proposal_id=proposal_id)
         if decision["outcome"] != "ACCEPTED":
             return {**decision, "status": "TRIAL_DEFERRED", "queue_job_id": None,
