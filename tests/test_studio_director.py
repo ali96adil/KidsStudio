@@ -279,6 +279,52 @@ class StudioDirectorTests(unittest.TestCase):
                 self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                                queue_database=self.queue_path)
 
+    def test_result_retry_rejects_dispatch_relinked_to_another_queue_job(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "result-job-identity", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="identity-worker", capabilities=["script_draft"])
+        result_payload = {"status": "SYNTHETIC_DRAFT_COMPLETED"}
+        queue.complete(job_id=trial["queue_job_id"], worker_id="identity-worker", generation=1,
+                       result=result_payload)
+        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                       queue_database=self.queue_path)
+
+        alternate = queue.enqueue(kind="script_draft", request_key="alternate-terminal-job",
+                                  payload={"topic": "unrelated test job"})
+        queue.claim(worker_id="identity-worker", capabilities=["script_draft"])
+        queue.complete(job_id=alternate["job_id"], worker_id="identity-worker", generation=1,
+                       result=result_payload)
+        with self.store._connection() as db:
+            db.execute("UPDATE dispatches SET queue_job_id=? WHERE proposal_id=?",
+                       (alternate["job_id"], trial["proposal_id"]))
+
+        with self.assertRaisesRegex(ValueError, "immutable and conflicts"):
+            self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                           queue_database=self.queue_path)
+
+    def test_result_retry_rejects_dispatch_relinked_to_another_decision(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "result-decision-identity", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="decision-worker", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="decision-worker", generation=1,
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                       queue_database=self.queue_path)
+        other = self.store.propose(request_key="other-decision-proposal",
+                                   proposal=self.proposal(title="Unrelated deferred proposal"))
+        other_decision = self.store.decide(
+            proposal_id=other["proposal_id"], outcome="DEFERRED", actor="director",
+            rationale="Independent test decision.")
+        with self.store._connection() as db:
+            db.execute("UPDATE dispatches SET decision_id=? WHERE proposal_id=?",
+                       (other_decision["decision_id"], trial["proposal_id"]))
+
+        with self.assertRaisesRegex(ValueError, "immutable and conflicts"):
+            self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                           queue_database=self.queue_path)
+
     def test_failed_independent_review_defers_without_queue(self):
         router = SyntheticRouter(verdict="REVISE")
         content = "The caller supplied this local note."

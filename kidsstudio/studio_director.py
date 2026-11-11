@@ -836,7 +836,11 @@ class StudioDirector:
             material = json.dumps({"state": state}, sort_keys=True)
         digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
         if prior:
-            if prior["queue_state"] != state or prior["result_sha256"] != digest:
+            if (prior["decision_id"] != dispatch["decision_id"]
+                    or prior["queue_job_id"] != dispatch["queue_job_id"]
+                    or prior["queue_state"] != state
+                    or prior["result_status"] != result_status
+                    or prior["result_sha256"] != digest):
                 raise ValueError("result record is immutable and conflicts with queue state")
             return {"status": "RESULT_EXISTS", "queue_job_id": queue_job["job_id"],
                     "queue_state": state, "result_sha256": digest}
