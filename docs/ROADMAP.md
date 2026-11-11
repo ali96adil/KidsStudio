@@ -1,5 +1,47 @@
 # Roadmap and verification gates
 
+The capability-by-capability baseline is in
+[`PRODUCTION_READINESS_AUDIT.md`](PRODUCTION_READINESS_AUDIT.md). This priority
+order separates repository work from device/account qualification; CI success
+does not mark a physical Mac/Pi or public release as qualified.
+
+## Current priority order (2026-11-11)
+
+### P0 — Protect and qualify the baseline
+- [x] Existing branch has queue fencing, bounded retries, private artifact checks and rollback tag.
+- [x] Python 3.11–3.13 CI plus Godot, FFmpeg and hosted-macOS synthetic media jobs pass at audited HEAD.
+- [ ] Run isolated backup/restore and rollback qualification over representative queue, media and review data.
+- [ ] Keep a written distinction between synthetic CI, mocks, and real-device results.
+
+### P1 — Prove one real Arabic episode
+- [ ] Render the existing Arabic colors pilot on the owner's Mac with approved original narration.
+- [ ] Listen to and inspect the exact SHA-bound video; record owner notes and decision.
+- [ ] Qualify same-revision Mac→Pi transfer and backup/restore on real devices.
+- [ ] Separately authorize and execute one YouTube PRIVATE pilot; owner reviews the exact private draft.
+
+### P2 — Evidence-backed Studio Director
+- [ ] Persist unique proposals with evidence, alternatives, rationale, constraints and state.
+- [ ] Record accept/reject/defer decisions and link accepted proposals to existing idempotent queue jobs.
+- [ ] Keep decisions explainable, auditable and bounded by current worker allowlists and zero-paid defaults.
+
+### P3 — Specialist agent teams
+- [ ] Bind research, creative/character, educational/editorial, production and independent review to shared proposal/episode provenance.
+- [ ] Preserve reviewer independence and existing bounded repair/retry limits.
+- [ ] Evaluate real Arabic/English quality and safety with qualified human review where required.
+
+### P4 — Measurement and learning
+- [ ] Record authorized outcome measurements against exact published episode versions.
+- [ ] Revisit old proposals only when new evidence is recorded; avoid repeated failed concepts without new evidence.
+- [ ] Do not infer analytics that the owner has not authorized or supplied.
+
+### P5 — Business and growth intelligence
+- [ ] Add cost and revenue scenario analysis with assumptions clearly marked.
+- [ ] Explore original educational products and licensing opportunities without automatic spending, sales or outreach.
+
+P1 device and account steps require the owner's supervised operation and explicit
+authorization where specified. Code can prepare those steps but cannot claim
+they passed.
+
 ## Milestone 0 — Foundation (merged)
 - [x] GitHub repository initial scaffold
 - [x] Rig-first blueprint -> generation job list
