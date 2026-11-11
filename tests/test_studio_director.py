@@ -257,6 +257,28 @@ class StudioDirectorTests(unittest.TestCase):
             self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                            queue_database=self.queue_path)
 
+    def test_result_retry_rejects_changed_terminal_result_material(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "result-conflict", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="conflict-worker", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="conflict-worker", generation=1,
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                       queue_database=self.queue_path)
+
+        original_get = StudioQueue.get
+
+        def changed_result(queue_instance, job_id):
+            job = original_get(queue_instance, job_id)
+            job["result_json"] = json.dumps({"status": "DIFFERENT_TERMINAL_RESULT"})
+            return job
+
+        with patch.object(StudioQueue, "get", new=changed_result):
+            with self.assertRaisesRegex(ValueError, "immutable and conflicts"):
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+
     def test_failed_independent_review_defers_without_queue(self):
         router = SyntheticRouter(verdict="REVISE")
         content = "The caller supplied this local note."
@@ -422,6 +444,20 @@ class StudioDirectorTests(unittest.TestCase):
         self.assertEqual(new_after["proposal"]["supersedes_id"], legacy["proposal_id"])
         self.assertIn(legacy["proposal_id"], router.calls[0]["user_prompt"])
         self.assertNotIn("owner-research-note-01", router.calls[0]["user_prompt"])
+
+    def test_successor_request_key_cannot_be_rebound_to_different_parent(self):
+        first_parent = self.create()
+        second_parent = self.store.propose(
+            request_key="other-old-proposal",
+            proposal=self.proposal(title="Another historical proposal"))
+        router = SyntheticRouter()
+        args = self.trial_args("bound-successor-request", router)
+        self.store.run_internal_script_trial(**args, supersedes_id=first_parent["proposal_id"])
+        self.assertEqual(len(router.calls), 2)
+        with self.assertRaisesRegex(ValueError, "different input"):
+            self.store.run_internal_script_trial(**args, supersedes_id=second_parent["proposal_id"])
+        self.assertEqual(len(router.calls), 2)
+        self.assertEqual(len(StudioQueue(self.queue_path).list_jobs()), 1)
 
     def test_successor_to_missing_legacy_proposal_fails_before_model_call(self):
         router = SyntheticRouter()
