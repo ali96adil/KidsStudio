@@ -7,13 +7,21 @@ Updated: 2026-11-11
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Code/test head: `53b202f1da88bc22de9dcdebc786bd626ec86c87`.
-- Handoff-only revision on the branch before this update: `2943b7f49a207b01cb32849ae60ff0939fb1e1bc`.
+- Code/test head: `28348b6479b8c500da3947e1a3fcc5ca1d7be1bd`.
+- Handoff-only revision before this update: `af246798f2f5d56ec5ba8cb3b182bb0986be4615`.
+- Rollback before Batch 74C: `af246798f2f5d56ec5ba8cb3b182bb0986be4615`.
 - Regression-only rollback before Batch 74B: `2943b7f49a207b01cb32849ae60ff0939fb1e1bc`.
 - Code rollback before Batch 74A: `56e488b86b3add00ee9746700642d4841cc042a9`.
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74C — Dispatch identity and terminal result consistency
+
+- Regression tests exposed that result retry compared only terminal state and content digest, allowing a relinked dispatch to a different queue job or decision to return `RESULT_EXISTS`.
+- Result retry now also requires the stored decision ID, queue job ID, result state, result status, and result digest to match the current dispatch and queue result.
+- Added positive and failure coverage for queue-job relinking, decision relinking, changed terminal material, and post-commit retry. All passed.
+- No paid API, real model, external research, owner hardware, spending, or publishing was used.
 
 ### Batch 74B — Successor idempotency and result conflict regressions
 
@@ -33,7 +41,7 @@ Updated: 2026-11-11
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **871 tests passed**.
+- Local `python scripts/run_tests.py`: **873 tests passed**.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
 - GitHub checks on base head `56e488b86b3add00ee9746700642d4841cc042a9` all passed:
@@ -53,6 +61,11 @@ Updated: 2026-11-11
   - macOS run `43086298598` — success.
   - Godot run `43086298711` — success.
   - FFmpeg run `43086298646` — success.
+- GitHub checks on code head `28348b6479b8c500da3947e1a3fcc5ca1d7be1bd` all completed successfully:
+  - CI run `43088223782` — success.
+  - macOS run `43088223863` — success.
+  - Godot run `43088223822` — success.
+  - FFmpeg run `43088223699` — success.
 
 ## Existing system and boundaries
 
@@ -65,12 +78,12 @@ Updated: 2026-11-11
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Add focused regression for dispatch identity changes and terminal state conflicts during result retry; fix only if a test proves a defect.
+2. Review concurrent result-record retries and persistence boundaries for duplicate inserts or false conflict reports; add regression coverage before changing behavior.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then continue the legacy-proposal/result recovery tests from Batch 74A; do not broaden automatic approval until the boundaries and CI are verified.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then review concurrent terminal-result recording and recovery. Do not broaden automatic approval until the boundaries and CI are verified.
 
 ## Required limits
 
