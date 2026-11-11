@@ -18,6 +18,7 @@ studio-worker = "kidsstudio.local_worker:main"
 studio-coordinator = "kidsstudio.coordinator_api:main"
 studio-remote-worker = "kidsstudio.remote_worker:main"
 studio-media-worker = "kidsstudio.media_worker:main"
+studio-director = "kidsstudio.studio_director:main"
 
 [tool.setuptools.packages.find]
 include = ["kidsstudio*"]

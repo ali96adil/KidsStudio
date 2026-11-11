@@ -1,8 +1,8 @@
 # Kids Studio production readiness audit
 
-Audit baseline: `c749452a1c5aeeb9e8b7d443aa91ca254de1897b`  
-Branch: `feature/production-intelligence-safe-integration`  
-PR: #33, open Draft, not merged  
+Audit baseline: `c749452a1c5aeeb9e8b7d443aa91ca254de1897b`
+Branch: `feature/production-intelligence-safe-integration`
+PR: #33, open Draft, not merged
 Audit date: 2026-11-11
 
 This audit distinguishes repository code and synthetic/CI evidence from
@@ -19,7 +19,7 @@ quality, child-development suitability, rights, or public release.
 | Godot and FFmpeg rendering | Yes: rig exporter/player and original colors episode pipeline | Real synthetic-asset Godot and FFmpeg CI smokes | Render output feeds technical checks and private evidence flow | No; the user's Mac and production artwork/audio have not been qualified | Real Mac render; full-length original episode and human audiovisual review |
 | Script worker and editorial review | Yes: single-shot allowlisted worker, provider routing, draft-to-review handoff | Mock providers, hash/provenance, and failure tests | Uses the durable queue and private artifact references | No; no qualified bilingual review panel or deployed worker | Independent Arabic/English, factual, pedagogic, child-safety and originality review on one script revision |
 | Studio Brain queue and worker transport | Yes: local SQLite queue, idempotency, leases/fencing, bounded retries, TLS coordinator prototype | Unit and synthetic TLS integration tests | Supports text jobs and pinned media recipe jobs | No; no deployed Pi/Mac service or real cross-device operation | Device backups, clock qualification, credentials/firewall setup, real transfer and recovery drill |
-| Studio Director and proposal decisions | Partial: queue-control CLI only; no decision-making Director | Queue controls tested; no autonomous decision eval | Queue is a usable execution substrate, but proposal-to-decision is absent | No | Evidence-backed proposals, alternatives, rationale, authority/cost bounds, accepted-decision-to-job linkage |
+| Studio Director and proposal decisions | Partial: private proposal ledger and explicit decision-to-queue handoff, plus queue-control CLI; no autonomous decision agent | Ledger/queue handoff unit-tested; no autonomous decision eval | Accepted proposals link to existing idempotent queue jobs; research and agent recommendation remain unintegrated | No | Verified research sources, authenticated decision authority, cost bounds, learning/outcomes and supervised Director agent |
 | Episode lifecycle and independent review | Partial: read-only lifecycle projection, notes, review receipts/history and bounded repair | Unit tests and synthetic SHA-bound review pipeline | Review and owner-note flows connect to private draft evidence | No | End-to-end run on the exact rendered episode; make script/artifact review lineage visible as one lifecycle |
 | Mac → Pi transfer | Yes: foreground sender and fixed receiver with SHA/size checks | Synthetic in-process receiver and hosted CI | Integrated in the simulated private chain | No; CI does not use the physical Pi or LAN | Matching revisions, host-key verification, live LAN transfer and restore evidence |
 | YouTube PRIVATE and owner review | Yes: foreground PRIVATE-only resumable uploader, journal, post-upload review UI | Mock OAuth/YouTube plus synthetic end-to-end chain | Integrated in simulation after transfer; uploader is not auto-dispatched | No; no real OAuth/upload or owner viewing | Explicit owner-authorized PRIVATE pilot, current privacy verification, review of exact draft; public release remains owner-only |
@@ -88,9 +88,9 @@ software work can prepare and test those paths but cannot claim their success.
 
 ## First implementation batch
 
-Add a thin, local, evidence-backed proposal and decision record that can
-reference the existing queue without changing its worker contracts. Begin with
-schema, validation and persistence tests; keep research sources caller-supplied
-and do not invoke paid or external services. Accepted proposals must create
-only allowlisted, idempotent jobs, and rejected/deferred proposals must never
-enqueue work. Keep the first change isolated and revertible.
+Implemented as Batch 71: a private local proposal/decision ledger references
+the existing queue without changing its worker contracts. Research sources
+remain caller-supplied and explicitly unverified. The ledger invokes no paid
+or external service; accepted proposals create only allowlisted, idempotent
+jobs, while rejected/deferred proposals cannot enqueue work. See
+[`STUDIO_DIRECTOR.md`](STUDIO_DIRECTOR.md).

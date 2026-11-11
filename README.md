@@ -98,6 +98,17 @@ worker-side activity will require a separate explicitly approved adapter.
 See [Studio Queue operations](docs/STUDIO_QUEUE.md). All state and full logs
 remain outside public Git and outside the NAS transactional data share.
 
+### Evidence-backed Studio Director proposal ledger
+
+`studio-director` records caller-supplied proposals, alternatives, evidence
+references and immutable decisions in a separate private local SQLite file.
+An accepted decision can enqueue one existing allowlisted queue job with a
+stable idempotency key; rejected/deferred decisions cannot. This is decision
+recording and queue handoff scaffolding, **not yet an autonomous AI Director**:
+source references are unverified, decision actor labels are unauthenticated,
+and the tool does not research, call a model, run jobs, spend, upload or publish.
+See [Studio Director proposal ledger](docs/STUDIO_DIRECTOR.md).
+
 ## First local multi-provider AI worker
 
 `studio-worker --once` can execute a **single** allowlisted

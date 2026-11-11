@@ -20,8 +20,9 @@ does not mark a physical Mac/Pi or public release as qualified.
 - [ ] Separately authorize and execute one YouTube PRIVATE pilot; owner reviews the exact private draft.
 
 ### P2 — Evidence-backed Studio Director
-- [ ] Persist unique proposals with evidence, alternatives, rationale, constraints and state.
-- [ ] Record accept/reject/defer decisions and link accepted proposals to existing idempotent queue jobs.
+- [x] Local private ledger persists unique proposals, caller-supplied evidence references, alternatives and immutable accept/reject/defer rationale.
+- [x] Explicitly accepted proposals can link to an existing allowlisted queue job with a stable idempotency key; rejected/deferred proposals cannot enqueue.
+- [ ] Add authenticated authority, verified research-source adapters, transparent cost bounds and model-assisted recommendation/decision evaluation.
 - [ ] Keep decisions explainable, auditable and bounded by current worker allowlists and zero-paid defaults.
 
 ### P3 — Specialist agent teams
