@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sqlite3
 import tempfile
+import threading
 import unittest
 from contextlib import contextmanager
 from unittest.mock import patch
@@ -245,6 +246,49 @@ class StudioDirectorTests(unittest.TestCase):
         self.assertEqual(resumed["queue_job_id"], trial["queue_job_id"])
         record = self.store.get(proposal_id=trial["proposal_id"])
         self.assertEqual(record["result"]["queue_state"], "COMPLETED")
+
+    def test_concurrent_result_record_retries_are_idempotent(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "concurrent-result-record", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="concurrent-worker", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="concurrent-worker", generation=1,
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+
+        original_connection = self.store._connection
+        prior_reads = threading.Barrier(2)
+
+        @contextmanager
+        def synchronize_prior_reads(*, readonly=False):
+            with original_connection(readonly=readonly) as db:
+                yield db
+            if readonly:
+                prior_reads.wait(timeout=5)
+
+        outcomes = []
+        errors = []
+
+        def record():
+            try:
+                outcomes.append(self.store.record_queue_result(
+                    proposal_id=trial["proposal_id"], queue_database=self.queue_path))
+            except Exception as exc:  # capture thread failure for a deterministic assertion
+                errors.append(exc)
+
+        with patch.object(self.store, "_connection", new=synchronize_prior_reads):
+            threads = [threading.Thread(target=record) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=10)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads), "result writer thread hung")
+        self.assertEqual(errors, [])
+        self.assertEqual(sorted(item["status"] for item in outcomes),
+                         ["RESULT_EXISTS", "RESULT_RECORDED"])
+        self.assertEqual(len(StudioQueue(self.queue_path).list_jobs()), 1)
+        record = self.store.get(proposal_id=trial["proposal_id"])
+        self.assertEqual(record["result"]["queue_job_id"], trial["queue_job_id"])
 
     def test_result_record_rejects_nonterminal_and_unlinked_jobs(self):
         proposal = self.create()

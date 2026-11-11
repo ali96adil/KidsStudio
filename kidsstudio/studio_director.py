@@ -835,18 +835,35 @@ class StudioDirector:
             result_status = "CANCELLED"
             material = json.dumps({"state": state}, sort_keys=True)
         digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+        def matches_saved_result(row, dispatch_row) -> bool:
+            return (row["decision_id"] == dispatch_row["decision_id"]
+                    and row["queue_job_id"] == dispatch_row["queue_job_id"]
+                    and row["queue_state"] == state
+                    and row["result_status"] == result_status
+                    and row["result_sha256"] == digest)
+
         if prior:
-            if (prior["decision_id"] != dispatch["decision_id"]
-                    or prior["queue_job_id"] != dispatch["queue_job_id"]
-                    or prior["queue_state"] != state
-                    or prior["result_status"] != result_status
-                    or prior["result_sha256"] != digest):
+            if not matches_saved_result(prior, dispatch):
                 raise ValueError("result record is immutable and conflicts with queue state")
             return {"status": "RESULT_EXISTS", "queue_job_id": queue_job["job_id"],
                     "queue_state": state, "result_sha256": digest}
         with self._connection() as db:
+            current_dispatch = db.execute("SELECT queue_job_id,decision_id FROM dispatches "
+                                           "WHERE proposal_id=?", (proposal_id,)).fetchone()
+            if (current_dispatch is None
+                    or current_dispatch["decision_id"] != dispatch["decision_id"]
+                    or current_dispatch["queue_job_id"] != dispatch["queue_job_id"]):
+                raise ValueError("dispatch changed during result recording")
+            concurrent_prior = db.execute("SELECT * FROM results WHERE proposal_id=?",
+                                          (proposal_id,)).fetchone()
+            if concurrent_prior:
+                if not matches_saved_result(concurrent_prior, current_dispatch):
+                    raise ValueError("result record is immutable and conflicts with queue state")
+                return {"status": "RESULT_EXISTS", "queue_job_id": queue_job["job_id"],
+                        "queue_state": state, "result_sha256": digest}
             db.execute("INSERT INTO results VALUES(?,?,?,?,?,?,?)",
-                       (proposal_id, dispatch["decision_id"], queue_job["job_id"],
+                       (proposal_id, current_dispatch["decision_id"], queue_job["job_id"],
                         state, result_status, digest, time.time()))
         return {"status": "RESULT_RECORDED", "queue_job_id": queue_job["job_id"],
                 "queue_state": state, "result_status": result_status,
