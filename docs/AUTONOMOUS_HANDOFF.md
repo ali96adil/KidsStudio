@@ -7,12 +7,21 @@ Updated: 2026-11-11
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Code/test head: `3c8bb098381957c02889a612cdb8987836659321`.
-- Handoff-only revision currently on the branch before this update: `646b76cd5de00d4e62807248bcff4143a2b95492`.
+- Code/test head: `53b202f1da88bc22de9dcdebc786bd626ec86c87`.
+- Handoff-only revision on the branch before this update: `2943b7f49a207b01cb32849ae60ff0939fb1e1bc`.
+- Regression-only rollback before Batch 74B: `2943b7f49a207b01cb32849ae60ff0939fb1e1bc`.
 - Code rollback before Batch 74A: `56e488b86b3add00ee9746700642d4841cc042a9`.
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74B — Successor idempotency and result conflict regressions
+
+- Added a regression proving a bound successor request key cannot be replayed with a different `supersedes_id`; the second attempt is rejected before another model/reviewer call and cannot create a second queue job.
+- Added a regression proving a retry rejects changed terminal result material after an earlier result was recorded.
+- Both regression tests pass against the current implementation; no production-code fix was needed.
+- Normal queueing, result recording, post-commit interruption/resume, nonterminal rejection, and conflicting retry paths remain covered.
+- No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74A — Safe legacy proposal recovery and result resumption
 
@@ -24,7 +33,7 @@ Updated: 2026-11-11
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **869 tests passed**.
+- Local `python scripts/run_tests.py`: **871 tests passed**.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
 - GitHub checks on base head `56e488b86b3add00ee9746700642d4841cc042a9` all passed:
@@ -39,6 +48,11 @@ Updated: 2026-11-11
   - FFmpeg run `43084519667` — success.
 - The macOS run used synthetic audio. It does not qualify the owner's Arabic episode workflow or prove a real AI model works.
 - Synthetic router tests are test doubles only. No real model was invoked.
+- GitHub checks on regression head `53b202f1da88bc22de9dcdebc786bd626ec86c87` all completed successfully:
+  - CI run `43086298662` — success.
+  - macOS run `43086298598` — success.
+  - Godot run `43086298711` — success.
+  - FFmpeg run `43086298646` — success.
 
 ## Existing system and boundaries
 
@@ -51,7 +65,7 @@ Updated: 2026-11-11
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Add focused idempotency/conflict regression cases for successor request-key rebinding and terminal result retries; fix only if a test proves a defect.
+2. Add focused regression for dispatch identity changes and terminal state conflicts during result retry; fix only if a test proves a defect.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
