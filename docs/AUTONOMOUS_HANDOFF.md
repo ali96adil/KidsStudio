@@ -7,14 +7,22 @@ Updated: 2026-11-11
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Code/test head: `28348b6479b8c500da3947e1a3fcc5ca1d7be1bd`.
-- Handoff-only revision before this update: `af246798f2f5d56ec5ba8cb3b182bb0986be4615`.
+- Code/test head: `88e8ad5a0d4b26fd98822ecc0ddc9511c2d39a1f`.
+- Handoff-only revision before this update: `b6734c3bc6fb6b9008af17f9776c162d97f4a5ba`.
+- Rollback before Batch 74D: `b6734c3bc6fb6b9008af17f9776c162d97f4a5ba`.
 - Rollback before Batch 74C: `af246798f2f5d56ec5ba8cb3b182bb0986be4615`.
 - Regression-only rollback before Batch 74B: `2943b7f49a207b01cb32849ae60ff0939fb1e1bc`.
 - Code rollback before Batch 74A: `56e488b86b3add00ee9746700642d4841cc042a9`.
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74D — Concurrent result-record retry safety
+
+- A deterministic two-thread regression made both calls read the missing result before either wrote it; the second writer previously failed with a SQLite unique-constraint error.
+- The write transaction now rechecks the dispatch identity and any result row before inserting. A concurrent retry with the same decision, job, terminal state, status, and digest returns `RESULT_EXISTS`; identity or content conflicts remain rejected.
+- Concurrent success, post-commit recovery, relinked dispatch conflicts, and changed-result conflicts all pass.
+- No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74C — Dispatch identity and terminal result consistency
 
@@ -41,7 +49,7 @@ Updated: 2026-11-11
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **873 tests passed**.
+- Local `python scripts/run_tests.py`: **874 tests passed**.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
 - GitHub checks on base head `56e488b86b3add00ee9746700642d4841cc042a9` all passed:
@@ -66,6 +74,11 @@ Updated: 2026-11-11
   - macOS run `43088223863` — success.
   - Godot run `43088223822` — success.
   - FFmpeg run `43088223699` — success.
+- GitHub checks on code head `88e8ad5a0d4b26fd98822ecc0ddc9511c2d39a1f` all completed successfully:
+  - CI run `43089956893` — success.
+  - macOS run `43089956975` — success.
+  - Godot run `43089956952` — success.
+  - FFmpeg run `43089957106` — success.
 
 ## Existing system and boundaries
 
@@ -78,12 +91,12 @@ Updated: 2026-11-11
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Review concurrent result-record retries and persistence boundaries for duplicate inserts or false conflict reports; add regression coverage before changing behavior.
+2. Cover failed/cancelled terminal-result retries and interrupted concurrent writers; fix only if regression tests demonstrate a gap.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then review concurrent terminal-result recording and recovery. Do not broaden automatic approval until the boundaries and CI are verified.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then test failed/cancelled result recording and recovery under interruption. Do not broaden automatic approval until the boundaries and CI are verified.
 
 ## Required limits
 
