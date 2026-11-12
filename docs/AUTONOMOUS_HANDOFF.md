@@ -7,7 +7,8 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code/test head: `bf57d0d066bf09be98813903677512ad49d2e828`.
+- Current code/test head: `1ae29f751ab9bcc4030373f95c89076398a292e0`.
+- Rollback before Batch 74J: `dce5b3e59572f62f5f50e880f0afab5ced6e2734`.
 - Rollback before Batch 74I: `68fbb4ffc486a79eef8fa669c88fca40915f6624`.
 - Rollback before Batch 74H: `64021e00f85c5213571aac5252a3d1f6e30690f5`.
 - Rollback before Batch 74G: `32426522fc7c58b80617f58bd03830dc13953a8b`.
@@ -22,6 +23,15 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74J — Qualify terminal-state immutability after queue confirmation
+
+- Added a regression that attempts a late cancellation after confirming COMPLETED, a late worker failure after FAILED, and a repeated cancellation after CANCELLED.
+- The supported queue API rejects state-changing operations for terminal jobs; repeated CANCELLED is idempotent. Director records the confirmed result for each state.
+- Tests passed against the current implementation; no additional production-code change was warranted.
+- This does not protect against an external process editing the queue SQLite file directly after the confirmation read. Queue and Director remain separate databases, with no shared atomic transaction claim.
+- `python scripts/run_tests.py`: **885 tests passed**; compileall and `git diff --check` passed.
+- No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74I — Reject stale queue result snapshots
 
@@ -95,9 +105,19 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **884 tests passed** on Batch 74I code.
+- Local `python scripts/run_tests.py`: **885 tests passed** on Batch 74J test head.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
+- GitHub checks on Batch 74J head `1ae29f751ab9bcc4030373f95c89076398a292e0` all completed successfully:
+  - CI run `43157639122` — success.
+  - macOS run `43157639181` — success.
+  - Godot run `43157639228` — success.
+  - FFmpeg run `43157639132` — success.
+- Batch 74I production code checks on `bf57d0d066bf09be98813903677512ad49d2e828` all completed successfully:
+  - CI run `43156652772` — success.
+  - macOS run `43156652889` — success.
+  - Godot run `43156652908` — success.
+  - FFmpeg run `43156652884` — success.
 - GitHub checks on Batch 74I code head `bf57d0d066bf09be98813903677512ad49d2e828` all completed successfully:
   - CI run `43156652772` — success.
   - macOS run `43156652889` — success.
@@ -162,12 +182,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Continue checking safe retry and observability around separate queue/ledger database reads; do not claim cross-database atomicity.
+2. Review whether any supported operation can mutate terminal queue state outside `StudioQueue`; raw direct database edits are not protected by cross-database atomicity.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then review remaining queue/ledger consistency and recovery boundaries, especially a queue change after the confirmation read. Add a regression before any production change; do not claim cross-database atomicity or broaden automatic approval.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then audit supported writers of terminal queue state and test whether any can change a result after confirmation. Keep direct SQLite edits outside the atomicity guarantee; make no production change unless a supported-path regression proves a gap.
 
 ## Required limits
 
