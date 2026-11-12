@@ -36,6 +36,18 @@ class ProductionEvalsTests(unittest.TestCase):
         self.assertTrue(evaluate_script("ﻣﺮﺣﺒﺎ " * 10, language="ar",
                                         required_terms=("مرحبا",)).passed)
 
+    def test_language_label_rejects_dominant_opposite_script(self):
+        english_as_arabic = evaluate_script(
+            "This is an educational story about colors and friendship. " * 2,
+            language="ar")
+        arabic_as_english = evaluate_script(
+            "هذه قصة تعليمية عن الألوان والصداقة واللعب مع الأصدقاء. " * 2,
+            language="en")
+        self.assertFalse(english_as_arabic.passed)
+        self.assertFalse(english_as_arabic.checks["language_script"])
+        self.assertFalse(arabic_as_english.passed)
+        self.assertFalse(arabic_as_english.checks["language_script"])
+
     def test_blank_line_rejected(self):
         self.assertFalse(evaluate_script("A" * 45 + "\n\n" + "B" * 10,
                                          language="en").passed)

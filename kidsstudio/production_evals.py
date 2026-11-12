@@ -24,7 +24,12 @@ class EvalResult:
 
 def evaluate_script(text: str, *, language: str, required_terms: tuple[str, ...] = (),
                     min_chars: int = 40, max_chars: int = 6000) -> EvalResult:
-    """Mechanical checks only; does NOT certify educational or child safety."""
+    """Mechanical checks only; does NOT certify language, education or child safety.
+
+    ``language_script`` is a conservative Unicode script-dominance heuristic,
+    not language identification: it catches a candidate dominated by the
+    opposite Arabic/Latin script but cannot validate grammar or meaning.
+    """
     if not isinstance(text, str):
         raise TypeError("text must be a string")
     if language not in ("ar", "en"):
@@ -38,8 +43,17 @@ def evaluate_script(text: str, *, language: str, required_terms: tuple[str, ...]
     normalized = text.strip()
     def fold(value: str) -> str:
         return unicodedata.normalize('NFKC', value).casefold()
+    script_letters = [
+        unicodedata.name(char, "")
+        for char in unicodedata.normalize("NFKC", normalized)
+        if char.isalpha()
+    ]
+    target_prefix = "ARABIC LETTER" if language == "ar" else "LATIN "
+    target_letters = sum(name.startswith(target_prefix) for name in script_letters)
+    other_letters = len(script_letters) - target_letters
     checks = {
         "length": min_chars <= len(normalized) <= max_chars,
+        "language_script": target_letters > other_letters,
         "required_terms": all(fold(term) in fold(normalized) for term in required_terms),
         "nonempty_lines": bool(normalized) and all(line.strip() for line in normalized.splitlines()),
     }

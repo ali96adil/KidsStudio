@@ -37,6 +37,12 @@ class EditorialEvalAdapterTests(unittest.TestCase):
         self.assertEqual(self.evaluate(required_terms=("blue",))["status"],
                          "REVISE_REQUIRED")
 
+    def test_answer_dominated_by_wrong_script_requires_revision(self):
+        result = self.evaluate(language="ar")
+        self.assertEqual(result["status"], "REVISE_REQUIRED")
+        self.assertFalse(result["checks"]["language_script"])
+        self.assertFalse(result["publication_approved"])
+
     def test_tampered_answer(self):
         (self.attempt / "answer.txt").write_text("tampered")
         with self.assertRaises(EditorialEvalError):
