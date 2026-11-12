@@ -7,8 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `bf57d0d066bf09be98813903677512ad49d2e828`.
-- Latest regression/test head: `269aaeb23943375621d58142150fab623afe1322`.
+- Current code head: `a3e945200869ee799b93383f654615947331623a`.
+- Latest regression/test head: `a3e945200869ee799b93383f654615947331623a`.
+- Rollback before Batch 74O: `3237ef715b017a94b19ac4f21dee528d0a8b15f7`.
 - Rollback before Batch 74N: `39c0457595c4e3750c00fb991db7b07ebe01f29c`.
 - Rollback before Batch 74M: `fefb67bcd981d171f03971be9ac4071f8fbea250`.
 - Rollback before Batch 74L: `05e29ed502ce7f17eae390e00f1bcb9e5907fa59`.
@@ -28,6 +29,16 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74O — Reject silent supplied narration before episode render
+
+- Regression first exposed that execute mode accepted a fully silent, otherwise valid 24-second supplied WAV and proceeded to render visuals. Its hash and duration bound bytes and length, not audio presence.
+- Execute mode now applies the existing per-beat PCM energy gate to the verified supplied WAV before image/video rendering. The gate detects only minimum signal energy; it does not verify words, Arabic pronunciation, speech quality, or owner approval. Preview mode remains non-mutating and does not require audible media.
+- Added positive and failure coverage for supplied audio; the silent fixture is rejected before render/mux, while a synthetic tone passes the presence gate without being described as speech.
+- Updated the real FFmpeg smoke fixture from silence to a synthetic tone so the integrated execution path can pass the gate. The macOS job label now accurately identifies the tone fixture.
+- `python scripts/run_tests.py`: **888 tests passed**; `python -m compileall -q kidsstudio tests scripts`, `git diff --check`, and `PYTHONPATH=. python scripts/ci_colors_episode_smoke.py` passed.
+- GitHub on code head `a3e945200869ee799b93383f654615947331623a`: CI `43170954014`, macOS `43170954041`, Godot `43170953927`, and FFmpeg/colors `43170953990` all **success**. Hosted macOS and the tone fixture do not qualify real Arabic narration or the owner's Mac.
+- No real model, paid API, external research, Pi, OAuth, YouTube, public release, or owner device was used.
 
 ### Batch 74N — Correlate terminal queue events with Director result retries
 
@@ -234,12 +245,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Audit the software-only synthetic Arabic episode end-to-end path for missing integration gates; separate those findings from owner-Mac physical qualification.
-3. Continue retry observability/recovery work only when a concrete supported-path gap appears; avoid repeated redundant tests and never claim cross-database atomicity.
+2. Continue auditing the synthetic episode path for evidence gaps that can be qualified locally (presence is not speech; technical MP4 checks are not educational or language review). Choose a single demonstrated integration gap and add regression first.
+3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not repeat Director retry tests without a new supported-path failure.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then audit the synthetic Arabic episode end-to-end path for one concrete missing integration gate that can be qualified locally. Keep owner-Mac narration/render/listening Pending Physical Qualification. Do not claim atomicity across the separate SQLite databases.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then audit the next single software-only episode integration gap with a regression-first test. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across the separate SQLite databases.
 
 ## Required limits
 

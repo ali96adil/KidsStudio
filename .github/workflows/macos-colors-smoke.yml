@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/run_tests.py
-      - name: Real macOS 24-second original colors MP4 (synthetic silent WAV)
+      - name: Real macOS 24-second original colors MP4 (synthetic tone WAV)
         shell: bash
         run: |
           set -euo pipefail
