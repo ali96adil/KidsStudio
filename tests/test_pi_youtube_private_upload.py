@@ -158,6 +158,26 @@ class PrivateUploaderTests(unittest.TestCase):
         self.assertEqual(backend.calls, [])
         self.assertFalse(self.journal.exists())
 
+    def test_internal_mux_candidate_blocks_uploader_before_network_or_journal(self):
+        candidate = self.root / "verified-candidate.mp4"
+        candidate.write_bytes(self.file.read_bytes())
+        candidate.chmod(0o600)
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        backend = FakeYouTube()
+        token_calls = []
+
+        def token_provider():
+            token_calls.append(True)
+            return "FAKE_ACCESS_TOKEN_12345"
+
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(
+                backend, relative_path=candidate.name,
+                expected_sha256=digest, token_provider=token_provider)
+        self.assertEqual(backend.calls, [])
+        self.assertEqual(token_calls, [])
+        self.assertFalse(self.journal.exists())
+
     def test_wrong_sha_blocks_no_journal_no_network(self):
         backend = FakeYouTube()
         with self.assertRaises(YouTubePrivateError):
