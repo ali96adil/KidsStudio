@@ -7,7 +7,8 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code/test head: `f887161cee84ff69e009d7de1e84919c46d11558`.
+- Current code/test head: `1d889bb7a2e5c28400d40f252dc0ece62aee0661`.
+- Rollback before Batch 74H: `64021e00f85c5213571aac5252a3d1f6e30690f5`.
 - Rollback before Batch 74G: `32426522fc7c58b80617f58bd03830dc13953a8b`.
 - Previous qualified code/test head before Batch 74F: `3cb4b849b6ebf88afbcdccf3277649e2c581a9c7`.
 - Handoff-only revision before this update: `f59abf92ff39280821b607f0ca966735afdf5836`.
@@ -20,6 +21,14 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74H — Recheck dispatch before returning a saved result
+
+- A regression exposed a stale-snapshot gap: when a terminal result already existed, retry matched it against the dispatch read before queue lookup and returned `RESULT_EXISTS` without checking whether dispatch had changed meanwhile.
+- Saved-result retry now re-reads dispatch and result inside a transaction before returning success. A changed dispatch is rejected; an unchanged result remains idempotent.
+- Added regression coverage for a dispatch relink between snapshot reads, relink before first write with rollback/recovery, and interruption after a saved-result check. Existing pre-commit interruption coverage remains in place.
+- `python scripts/run_tests.py`: **883 tests passed**; compileall and `git diff --check` passed.
+- No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74G — Validate queue identity during result retry
 
@@ -76,9 +85,14 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **881 tests passed** on Batch 74G code.
+- Local `python scripts/run_tests.py`: **883 tests passed** on Batch 74H code.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
+- GitHub checks on Batch 74H code head `1d889bb7a2e5c28400d40f252dc0ece62aee0661` all completed successfully:
+  - CI run `43154506534` — success.
+  - macOS run `43154506625` — success.
+  - Godot run `43154506773` — success.
+  - FFmpeg run `43154506554` — success.
 - GitHub checks on Batch 74G code head `f887161cee84ff69e009d7de1e84919c46d11558` all completed successfully:
   - CI run `43152691120` — success.
   - macOS run `43152691100` — success.
@@ -133,12 +147,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Continue testing the result persistence boundary under stale dispatch/queue data and transaction interruption; preserve fail-closed identity checks.
+2. Continue testing result persistence against queue-state changes and dispatch races across the separate ledger/queue databases; preserve fail-closed identity checks.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then test stale dispatch/queue snapshots and result-transaction interruption for uncovered retry conflicts. Add regression coverage before any production change; do not broaden automatic approval until boundaries and CI are verified.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then test queue terminal-state changes racing with result recording across the separate SQLite databases. Add regression coverage before any production change; preserve immutable terminal-result semantics and do not broaden automatic approval.
 
 ## Required limits
 
