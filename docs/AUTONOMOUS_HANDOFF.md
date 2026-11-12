@@ -9,7 +9,7 @@ Updated: 2026-11-12
 - Draft PR: #33 — open, draft, not merged.
 - Current code head: `33e229917339aaf50e94bd5de5a958e5f59a09b8`.
 - Latest regression/test head: `33e229917339aaf50e94bd5de5a958e5f59a09b8`.
-- Previous Handoff commit: `c7bebde6785cec00a6254bc35f47d1f7b11dc1dd`.
+- Previous Handoff commit: `e1a9b3978c566aac7b6eb513f46603ffa1b7000f`.
 - Rollback before Batch 75N: `e13c9ac26c6113f3a3ad8eb51c365a3ddb597200`.
 - Rollback before Batch 75M: `c7bebde6785cec00a6254bc35f47d1f7b11dc1dd`.
 - Rollback before Batch 75L: `17461df42970bd555d54cba745d61d1ae97bf4b7`.
@@ -55,7 +55,7 @@ Updated: 2026-11-12
 - A regression first reproduced that an interrupted `SESSION_ACTIVE` journal with a missing `session_url` leaked a raw `KeyError` from the Python API instead of the uploader's safe `YouTubePrivateError` contract. No OAuth token or transport call occurred, but the exception type was inconsistent.
 - Recovery now validates the optional persisted value through the existing strict session URL validator; missing or malformed values produce the controlled error before token/network use. The tampered journal is preserved.
 - `python -m unittest tests.test_pi_youtube_private_upload -q`: **31 passed**; `python scripts/run_tests.py`: **922 passed**; compileall and `git diff --check` passed.
-- On head `33e229917339aaf50e94bd5de5a958e5f59a09b8`, CI `43244535932`, macOS `43244535757`, Godot `43244535805`, and FFmpeg `43244535821` were in progress at handoff preparation.
+- On head `33e229917339aaf50e94bd5de5a958e5f59a09b8`, CI `43244535932`, macOS `43244535757`, Godot `43244535805`, and FFmpeg `43244535821` all completed successfully.
 - Only synthetic media/transports/tokens were used. No real OAuth/upload, spending, publication, or device operation. Rollback before Batch 75N: `e13c9ac26c6113f3a3ad8eb51c365a3ddb597200`.
 
 ### Batch 75M — Test resumable upload recovery boundaries
@@ -64,7 +64,7 @@ Updated: 2026-11-12
 - A stale local `bytes_remote_acknowledged` hint is ignored; remote probe state remains authoritative. A tampered active session URL is rejected before OAuth token retrieval or transport, with the journal preserved.
 - No production-code defect was demonstrated, so this batch changes tests only. `python -m unittest tests.test_pi_youtube_private_upload -q`: **30 passed**; `python scripts/run_tests.py`: **921 passed**; compileall and `git diff --check` passed.
 - CI `43243711663`, FFmpeg `43243711631`, and Godot `43243711676` succeeded on test head `e13c9ac26c6113f3a3ad8eb51c365a3ddb597200`; macOS `43243717529` remained queued at the last direct check.
-- The previous Handoff-only head `c7bebde6785cec00a6254bc35f47d1f7b11dc1dd` completed CI `43242838412`, macOS `43242838518`, Godot `43242838393`, and FFmpeg `43242838439` successfully. Only fake local transports/tokens were used; no real OAuth/upload, publication, spending, or device operation. Rollback before Batch 75M: `c7bebde6785cec00a6254bc35f47d1f7b11dc1dd`.
+- The macOS run `43243717529` for test head `e13c9ac26c6113f3a3ad8eb51c365a3ddb597200` remained queued at the last direct check; the subsequent full macOS run `43244535757` passed on the later Batch 75N head. The previous Handoff-only head `c7bebde6785cec00a6254bc35f47d1f7b11dc1dd` also completed CI `43242838412`, macOS `43242838518`, Godot `43242838393`, and FFmpeg `43242838439` successfully. Only fake local transports/tokens were used; no real OAuth/upload, publication, spending, or device operation. Rollback before Batch 75M: `c7bebde6785cec00a6254bc35f47d1f7b11dc1dd`.
 
 ### Batch 75L — Enforce state-specific uploader journal fields
 
@@ -446,7 +446,7 @@ Updated: 2026-11-12
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (runs `43244535932`, `43244535757`, `43244535805`, `43244535821` were in progress at this handoff update). Then review any remaining fail-closed recovery gaps in `SESSION_ACTIVE` journal handling and upload interruption boundaries; Regression first and synthetic transport only. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. Batch 75N checks on code head `33e229917339aaf50e94bd5de5a958e5f59a09b8` all passed: CI `43244535932`, macOS `43244535757`, Godot `43244535805`, FFmpeg `43244535821`. Handoff-only head `e1a9b3978c566aac7b6eb513f46603ffa1b7000f` checks `43245099567`, `43245099768`, `43245099476`, and `43245099872` were in progress at the last check. Then review any remaining fail-closed recovery gaps in `SESSION_ACTIVE` journal handling and upload interruption boundaries; Regression first and synthetic transport only. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
 
 ## Required limits
 
