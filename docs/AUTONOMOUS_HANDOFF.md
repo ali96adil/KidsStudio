@@ -8,7 +8,8 @@ Updated: 2026-11-12
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
 - Current code head: `bf57d0d066bf09be98813903677512ad49d2e828`.
-- Latest regression/test head: `93a689693934fa7d2448b802f5746be625a38a24`.
+- Latest regression/test head: `269aaeb23943375621d58142150fab623afe1322`.
+- Rollback before Batch 74N: `39c0457595c4e3750c00fb991db7b07ebe01f29c`.
 - Rollback before Batch 74M: `fefb67bcd981d171f03971be9ac4071f8fbea250`.
 - Rollback before Batch 74L: `05e29ed502ce7f17eae390e00f1bcb9e5907fa59`.
 - Rollback before Batch 74K: `6c7fff7d9c6621e7025b0b3c6e5675ed283cf15f`.
@@ -27,6 +28,14 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74N — Correlate terminal queue events with Director result retries
+
+- Extended interruption/recovery coverage for COMPLETED, FAILED, and CANCELLED to assert each terminal queue state has exactly one matching terminal event before Director records its result.
+- The event stream remains unchanged after Director rollback, result recovery, and idempotent retry. This confirms supported queue transitions persist state and event together; Director does not duplicate queue events.
+- No production-code change was justified: supported queue APIs did not produce a state/event mismatch. Direct database edits remain outside the supported path and separate-database atomicity guarantee.
+- `python scripts/run_tests.py`: **886 tests passed**; compileall and `git diff --check` passed.
+- No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74M — Keep queue events stable across Director result retries
 
@@ -133,9 +142,14 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **886 tests passed** on Batch 74M test head.
+- Local `python scripts/run_tests.py`: **886 tests passed** on Batch 74N test head.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
+- GitHub checks on Batch 74N head `269aaeb23943375621d58142150fab623afe1322` all completed successfully:
+  - CI run `43164779987` — success.
+  - macOS run `43164779979` — success.
+  - Godot run `43164779986` — success.
+  - FFmpeg run `43164779963` — success.
 - GitHub checks on Batch 74M head `93a689693934fa7d2448b802f5746be625a38a24` all completed successfully:
   - CI run `43160166238` — success.
   - macOS run `43160166268` — success.
@@ -220,12 +234,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Review consistency checks for queue events versus result snapshots on supported retry paths; retain fail-closed behavior and avoid claiming cross-database atomicity.
-3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
+2. Audit the software-only synthetic Arabic episode end-to-end path for missing integration gates; separate those findings from owner-Mac physical qualification.
+3. Continue retry observability/recovery work only when a concrete supported-path gap appears; avoid repeated redundant tests and never claim cross-database atomicity.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then review whether Director should validate terminal queue event evidence before recording a result. Add Regression coverage first and only change production behavior if the supported queue API can produce a mismatch. Do not claim atomicity across the separate SQLite databases.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then audit the synthetic Arabic episode end-to-end path for one concrete missing integration gate that can be qualified locally. Keep owner-Mac narration/render/listening Pending Physical Qualification. Do not claim atomicity across the separate SQLite databases.
 
 ## Required limits
 
