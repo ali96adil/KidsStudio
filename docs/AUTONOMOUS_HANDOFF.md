@@ -7,8 +7,10 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `837aed7273a45563c425bfb60be1d414cb165ee5`.
-- Latest regression/test head: `837aed7273a45563c425bfb60be1d414cb165ee5`.
+- Current code head: `6ea4f3f16b1c56736f088c41ccc75c5affdb53a5`.
+- Latest regression/test head: `6ea4f3f16b1c56736f088c41ccc75c5affdb53a5`.
+- Handoff update parent: `f1b035e66eeb19c381cb11f8a25c1f20807c8138`.
+- Rollback before Batch 75G: `f1b035e66eeb19c381cb11f8a25c1f20807c8138`.
 - Rollback before Batch 75F: `9b69cabe016f0d739e99eaad967465d1d515b22a`.
 - Rollback before Batch 75E: `ba64db7117a8c4161626300654ad9292ea003ca9`.
 - Rollback before Batch 75D: `ce72200af66b21aa05a04bf62d39fbae5cfa41c4`.
@@ -40,6 +42,14 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 75G — Block internal mux candidate from Pi upload and review
+
+- Regression first showed an exact `verified-candidate.mp4` could become eligible through the owner-authorized PRIVATE upload gate and the PRIVATE upload handoff. A second regression showed a matching historical journal could make the same internal filename eligible for owner review.
+- The upload eligibility gate now blocks the reserved candidate path segment (including Windows separators) before media verification; the shared Pi review inspection rejects the reserved exact filename. The Pi inbox inherits the review rejection through this shared inspection gate. Final episode names remain eligible subject to the existing controls.
+- Focused upload-gate, handoff and Pi-review tests: **34 passed**. `python scripts/run_tests.py`: **912 passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
+- Code head: `6ea4f3f16b1c56736f088c41ccc75c5affdb53a5`. CI `43219330522`, Godot `43219330734`, and FFmpeg `43219330493` — **success**. macOS `43219330562` — **in progress** at handoff preparation; do not infer qualification from it until completed.
+- No YouTube/OAuth/network call, upload, Pi deployment, owner-device operation, public release, spending, paid API, or model download was performed. The owner's Arabic episode remains **Pending Physical Qualification**. Rollback before Batch 75G: `f1b035e66eeb19c381cb11f8a25c1f20807c8138`.
 
 ### Batch 75F — Exclude internal mux candidates from review history
 
@@ -368,12 +378,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Audit remaining production handoff and episode lifecycle consumers for stale review or artifact-name mismatches, adding Regression before any fix to a supported path.
+2. Audit Pi inbox/web and uploader recovery consumers for stale artifact identity or review-state mismatches; add Regression before any supported-path fix.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not treat energy gates as speech/language review.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. Then audit remaining production handoff and episode lifecycle consumers for stale review or artifact-name mismatches and write a regression first if a supported-path gap exists. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (including macOS run `43219330562`, pending at this handoff update). Then audit Pi inbox/web and uploader recovery consumers for stale artifact identity or review-state mismatches; write a regression first if a supported-path gap exists. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
 
 ## Required limits
 
