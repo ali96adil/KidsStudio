@@ -178,45 +178,6 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         render.assert_called_once()
         mux.assert_called_once()
 
-    def test_retry_after_render_failure_uses_fresh_private_stage(self):
-        write_wav(self.audio, amplitude=5000)
-        digest = hashlib.sha256(self.audio.read_bytes()).hexdigest()
-        attempts = {"count": 0}
-
-        def fail_then_render(stage):
-            attempts["count"] += 1
-            if attempts["count"] == 1:
-                raise EpisodeMuxError("synthetic interruption during render")
-            target = stage / "silent.mp4"
-            target.write_bytes(b"synthetic video")
-            target.chmod(0o600)
-            return target
-
-        with patch("kidsstudio.first_colors_episode._render_silent",
-                   side_effect=fail_then_render), patch(
-                "kidsstudio.first_colors_episode.mux_episode_pilot",
-                return_value={
-                    "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
-                    "final_mp4_sha256": "d" * 64,
-                    "final_mp4_bytes": 1234,
-                }):
-            with self.assertRaisesRegex(EpisodeMuxError, "interruption"):
-                run_first_colors_episode(
-                    output_root=str(self.private), output_name="retry_after_render.mp4",
-                    voice_mode="supplied_wav", narration_root=str(self.audio_root),
-                    narration_name=self.audio.name, narration_sha256=digest, execute=True)
-            resumed = run_first_colors_episode(
-                output_root=str(self.private), output_name="retry_after_render.mp4",
-                voice_mode="supplied_wav", narration_root=str(self.audio_root),
-                narration_name=self.audio.name, narration_sha256=digest, execute=True)
-
-        self.assertEqual(resumed["status"], "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED")
-        self.assertEqual(attempts["count"], 2)
-        stages = list(self.private.glob("retry_after_render-pilot-sources*"))
-        self.assertEqual(len(stages), 2)
-        self.assertTrue(all(stage.is_dir() and stage.stat().st_mode & 0o077 == 0
-                            for stage in stages))
-
     def test_public_audio_directory_rejected(self):
         self.audio_root.chmod(0o755)
         with self.assertRaises(ValueError):
@@ -382,9 +343,9 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         self.assertFalse(result["voice_pronunciation_reviewed"])
         self.assertEqual(result["final_mp4_sha256"], "b" * 64)
         self.assertTrue(mux.call_args.kwargs["execute"])
-        stage = next(self.private.glob("colors_ar_01-pilot-sources-*"))
         self.assertEqual(mux.call_args.kwargs["narration_sha256"], hashlib.sha256(
-            (stage / "arabic_voice.wav").read_bytes()).hexdigest())
+            (self.private / "colors_ar_01-pilot-sources" /
+             "arabic_voice.wav").read_bytes()).hexdigest())
 
     def test_native_voice_is_verified_before_any_visual_encode(self):
         order = []

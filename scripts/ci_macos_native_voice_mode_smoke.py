@@ -14,6 +14,7 @@ import hashlib
 import json
 from pathlib import Path
 import platform
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,18 @@ from kidsstudio.mp4_playback_preflight import inspect_mp4_playback
 
 _FAKE_VOICE = "CIVoice"
 _AUDIO_THRESHOLD = 196
+_STAGE_STEM = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,158}\Z")
+
+
+def _resolve_voice_workspace(root: Path, output_stem: str) -> Path:
+    """Resolve the one private per-attempt staging directory, never guess."""
+    if not isinstance(output_stem, str) or not _STAGE_STEM.fullmatch(output_stem):
+        raise AssertionError("Invalid synthetic output stem.")
+    matches = list(root.glob(f"{output_stem}-pilot-sources-*"))
+    if (len(matches) != 1 or matches[0].is_symlink()
+            or not matches[0].is_dir() or matches[0].stat().st_mode & 0o077):
+        raise AssertionError("Expected exactly one private render-attempt workspace.")
+    return matches[0]
 
 
 def _ci_say_interceptor(original, calls: list[int]):
@@ -99,7 +112,8 @@ def run_ci_native_voice_mode_synthetic() -> dict:
                 or rendered["pi_transfer_performed"] is not False
                 or rendered["youtube_upload_performed"] is not False):
             raise AssertionError("Native voice-mode synthetic pipeline did not finish.")
-        voice = ready / "synthetic_native_tones-pilot-sources" / "arabic_voice.wav"
+        voice = (_resolve_voice_workspace(ready, "synthetic_native_tones") /
+                 "arabic_voice.wav")
         gate = check_six_beat_pcm_energy(
             root=str(voice.parent), relative_path=voice.name)
         if gate["status"] != "SIX_BEAT_PCM_ENERGY_PRESENT_UNREVIEWED":

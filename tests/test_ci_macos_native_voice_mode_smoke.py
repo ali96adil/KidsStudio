@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts.ci_macos_native_voice_mode_smoke import (
-    _ci_say_interceptor, _decode_sound_in_beat, main,
+    _ci_say_interceptor, _decode_sound_in_beat, _resolve_voice_workspace, main,
     run_ci_native_voice_mode_synthetic,
 )
 
@@ -83,6 +83,20 @@ class MacNativeModeSyntheticTests(unittest.TestCase):
                    return_value=subprocess.CompletedProcess(
                        [], 0, stdout=payload)):
             self.assertTrue(_decode_sound_in_beat(Path("/synthetic.mp4"), 5))
+
+    def test_voice_workspace_resolves_unique_retry_stage_and_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            stage = root / "synthetic_native_tones-pilot-sources-a1b2c3d4"
+            stage.mkdir(mode=0o700)
+            self.assertEqual(_resolve_voice_workspace(root, "synthetic_native_tones"), stage)
+            second = root / "synthetic_native_tones-pilot-sources-e5f6a7b8"
+            second.mkdir(mode=0o700)
+            with self.assertRaisesRegex(AssertionError, "exactly one"):
+                _resolve_voice_workspace(root, "synthetic_native_tones")
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(AssertionError, "exactly one"):
+                _resolve_voice_workspace(Path(temporary), "missing")
 
     def test_cli_redacts_exception_and_never_claims_upload(self):
         stdout = io.StringIO()
