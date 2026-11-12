@@ -249,6 +249,34 @@ class PrivateUploaderTests(unittest.TestCase):
         self.assertEqual(chunk_starts[0], 0)
         self.assertEqual(chunk_starts[1], acknowledged)
 
+    def test_lost_final_response_recovers_video_id_from_existing_session_probe(self):
+        backend = FakeYouTube()
+        original_send = backend.send_chunk
+
+        def lose_final_response(**kwargs):
+            result = original_send(**kwargs)
+            if result[0] in (200, 201):
+                raise YouTubePrivateError("synthetic final response lost")
+            return result
+
+        backend.send_chunk = lose_final_response
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(backend)
+        self.assertEqual(backend.ack, self.file.stat().st_size)
+        self.assertEqual(_load_journal(self.journal)["state"], "SESSION_ACTIVE")
+        self.assertEqual(backend.started, 1)
+        chunks_before_resume = sum(call[0] == "chunk" for call in backend.calls)
+
+        backend.probe_returns_final = True
+        result = self.upload(backend)
+
+        self.assertEqual(result["status"], "PRIVATE_UPLOAD_CONFIRMED")
+        self.assertEqual(result["video_id"], VIDEO)
+        self.assertEqual(backend.started, 1)
+        self.assertEqual(sum(call[0] == "probe" for call in backend.calls), 2)
+        self.assertEqual(sum(call[0] == "chunk" for call in backend.calls),
+                         chunks_before_resume)
+
     def test_invalid_active_session_recovery_fails_before_token_or_transport(self):
         from kidsstudio.pi_youtube_private_upload import _save_journal
 
