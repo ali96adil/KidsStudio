@@ -813,7 +813,7 @@ class StudioDirector:
                 "evidence": [{**item, "sha256": None} for item in selected],
                 "job_kind": "script_draft",
                 "job_payload": {"language": language, "topic": f"{title}: {objective}"[:400],
-                                "auto_review": False},
+                                "auto_review": True},
             }
             if supersedes_id is not None:
                 proposal["supersedes_id"] = supersedes_id

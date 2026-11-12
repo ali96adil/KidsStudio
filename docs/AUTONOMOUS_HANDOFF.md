@@ -54,6 +54,14 @@ Updated: 2026-11-12
 
 ## Last completed batch
 
+### Batch 76E — Route Director drafts to independent Queue review
+
+- A regression first showed that Director-created `script_draft` jobs set `auto_review=False`, so the local worker completed a draft without creating the existing linked `editorial_review` job.
+- The trial path now sets `auto_review=True`. The existing queue operation atomically completes the draft and enqueues an independent review linked by source job ID, draft SHA-256, and original provider ID. The review remains unverified and does not approve publication.
+- The Director-to-Queue regression verifies the requested handoff metadata, absence of copied script text, separate reviewer provider, and a completed synthetic review result. The existing local-worker integration test also passes.
+- Local verification: `tests.test_studio_director`: **51 passed**; `python scripts/run_tests.py`: **931 passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
+- GitHub runs for Batch 76E are pending after push. Only synthetic providers/artifacts were used; no external research, paid API, child-level data, upload, or publication occurred.
+
 ### Batch 76D — Qualify concurrent measurement idempotency
 
 - Added a deterministic concurrent-retry regression: two threads record the same aggregate measurement with the same request key at once. Exactly one receipt is inserted; callers receive `MEASUREMENT_RECORDED` and `MEASUREMENT_EXISTS` with the same measurement ID and digest.
@@ -496,13 +504,13 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Review measurement idempotency under concurrent retries, then connect Director-created drafts to the existing atomic Queue editorial-review handoff. Keep caller evidence unverified; do not introduce external research or child-level data.
-3. Continue the P3 team integration using the current Director and Queue, with separate provenance for research inputs, creative drafts, editorial reviews, production jobs, and independent review. Expand only after each prior stage is tied to its exact source artifact and existing policy gates.
+2. Connect Director result recording to the linked draft and independent editorial-review provenance; do not record a successful reviewed outcome or allow a measurement receipt while that review is pending or failed.
+3. Continue P3 with explicit research evidence provenance and source-bound production handoff. Research remains caller-supplied and unverified; do not introduce external calls or child-level data. Production stays gated on the exact reviewed artifact and owner-controlled decisions.
 4. Keep owner Mac/Pi/PRIVATE transfer and upload qualification pending for supervised operation; do not replace these requirements with synthetic checks.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify the latest checks before each batch. Continue with measurement retry idempotency and then the Director-to-Queue draft review handoff. Hashes bind stored bytes only; do not promote caller-supplied measurements or sources to verified based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify Batch 76E's latest checks. Then add a regression proving Director result recording and measurement ingestion wait for the exact linked editorial review to complete. Continue source-bound production integration only within existing Queue and owner gates. Hashes bind stored bytes only; do not promote caller-supplied measurements or sources to verified based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
 
 ## Required limits
 

@@ -81,6 +81,14 @@ proposals create no job. Queue insertion and Director-ledger linkage use two
 local SQLite databases; if interrupted between them, the deterministic queue
 request key makes a retry link to the same job rather than creating another.
 
+The internal trial path sets `auto_review` on its `script_draft` queue job.
+After the draft worker writes a private artifact, the existing queue operation
+atomically completes that job and creates a separate `editorial_review` job
+bound to the exact draft SHA and writer provider. The review worker must use a
+different provider. This second review result remains
+`EDITORIAL_REVIEW_UNVERIFIED`; neither it nor the earlier concept review
+approves publication.
+
 ## Qualification boundary
 
 Unit tests cover validation, evidence/rationale digest binding, immutable

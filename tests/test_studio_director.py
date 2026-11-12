@@ -204,13 +204,39 @@ class StudioDirectorTests(unittest.TestCase):
         payload = json.loads(jobs[0]["payload"])
         self.assertTrue(payload["studio_no_paid"])
         self.assertEqual(payload["studio_trial_policy"], INTERNAL_TRIAL_POLICY)
-        self.assertEqual(payload["auto_review"], False)
-        self.assertEqual(StudioQueue(self.queue_path).claim(
-            worker_id="synthetic-worker", capabilities=["script_draft"])["job_id"],
-            result["queue_job_id"])
-        StudioQueue(self.queue_path).complete(
-            job_id=result["queue_job_id"], worker_id="synthetic-worker", generation=1,
-            result={"status": "SYNTHETIC_DRAFT_COMPLETED", "publication_approved": False})
+        self.assertIs(payload["auto_review"], True)
+        queue = StudioQueue(self.queue_path)
+        draft_lease = queue.claim(worker_id="synthetic-worker",
+                                  capabilities=["script_draft"])
+        self.assertEqual(draft_lease["job_id"], result["queue_job_id"])
+        drafted = queue.complete_draft_and_enqueue_review(
+            job_id=result["queue_job_id"], worker_id="synthetic-worker",
+            generation=draft_lease["generation"],
+            result={"status": "DRAFTED_UNREVIEWED", "provider_id": "writer-local",
+                    "artifact_sha256": "a" * 64,
+                    "artifact_manifest": "/private/test/draft/result.json",
+                    "publication_approved": False},
+            language="ar",
+        )
+        draft_result = json.loads(drafted["result_json"])
+        review_id = draft_result["next_review_job_id"]
+        review_job = queue.get(review_id)
+        review_payload = json.loads(review_job["payload"])
+        self.assertEqual(review_job["kind"], "editorial_review")
+        self.assertEqual(review_payload["source_job_id"], result["queue_job_id"])
+        self.assertEqual(review_payload["source_answer_sha256"], "a" * 64)
+        self.assertEqual(review_payload["original_provider_id"], "writer-local")
+        self.assertNotIn("script_text", review_payload)
+
+        review_lease = queue.claim(worker_id="synthetic-reviewer",
+                                   capabilities=["editorial_review"])
+        self.assertEqual(review_lease["job_id"], review_id)
+        queue.complete(job_id=review_id, worker_id="synthetic-reviewer",
+                       generation=review_lease["generation"],
+                       result={"status": "EDITORIAL_REVIEW_UNVERIFIED",
+                               "provider_id": "reviewer-local",
+                               "artifact_sha256": "b" * 64,
+                               "publication_approved": False})
         recorded = self.store.record_queue_result(proposal_id=result["proposal_id"],
                                                   queue_database=self.queue_path)
         self.assertEqual(recorded["status"], "RESULT_RECORDED")
