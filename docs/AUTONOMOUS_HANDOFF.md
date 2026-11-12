@@ -7,9 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`.
-- Latest regression/test head: `69cf55df39f6734c7e4759ea0562a46f789b3f05`.
-- Previous Handoff commit: `c026fff269b46e150a35a14eba9af36bfebea4a7`.
+- Current code head: `6ce37d6da9312ef06f8c761c0f24c259e143e353`.
+- Latest regression/test head: `6ce37d6da9312ef06f8c761c0f24c259e143e353`.
+- Previous Handoff commit: `6e38c05f891e90572fd6d95bd00a3896e251207d`.
 - Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 - Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
@@ -60,7 +60,8 @@ Updated: 2026-11-12
 - The trial path now sets `auto_review=True`. The existing queue operation atomically completes the draft and enqueues an independent review linked by source job ID, draft SHA-256, and original provider ID. The review remains unverified and does not approve publication.
 - The Director-to-Queue regression verifies the requested handoff metadata, absence of copied script text, separate reviewer provider, and a completed synthetic review result. The existing local-worker integration test also passes.
 - Local verification: `tests.test_studio_director`: **51 passed**; `python scripts/run_tests.py`: **931 passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
-- GitHub runs for Batch 76E are pending after push. Only synthetic providers/artifacts were used; no external research, paid API, child-level data, upload, or publication occurred.
+- GitHub checks on Batch 76E code/test head `6ce37d6da9312ef06f8c761c0f24c259e143e353` all succeeded: CI `43305631424`, macOS `43305631132`, Godot `43305631050`, and FFmpeg `43305631252`. Only synthetic providers/artifacts were used; no external research, paid API, child-level data, upload, or publication occurred.
+- Rollback before Batch 76E: `6e38c05f891e90572fd6d95bd00a3896e251207d`.
 
 ### Batch 76D — Qualify concurrent measurement idempotency
 
@@ -409,10 +410,11 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **931 tests passed** on Batch 76D test head `69cf55df39f6734c7e4759ea0562a46f789b3f05`.
-- `tests.test_studio_director`: **51 passed** on Batch 76D.
-- `python -m compileall -q kidsstudio tests scripts`: passed on Batch 76D.
+- Local `python scripts/run_tests.py`: **931 tests passed** on Batch 76E code/test head `6ce37d6da9312ef06f8c761c0f24c259e143e353`.
+- `tests.test_studio_director`: **51 passed** on Batch 76E.
+- `python -m compileall -q kidsstudio tests scripts`: passed on Batch 76E.
 - `git diff --check`: passed.
+- Batch 76E GitHub CI `43305631424`, macOS `43305631132`, Godot `43305631050`, and FFmpeg `43305631252` completed successfully on test head `6ce37d6da9312ef06f8c761c0f24c259e143e353`.
 - Batch 76D GitHub CI `43303870074`, macOS `43303870067`, Godot `43303870076`, and FFmpeg `43303870421` completed successfully on test head `69cf55df39f6734c7e4759ea0562a46f789b3f05`.
 - Batch 76C GitHub CI `43296012922`, macOS `43296013332`, Godot `43296012900`, and FFmpeg `43296012854` completed successfully on code head `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`. Batch 76B runs `43294426534`, `43294426331`, `43294426311`, and `43294426299` also completed successfully after the prior Handoff update.
 - GitHub checks on Batch 74N head `269aaeb23943375621d58142150fab623afe1322` all completed successfully:
