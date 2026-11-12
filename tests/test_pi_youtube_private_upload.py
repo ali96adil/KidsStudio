@@ -271,6 +271,27 @@ class PrivateUploaderTests(unittest.TestCase):
         self.assertEqual(_load_journal(self.journal)["session_url"],
                          "https://attacker.example/upload?upload_id=stolen")
 
+    def test_active_session_missing_url_is_a_safe_recovery_error(self):
+        from kidsstudio.pi_youtube_private_upload import _save_journal
+
+        backend = FakeYouTube()
+        self.upload(backend, max_chunks_per_run=1)
+        record = _load_journal(self.journal)
+        record.pop("session_url")
+        _save_journal(self.journal, record)
+        calls_before = list(backend.calls)
+        token_calls = []
+
+        def token_provider():
+            token_calls.append(True)
+            return "FAKE_ACCESS_TOKEN_12345"
+
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(backend, token_provider=token_provider)
+        self.assertEqual(backend.calls, calls_before)
+        self.assertEqual(token_calls, [])
+        self.assertNotIn("session_url", _load_journal(self.journal))
+
     def test_pause_after_one_chunk_then_resume(self):
         backend = FakeYouTube()
         first = self.upload(backend, max_chunks_per_run=1)

@@ -400,7 +400,7 @@ def execute_private_upload(
             record["state"] = "SESSION_ACTIVE"
             record["session_url"] = _safe_session_url(session)
             _save_journal(journal_path, record)
-        session = _safe_session_url(record["session_url"])
+        session = _safe_session_url(record.get("session_url"))
 
         def finish(video_id: str) -> dict:
             # On failed verification, preserve a durable video ID for later
