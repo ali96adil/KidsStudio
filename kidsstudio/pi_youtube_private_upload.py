@@ -351,7 +351,9 @@ def execute_private_upload(
                     or record.get("episode_id") != episode_id
                     or (state in {"PRIVATE_UPLOAD_CONFIRMED", "REMOTE_COMPLETED_UNVERIFIED"}
                         and (not isinstance(record.get("video_id"), str)
-                             or not _VIDEO_ID.fullmatch(record["video_id"])) )):
+                             or not _VIDEO_ID.fullmatch(record["video_id"])
+                             or "session_url" in record))
+                    or (state == "SESSION_ACTIVE" and "video_id" in record)):
                 raise YouTubePrivateError("Upload journal is not for this exact immutable request.")
             if state == "PRIVATE_UPLOAD_CONFIRMED":
                 # A persisted confirmation is historical evidence only: check

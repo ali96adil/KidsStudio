@@ -351,6 +351,48 @@ class PrivateUploaderTests(unittest.TestCase):
         self.assertEqual(backend.calls, before_calls)
         self.assertEqual(token_calls, [])
 
+    def test_session_active_journal_with_video_id_is_rejected_before_side_effects(self):
+        from kidsstudio.pi_youtube_private_upload import _save_journal
+
+        backend = FakeYouTube()
+        self.upload(backend, max_chunks_per_run=1)
+        record = _load_journal(self.journal)
+        self.assertEqual(record["state"], "SESSION_ACTIVE")
+        record["video_id"] = VIDEO
+        _save_journal(self.journal, record)
+        before_calls = list(backend.calls)
+        token_calls = []
+
+        def token_provider():
+            token_calls.append(True)
+            return "FAKE_ACCESS_TOKEN_12345"
+
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(backend, token_provider=token_provider)
+        self.assertEqual(backend.calls, before_calls)
+        self.assertEqual(token_calls, [])
+
+    def test_confirmed_journal_with_session_url_is_rejected_before_side_effects(self):
+        from kidsstudio.pi_youtube_private_upload import _save_journal
+
+        backend = FakeYouTube()
+        self.upload(backend)
+        record = _load_journal(self.journal)
+        self.assertEqual(record["state"], "PRIVATE_UPLOAD_CONFIRMED")
+        record["session_url"] = SESSION
+        _save_journal(self.journal, record)
+        before_calls = list(backend.calls)
+        token_calls = []
+
+        def token_provider():
+            token_calls.append(True)
+            return "FAKE_ACCESS_TOKEN_12345"
+
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(backend, token_provider=token_provider)
+        self.assertEqual(backend.calls, before_calls)
+        self.assertEqual(token_calls, [])
+
     def test_untrusted_upload_session_hostname_rejected(self):
         for url in (
             "http://www.googleapis.com/upload/youtube/v3/videos?upload_id=x",
