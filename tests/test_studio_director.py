@@ -286,6 +286,7 @@ class StudioDirectorTests(unittest.TestCase):
                 else:
                     queue.cancel(trial["queue_job_id"])
                     expected_state = "CANCELLED"
+                queue_events_before = queue.events(trial["queue_job_id"])
 
                 original_connection = self.store._connection
 
@@ -300,12 +301,17 @@ class StudioDirectorTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "before Director commit"):
                         self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                                        queue_database=self.queue_path)
+                self.assertEqual(queue.events(trial["queue_job_id"]), queue_events_before)
                 record = self.store.get(proposal_id=trial["proposal_id"])
                 self.assertIsNone(record["result"])
                 resumed = self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                                          queue_database=self.queue_path)
                 self.assertEqual(resumed["status"], "RESULT_RECORDED")
                 self.assertEqual(resumed["queue_state"], expected_state)
+                self.assertEqual(self.store.record_queue_result(
+                    proposal_id=trial["proposal_id"], queue_database=self.queue_path
+                )["status"], "RESULT_EXISTS")
+                self.assertEqual(queue.events(trial["queue_job_id"]), queue_events_before)
 
     def test_concurrent_result_record_retries_are_idempotent(self):
         trial = self.store.run_internal_script_trial(**self.trial_args(
