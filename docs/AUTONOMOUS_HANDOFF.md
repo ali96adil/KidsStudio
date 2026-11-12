@@ -7,9 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `5e3a6c3bd9f18ad3abee94519454ff77195d2f98`.
-- Latest regression/test head: `5e3a6c3bd9f18ad3abee94519454ff77195d2f98`.
-- Previous Handoff commit: `5965155f709c8105cfec35af34e1517f2a6093c1`.
+- Current code head: `b14e74dad927249ab86df59777846b49160a2d32`.
+- Latest regression/test head: `b14e74dad927249ab86df59777846b49160a2d32`.
+- Previous Handoff-only commit before Batch 76G: `f358bb97b98d86fbf3b2a6f02da7aed87c8ddf68`.
 - Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 - Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
@@ -53,6 +53,15 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 76G — Require independent review before measurement ingestion
+
+- A regression showed an accepted Director trial could receive a generic completed Queue result (for example, `SYNTHETIC_DRAFT_COMPLETED`) without an editorial-review child, then accept aggregate measurements because ingestion checked only `queue_state=COMPLETED`.
+- Measurement ingestion now requires the Director result status `DRAFT_AND_EDITORIAL_REVIEW_RECORDED`, which is written only after the linked editorial review completes with matching source-job/draft-hash provenance, a distinct reviewer provider, and publication approval false. Legacy or generic completed result rows cannot qualify. Their SHA remains a binding of stored bytes, not proof of source authenticity or truth.
+- The measurement fixture now completes the canonical draft-to-review Queue handoff. The new regression failed before the fix (`ValueError not raised`) and passes after it. The review still remains `EDITORIAL_REVIEW_UNVERIFIED`; this does not authorize production or publication.
+- `tests.test_studio_director`: **52 passed**; `python scripts/run_tests.py`: **932 passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
+- GitHub checks on Batch 76G code/test head `b14e74dad927249ab86df59777846b49160a2d32` all succeeded: CI `43309784293`, macOS `43309784190`, Godot `43309784535`, and FFmpeg `43309784335`.
+- Rollback before Batch 76G: `f358bb97b98d86fbf3b2a6f02da7aed87c8ddf68`.
 
 ### Batch 76F — Bind Director results to completed editorial review
 
@@ -516,13 +525,14 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Continue P3 with explicit research evidence provenance and a source-bound production handoff. Research remains caller-supplied and unverified; do not introduce external calls or child-level data. Production stays gated on the exact reviewed artifact and owner-controlled decisions.
-3. Keep post-draft editorial review explicitly unverified; do not treat completion as a PASS, owner approval, production authorization or public-publishing decision.
-4. Keep owner Mac/Pi/PRIVATE transfer and upload qualification pending for supervised operation; do not replace these requirements with synthetic checks.
+2. Continue P3 by defining a source-bound private-production preparation handoff from the exact reviewed artifact, using the existing Director and Queue only. Do not add production execution, spending, upload, publication or owner-decision authority.
+3. Research evidence remains caller-supplied and unverified; preserve source and observation fields, and do not add external calls or child-level data. Digests bind recorded bytes only and do not verify sources.
+4. Keep post-draft editorial review explicitly unverified; do not treat completion as a PASS, owner approval, production authorization or public-publishing decision. Measurement ingestion now requires the linked review result status as well as a completed Queue state.
+5. Keep owner Mac/Pi/PRIVATE transfer and upload qualification pending for supervised operation; do not replace these requirements with synthetic checks.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify that the PR description matches the head and latest checks. Continue source-bound production integration only within existing Queue and owner gates. Keep research evidence caller-supplied and unverified. Hashes bind stored bytes only; do not promote sources based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify that the PR description matches the head and latest checks. Continue the source-bound private-production preparation integration only within existing Queue and owner gates. Require a completed linked review result before measurement ingestion. Keep research evidence caller-supplied and unverified. Hashes bind stored bytes only; do not promote sources based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
 
 ## Required limits
 
