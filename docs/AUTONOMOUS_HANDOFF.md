@@ -8,7 +8,7 @@ Updated: 2026-11-12
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
 - Current code head: `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`.
-- Latest regression/test head: `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`.
+- Latest regression/test head: `69cf55df39f6734c7e4759ea0562a46f789b3f05`.
 - Previous Handoff commit: `c026fff269b46e150a35a14eba9af36bfebea4a7`.
 - Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
@@ -59,7 +59,8 @@ Updated: 2026-11-12
 - Added a deterministic concurrent-retry regression: two threads record the same aggregate measurement with the same request key at once. Exactly one receipt is inserted; callers receive `MEASUREMENT_RECORDED` and `MEASUREMENT_EXISTS` with the same measurement ID and digest.
 - The existing `BEGIN IMMEDIATE` transaction and unique request-key constraint serialized the retries correctly. No production-code fix was needed.
 - `tests.test_studio_director`: **51 passed**; `python scripts/run_tests.py`: **931 passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
-- GitHub checks on the Batch 76D commit are pending; record their results after push. No source, analytics service, child-level data, or external API was used.
+- GitHub checks on code/test head `69cf55df39f6734c7e4759ea0562a46f789b3f05` all succeeded: CI `43303870074`, macOS `43303870067`, Godot `43303870076`, and FFmpeg `43303870421`. No source, analytics service, child-level data, or external API was used.
+- Rollback before Batch 76D: `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`.
 
 ### Batch 76C — Require new evidence for trial successors
 
@@ -400,10 +401,11 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **930 tests passed** on Batch 76C code head `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`.
-- `tests.test_studio_director`: **50 passed** on Batch 76C.
-- `python -m compileall -q kidsstudio tests scripts`: passed on Batch 76C.
+- Local `python scripts/run_tests.py`: **931 tests passed** on Batch 76D test head `69cf55df39f6734c7e4759ea0562a46f789b3f05`.
+- `tests.test_studio_director`: **51 passed** on Batch 76D.
+- `python -m compileall -q kidsstudio tests scripts`: passed on Batch 76D.
 - `git diff --check`: passed.
+- Batch 76D GitHub CI `43303870074`, macOS `43303870067`, Godot `43303870076`, and FFmpeg `43303870421` completed successfully on test head `69cf55df39f6734c7e4759ea0562a46f789b3f05`.
 - Batch 76C GitHub CI `43296012922`, macOS `43296013332`, Godot `43296012900`, and FFmpeg `43296012854` completed successfully on code head `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`. Batch 76B runs `43294426534`, `43294426331`, `43294426311`, and `43294426299` also completed successfully after the prior Handoff update.
 - GitHub checks on Batch 74N head `269aaeb23943375621d58142150fab623afe1322` all completed successfully:
   - CI run `43164779987` — success.
