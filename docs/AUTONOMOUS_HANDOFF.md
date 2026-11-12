@@ -7,8 +7,8 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `7dcc5daa1aa2714e598282317d0b7939f7851ae2`.
-- Latest regression/test head: `7dcc5daa1aa2714e598282317d0b7939f7851ae2`.
+- Current code head: `d1b4db114a7842be3585c5caaf308ff219d63170`.
+- Latest regression/test head: `d1b4db114a7842be3585c5caaf308ff219d63170`.
 - Rollback before Batch 74T: `207f0e859edc8c76d0973d9b29e74de491e9bffe`.
 - Rollback before Batch 74S: `87e42cf1ce1dedfdb85deddfec3ef9faa110d590`.
 - Rollback before Batch 74R: `0ca6da65ab936dd5e40f210c0a650714c5611c41`.
@@ -34,6 +34,17 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74U — Verify final muxed audio energy for every story beat
+
+- Regression first exposed that the episode pipeline validated six-beat energy in the supplied WAV, but did not gate success on the audio track after FFmpeg muxing. A muxed output with a silent/missing story beat could be reported as successful.
+- Added a final-MP4 audio gate: FFmpeg decodes the muxed track into a private per-attempt staging WAV, then the existing six-beat PCM-energy checker validates it. Decode failures, absent audio, or a beat below the energy threshold fail the episode.
+- Added focused tests for all beats having energy, one silent decoded beat, and preventing a successful pipeline result when final-audio validation fails. `python -m unittest tests.test_first_colors_episode -v`: **26 tests passed**.
+- `python scripts/run_tests.py`: **896 tests passed**; compileall, diff check, and the synthetic native-voice-mode FFmpeg smoke passed locally. The smoke used synthetic tones, not speech.
+- GitHub on code head `d1b4db114a7842be3585c5caaf308ff219d63170`: Python 3.11/3.12/3.13, Godot 4.7.2, and original-colors/FFmpeg checks succeeded. macOS colors smoke run `131098893980` was **queued** at this update; it is not claimed as passed.
+- This gate checks signal energy only; it cannot verify speech, words, language, educational correctness, or pronunciation. Real Arabic episode qualification on the owner's Mac remains **Pending Physical Qualification**. No model, paid API, owner device, Pi, publishing, or spending was used.
+- Rollback before Batch 74U: `068115fcd25bbc95fbb80769f41fa1e24b8b4318`.
+
 
 ### Batch 74T — Keep hosted macOS smoke aligned with retry staging
 
