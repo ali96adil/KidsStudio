@@ -112,8 +112,8 @@ def run_ci_native_voice_mode_synthetic() -> dict:
                 or rendered["pi_transfer_performed"] is not False
                 or rendered["youtube_upload_performed"] is not False):
             raise AssertionError("Native voice-mode synthetic pipeline did not finish.")
-        voice = (_resolve_voice_workspace(ready, "synthetic_native_tones") /
-                 "arabic_voice.wav")
+        workspace = _resolve_voice_workspace(ready, "synthetic_native_tones")
+        voice = workspace / "arabic_voice.wav"
         gate = check_six_beat_pcm_energy(
             root=str(voice.parent), relative_path=voice.name)
         if gate["status"] != "SIX_BEAT_PCM_ENERGY_PRESENT_UNREVIEWED":
@@ -123,6 +123,12 @@ def run_ci_native_voice_mode_synthetic() -> dict:
                 or hashlib.sha256(movie.read_bytes()).hexdigest()
                 != rendered["final_mp4_sha256"]):
             raise AssertionError("Synthetic final MP4 has wrong privacy/hash.")
+        candidate = workspace / "verified-candidate.mp4"
+        if (not candidate.is_file() or candidate.is_symlink()
+                or candidate.stat().st_mode & 0o077
+                or hashlib.sha256(candidate.read_bytes()).hexdigest()
+                != rendered["final_mp4_sha256"]):
+            raise AssertionError("Private verified candidate was not preserved.")
         playback = inspect_mp4_playback(
             root=str(ready), relative_path=movie.name,
             expected_sha256=rendered["final_mp4_sha256"])

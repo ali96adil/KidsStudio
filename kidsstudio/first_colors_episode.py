@@ -321,14 +321,32 @@ def run_first_colors_episode(
     # Carry the verified input digest across picture encoding. The mux checks
     # that exact digest before and after reading the narration.
     movie = _render_silent(stage)
+    # Keep the muxed candidate inside this private attempt until every final
+    # media gate passes. A rejected candidate must not occupy the final name
+    # or block a clean retry for this episode.
+    candidate_name = "verified-candidate.mp4"
+    candidate = stage / candidate_name
     muxed = mux_episode_pilot(
         video_root=str(stage), video_name=movie.name, video_sha256=_sha(movie),
         narration_root=voice_root, narration_name=voice_name,
         narration_sha256=narration_sha256,
-        output_root=str(root), output_name=output_name, execute=True)
+        output_root=str(stage), output_name=candidate_name, execute=True)
     if muxed["status"] != "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED":
         raise EpisodeMuxError("Original colors video/audio mux did not complete.")
-    _verify_final_audio_beats(movie=root / output_name, stage=stage)
+    _verify_final_audio_beats(movie=candidate, stage=stage)
+    if (candidate.is_symlink() or not candidate.is_file()
+            or candidate.stat().st_size != muxed.get("final_mp4_bytes")
+            or _sha(candidate) != muxed.get("final_mp4_sha256")):
+        raise EpisodeMuxError("Final MP4 changed during independent audio verification.")
+    final_movie = root / output_name
+    # Atomic no-overwrite publication: the candidate stays private in the
+    # attempt directory unless the independent final audio gate succeeded.
+    os.link(candidate, final_movie, follow_symlinks=False)
+    dirfd = os.open(root, os.O_RDONLY)
+    try:
+        os.fsync(dirfd)
+    finally:
+        os.close(dirfd)
     result.update({
         "status": "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED",
         "render_executed": True,

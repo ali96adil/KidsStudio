@@ -39,6 +39,17 @@ def write_wav(path: Path, *, seconds=24, sample_rate=16000, amplitude=0,
     path.chmod(0o600)
 
 
+def fake_mux_candidate(**kwargs):
+    target = Path(kwargs["output_root"]) / kwargs["output_name"]
+    target.write_bytes(b"synthetic muxed episode candidate")
+    target.chmod(0o600)
+    return {
+        "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+        "final_mp4_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+        "final_mp4_bytes": target.stat().st_size,
+    }
+
+
 class FirstColorsEpisodeTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -167,11 +178,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         with patch("kidsstudio.first_colors_episode._render_silent",
                    side_effect=fake_visual) as render, patch(
                 "kidsstudio.first_colors_episode.mux_episode_pilot",
-                return_value={
-                    "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
-                    "final_mp4_sha256": "c" * 64,
-                    "final_mp4_bytes": 1234,
-                }) as mux, patch(
+                side_effect=fake_mux_candidate) as mux, patch(
                 "kidsstudio.first_colors_episode._verify_final_audio_beats") as verify:
             result = run_first_colors_episode(
                 output_root=str(self.private), voice_mode="supplied_wav",
@@ -180,6 +187,14 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                 narration_sha256=digest, execute=True)
         self.assertEqual(result["status"],
                          "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED")
+        final = self.private / "colors_ar_01.mp4"
+        stage = next(self.private.glob("colors_ar_01-pilot-sources-*"))
+        candidate = stage / "verified-candidate.mp4"
+        self.assertTrue(final.is_file())
+        self.assertTrue(candidate.is_file())
+        self.assertEqual(final.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(hashlib.sha256(final.read_bytes()).hexdigest(),
+                         hashlib.sha256(candidate.read_bytes()).hexdigest())
         render.assert_called_once()
         mux.assert_called_once()
         verify.assert_called_once()
@@ -195,11 +210,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         with patch("kidsstudio.first_colors_episode._render_silent",
                    side_effect=fake_visual), patch(
                 "kidsstudio.first_colors_episode.mux_episode_pilot",
-                return_value={
-                    "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
-                    "final_mp4_sha256": "c" * 64,
-                    "final_mp4_bytes": 1234,
-                }), patch(
+                side_effect=fake_mux_candidate), patch(
                 "kidsstudio.first_colors_episode._verify_final_audio_beats",
                 side_effect=EpisodeMuxError("Final MP4 audio is missing energy")):
             with self.assertRaisesRegex(EpisodeMuxError, "Final MP4 audio"):
@@ -208,6 +219,75 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                     narration_root=str(self.audio_root),
                     narration_name=self.audio.name,
                     narration_sha256=digest, execute=True)
+
+    def test_failed_post_mux_audio_gate_does_not_publish_final_filename(self):
+        write_wav(self.audio, amplitude=5000)
+        digest = hashlib.sha256(self.audio.read_bytes()).hexdigest()
+
+        def fake_visual(stage):
+            movie = stage / "silent.mp4"
+            movie.write_bytes(b"synthetic silent video")
+            movie.chmod(0o600)
+            return movie
+
+        def fake_mux(**kwargs):
+            # Model the current mux contract: it writes a private MP4 at the
+            # requested destination before the caller's final audio gate.
+            target = Path(kwargs["output_root"]) / kwargs["output_name"]
+            target.write_bytes(b"muxed synthetic candidate")
+            target.chmod(0o600)
+            return {
+                "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+                "final_mp4_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+                "final_mp4_bytes": target.stat().st_size,
+            }
+
+        with patch("kidsstudio.first_colors_episode._render_silent",
+                   side_effect=fake_visual), patch(
+                "kidsstudio.first_colors_episode.mux_episode_pilot",
+                side_effect=fake_mux), patch(
+                "kidsstudio.first_colors_episode._verify_final_audio_beats",
+                side_effect=EpisodeMuxError("Final MP4 audio is missing energy")):
+            with self.assertRaisesRegex(EpisodeMuxError, "Final MP4 audio"):
+                run_first_colors_episode(
+                    output_root=str(self.private), output_name="gate_failure.mp4",
+                    voice_mode="supplied_wav", narration_root=str(self.audio_root),
+                    narration_name=self.audio.name, narration_sha256=digest,
+                    execute=True)
+
+        self.assertFalse((self.private / "gate_failure.mp4").exists())
+
+    def test_final_publish_race_never_replaces_existing_episode(self):
+        write_wav(self.audio, amplitude=5000)
+        digest = hashlib.sha256(self.audio.read_bytes()).hexdigest()
+        final = self.private / "publish_race.mp4"
+
+        def fake_visual(stage):
+            movie = stage / "silent.mp4"
+            movie.write_bytes(b"synthetic silent video")
+            movie.chmod(0o600)
+            return movie
+
+        def final_audio_check(**kwargs):
+            # Another actor creates the final name after the initial check,
+            # while our verified candidate is still private in its stage.
+            final.write_bytes(b"pre-existing private episode")
+            final.chmod(0o600)
+
+        with patch("kidsstudio.first_colors_episode._render_silent",
+                   side_effect=fake_visual), patch(
+                "kidsstudio.first_colors_episode.mux_episode_pilot",
+                side_effect=fake_mux_candidate), patch(
+                "kidsstudio.first_colors_episode._verify_final_audio_beats",
+                side_effect=final_audio_check):
+            with self.assertRaises(FileExistsError):
+                run_first_colors_episode(
+                    output_root=str(self.private), output_name=final.name,
+                    voice_mode="supplied_wav", narration_root=str(self.audio_root),
+                    narration_name=self.audio.name, narration_sha256=digest,
+                    execute=True)
+
+        self.assertEqual(final.read_bytes(), b"pre-existing private episode")
 
     def test_final_aac_decode_must_preserve_energy_in_each_beat(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -256,11 +336,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         with patch("kidsstudio.first_colors_episode._render_silent",
                    side_effect=fail_then_render), patch(
                 "kidsstudio.first_colors_episode.mux_episode_pilot",
-                return_value={
-                    "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
-                    "final_mp4_sha256": "d" * 64,
-                    "final_mp4_bytes": 1234,
-                }), patch(
+                side_effect=fake_mux_candidate), patch(
                 "kidsstudio.first_colors_episode._verify_final_audio_beats") as verify:
             with self.assertRaisesRegex(EpisodeMuxError, "interruption"):
                 run_first_colors_episode(
@@ -431,11 +507,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
              patch("kidsstudio.first_colors_episode._synthesize_wav",
                    side_effect=fake_voice), \
              patch("kidsstudio.first_colors_episode.mux_episode_pilot",
-                   return_value={
-                       "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
-                       "final_mp4_sha256": "b" * 64,
-                       "final_mp4_bytes": 2400,
-                   }) as mux, patch(
+                   side_effect=fake_mux_candidate) as mux, patch(
                    "kidsstudio.first_colors_episode._verify_final_audio_beats") as verify:
             result = run_first_colors_episode(
                 output_root=str(self.private), execute=True)
@@ -444,7 +516,8 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         self.assertFalse(result["youtube_upload_performed"])
         self.assertFalse(result["pi_transfer_performed"])
         self.assertFalse(result["voice_pronunciation_reviewed"])
-        self.assertEqual(result["final_mp4_sha256"], "b" * 64)
+        self.assertEqual(result["final_mp4_sha256"], hashlib.sha256(
+            (self.private / "colors_ar_01.mp4").read_bytes()).hexdigest())
         self.assertTrue(mux.call_args.kwargs["execute"])
         verify.assert_called_once()
         stage = next(self.private.glob("colors_ar_01-pilot-sources-*"))
@@ -474,11 +547,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
              patch("kidsstudio.first_colors_episode._render_silent",
                    side_effect=synthetic_visual), \
              patch("kidsstudio.first_colors_episode.mux_episode_pilot",
-                   return_value={
-                       "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
-                       "final_mp4_sha256": "b" * 64,
-                       "final_mp4_bytes": 2400,
-                   }), patch(
+                   side_effect=fake_mux_candidate), patch(
                    "kidsstudio.first_colors_episode._verify_final_audio_beats") as verify:
             result = run_first_colors_episode(
                 output_root=str(self.private), execute=True)
