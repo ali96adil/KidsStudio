@@ -7,8 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `4270c21dce045135996c6981e7c102c19e4c0ef9`.
-- Latest regression/test head: `4270c21dce045135996c6981e7c102c19e4c0ef9`.
+- Current code head: `bb9c0fb6ac68010ba28581e3e9bc88ef5fee6707`.
+- Latest regression/test head: `bb9c0fb6ac68010ba28581e3e9bc88ef5fee6707`.
+- Rollback before Batch 74Q: `8728906d455cd56f0e005861efffa1418371fa3a`.
 - Rollback before Batch 74P: `197e23cd7af83bfe0384abc45b3fec819d1086eb`.
 - Rollback before Batch 74O: `3237ef715b017a94b19ac4f21dee528d0a8b15f7`.
 - Rollback before Batch 74N: `39c0457595c4e3750c00fb991db7b07ebe01f29c`.
@@ -30,6 +31,15 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74Q — Reject editorial candidates dominated by the wrong script
+
+- Regression first exposed that an English-only script labeled `ar` passed the mechanical evaluator because `language` was only checked as an allowed enum. The same gap existed in the local artifact evaluation path.
+- Added a conservative Unicode script-dominance check for Arabic versus Latin text and wired it into the existing evaluator used by the editorial artifact adapter. Positive Arabic/English samples and opposite-script rejection are covered.
+- This is a script heuristic only; it does not identify language reliably, check grammar, verify educational facts, or establish child suitability. Mechanical passes still require independent editorial review and never authorize publication.
+- `python scripts/run_tests.py`: **891 tests passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
+- GitHub on code head `bb9c0fb6ac68010ba28581e3e9bc88ef5fee6707`: CI `43176608496`, macOS `43176608476`, Godot `43176608555`, and FFmpeg/colors `43176608475` all **success**.
+- No real model, paid API, external research, Pi, OAuth, YouTube, public release, or owner device was used.
 
 ### Batch 74P — Match storyboard timing to the rendered colors pilot
 
