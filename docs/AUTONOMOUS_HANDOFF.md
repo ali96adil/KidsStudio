@@ -7,8 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `bb9c0fb6ac68010ba28581e3e9bc88ef5fee6707`.
-- Latest regression/test head: `bb9c0fb6ac68010ba28581e3e9bc88ef5fee6707`.
+- Current code head: `92003a625f6fcacd21896541abb64f9b9258796e`.
+- Latest regression/test head: `92003a625f6fcacd21896541abb64f9b9258796e`.
+- Rollback before Batch 74R: `0ca6da65ab936dd5e40f210c0a650714c5611c41`.
 - Rollback before Batch 74Q: `8728906d455cd56f0e005861efffa1418371fa3a`.
 - Rollback before Batch 74P: `197e23cd7af83bfe0384abc45b3fec819d1086eb`.
 - Rollback before Batch 74O: `3237ef715b017a94b19ac4f21dee528d0a8b15f7`.
@@ -31,6 +32,15 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74R — Gate Director auto-approval on requested writing script
+
+- Regression first exposed that the Director policy accepted an English request whose generated learning objective was Arabic, even though the existing evaluator already had a conservative Arabic/Latin script-dominance heuristic.
+- The internal `script_draft` policy now requires the requested script heuristic to pass for the learning objective. A mismatch is deferred before queueing. The test router now honors requested language for normal synthetic cases, with a deliberate mismatch fixture for regression.
+- This heuristic distinguishes dominant Arabic versus Latin script only; it does not verify language fluency, educational accuracy, age suitability, or spoken narration. Independent review and owner publication approval remain required.
+- `python scripts/run_tests.py`: **892 tests passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
+- GitHub on code head `92003a625f6fcacd21896541abb64f9b9258796e`: Python 3.11/3.12/3.13 jobs, Godot and FFmpeg/original-colors smoke succeeded; hosted macOS colors smoke and aggregate CI were still **in progress** at handoff update.
+- No real model, paid API, external research, Pi, OAuth, YouTube, public release, or owner device was used.
 
 ### Batch 74Q — Reject editorial candidates dominated by the wrong script
 
@@ -264,13 +274,13 @@ Updated: 2026-11-12
 
 ## Open work and priorities
 
-1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
+1. Confirm the remaining macOS and aggregate CI runs for Batch 74R; this handoff records them as in progress until rechecked on GitHub.
 2. Continue auditing the synthetic episode path for evidence gaps that can be qualified locally (presence is not speech; technical MP4 checks are not educational or language review). Choose a single demonstrated integration gap and add regression first.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not repeat Director retry tests without a new supported-path failure.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then audit the next single software-only episode integration gap with a regression-first test. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across the separate SQLite databases.
+Read this handoff, fetch the live branch head and PR #33 state, and confirm whether the Batch 74R macOS and aggregate CI runs have completed. Then audit the next single software-only episode integration gap with a regression-first test. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across the separate SQLite databases.
 
 ## Required limits
 
