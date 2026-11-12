@@ -79,6 +79,18 @@ class VideoReviewHistoryTests(unittest.TestCase):
         self.assertFalse(self.history.list_reviews(episode_id="colors_ar_01")[0][
             "owner_publication_approval"])
 
+    def test_internal_mux_candidate_cannot_be_recorded_as_reviewed_episode(self):
+        candidate = self.root / "verified-candidate.mp4"
+        candidate.write_bytes(b"private mux candidate")
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+
+        with self.assertRaises(ValueError):
+            self.record(relative_path=candidate.name,
+                        expected_sha256=digest,
+                        review_outcome="ACCEPTED_PRIVATE")
+
+        self.assertEqual(self.history.list_reviews(episode_id="colors_ar_01"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

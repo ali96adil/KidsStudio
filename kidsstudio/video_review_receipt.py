@@ -23,6 +23,11 @@ def build_video_review_receipt(*, episode_id: str, video_root: str,
         raise ValueError("invalid review outcome")
     if not isinstance(reviewer_notes, str) or len(reviewer_notes) > 2000:
         raise ValueError("invalid reviewer notes")
+    # Keep the muxer's private staging output out of episode review history,
+    # including when callers use platform-specific path separators.
+    if (not isinstance(relative_path, str)
+            or "verified-candidate.mp4" in relative_path.replace("\\", "/").split("/")):
+        raise ValueError("internal mux candidate is not an episode review source")
     verification = verify_staged_file(
         root=video_root, relative_path=relative_path,
         expected_sha256=expected_sha256)
