@@ -7,8 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `d1b4db114a7842be3585c5caaf308ff219d63170`.
-- Latest regression/test head: `d1b4db114a7842be3585c5caaf308ff219d63170`.
+- Current code head: `f785b522089c0bb409c48cb43867cb7165c33554`.
+- Latest regression/test head: `f785b522089c0bb409c48cb43867cb7165c33554`.
+- Rollback before Batch 75A: `c0ef2d1c03b43c434122af6242c3610547667ab2`.
 - Rollback before Batch 74T: `207f0e859edc8c76d0973d9b29e74de491e9bffe`.
 - Rollback before Batch 74S: `87e42cf1ce1dedfdb85deddfec3ef9faa110d590`.
 - Rollback before Batch 74R: `0ca6da65ab936dd5e40f210c0a650714c5611c41`.
@@ -35,13 +36,24 @@ Updated: 2026-11-12
 
 ## Last completed batch
 
+### Batch 75A — Publish the episode only after final audio verification
+
+- Regression first proved that a failed post-mux AAC energy gate left the muxed file at the final episode filename. That falsely exposed a rejected episode as the output and blocked rerunning the same episode name.
+- The mux now writes a candidate inside the current private attempt directory. The pipeline checks final AAC energy, candidate type/size/hash, then atomically hard-links it to the final filename without replacing an existing file. If final audio validation fails, no final-name artifact is published; the private attempt candidate remains for diagnosis. A race that creates the final filename is rejected without overwriting it.
+- Updated the hosted macOS synthetic harness to inspect the private candidate and the published final output. Local regression covers rejected candidate isolation, successful promotion and a final-name race.
+- `python -m unittest tests.test_first_colors_episode -v`: **28 tests passed**; `python scripts/run_tests.py`: **898 tests passed**; compileall and `git diff --check` passed.
+- Local original-colors FFmpeg smoke passed. The native-mode synthetic-tone end-to-end smoke passed with a Darwin platform stub and real FFmpeg; this is not owner hardware or Arabic speech qualification.
+- GitHub checks on code head `f785b522089c0bb409c48cb43867cb7165c33554` all succeeded: CI `43195859191`, macOS `43195859202`, Godot `43195859207`, and FFmpeg/original-colors `43195859599`.
+- Rollback before Batch 75A: `c0ef2d1c03b43c434122af6242c3610547667ab2`. Real Arabic narration on the owner's Mac remains **Pending Physical Qualification**. No paid API, model, Pi, upload, publication or spending was used.
+
+
 ### Batch 74U — Verify final muxed audio energy for every story beat
 
 - Regression first exposed that the episode pipeline validated six-beat energy in the supplied WAV, but did not gate success on the audio track after FFmpeg muxing. A muxed output with a silent/missing story beat could be reported as successful.
 - Added a final-MP4 audio gate: FFmpeg decodes the muxed track into a private per-attempt staging WAV, then the existing six-beat PCM-energy checker validates it. Decode failures, absent audio, or a beat below the energy threshold fail the episode.
 - Added focused tests for all beats having energy, one silent decoded beat, and preventing a successful pipeline result when final-audio validation fails. `python -m unittest tests.test_first_colors_episode -v`: **26 tests passed**.
 - `python scripts/run_tests.py`: **896 tests passed**; compileall, diff check, and the synthetic native-voice-mode FFmpeg smoke passed locally. The smoke used synthetic tones, not speech.
-- GitHub on code head `d1b4db114a7842be3585c5caaf308ff219d63170`: Python 3.11/3.12/3.13, Godot 4.7.2, and original-colors/FFmpeg checks succeeded. macOS colors smoke run `131098893980` was **queued** at this update; it is not claimed as passed.
+- On the first code-head run, Python 3.11/3.12/3.13, Godot 4.7.2, and original-colors/FFmpeg succeeded; macOS was initially queued. Follow-up checks on Handoff-only head `c0ef2d1c03b43c434122af6242c3610547667ab2` completed successfully, including macOS run `131100392069`.
 - This gate checks signal energy only; it cannot verify speech, words, language, educational correctness, or pronunciation. Real Arabic episode qualification on the owner's Mac remains **Pending Physical Qualification**. No model, paid API, owner device, Pi, publishing, or spending was used.
 - Rollback before Batch 74U: `068115fcd25bbc95fbb80769f41fa1e24b8b4318`.
 
@@ -305,13 +317,13 @@ Updated: 2026-11-12
 
 ## Open work and priorities
 
-1. At session start, verify the live branch head, PR #33, and CI; current checks pass on `7dcc5daa`.
-2. Continue auditing the synthetic episode path for evidence gaps that can be qualified locally (presence is not speech; technical MP4 checks are not educational or language review). Choose a single demonstrated integration gap and add regression first.
+1. Verify the live branch head, PR #33, and CI before every batch.
+2. Audit downstream episode consumers to confirm they only accept the final promoted filename and do not mistake private attempt candidates for completed media; add a regression before changing behavior.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not repeat Director retry tests without a new supported-path failure.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. Then audit the next single software-only episode integration gap with a regression-first test. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across the separate SQLite databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. Then audit downstream episode consumers for candidate/final artifact confusion and write a regression first if a supported-path gap exists. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
 
 ## Required limits
 
