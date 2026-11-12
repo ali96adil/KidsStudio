@@ -37,7 +37,7 @@ class MacEpisodePilotTests(unittest.TestCase):
             handle.setnchannels(1)
             handle.setsampwidth(2)
             handle.setframerate(16000)
-            handle.writeframes(b"\0\0" * 4 * 16000)
+            handle.writeframes((5000).to_bytes(2, "little", signed=True) * 4 * 16000)
         self.wav.chmod(0o600)
         self.digest = hashlib.sha256(self.wav.read_bytes()).hexdigest()
 
@@ -85,6 +85,41 @@ class MacEpisodePilotTests(unittest.TestCase):
         self.assertTrue(mux.call_args.kwargs["execute"])
         self.assertEqual(mux.call_args.kwargs["video_sha256"], "a" * 64)
         self.assertEqual(mux.call_args.kwargs["narration_sha256"], self.digest)
+
+    def test_silent_narration_is_rejected_before_godot_render(self):
+        with wave.open(str(self.wav), "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(16000)
+            handle.writeframes(b"\0\0" * 4 * 16000)
+        self.digest = hashlib.sha256(self.wav.read_bytes()).hexdigest()
+        with patch("kidsstudio.mac_episode_pilot.render_godot_project") as render, \
+             patch("kidsstudio.mac_episode_pilot.mux_episode_pilot") as mux:
+            with self.assertRaises(EpisodeMuxError):
+                run_mac_episode_pilot(**self.params(execute=True))
+        render.assert_not_called()
+        mux.assert_not_called()
+
+    def test_silent_scene_beat_is_rejected_before_godot_render(self):
+        (self.project / "scene_spec.json").write_text(json.dumps({
+            "schema_version": 1, "fps": 24, "duration_seconds": 4,
+            "beats": [
+                {"start": 0, "end": 2, "motion": "wave_right"},
+                {"start": 2, "end": 4, "motion": "wave_right"},
+            ],
+        }))
+        with wave.open(str(self.wav), "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(16000)
+            active = (1000).to_bytes(2, "little", signed=True) * 1600
+            handle.writeframes(active + b"\0\0" * (16000 * 2 - 1600)
+                               + b"\0\0" * (16000 * 2))
+        self.digest = hashlib.sha256(self.wav.read_bytes()).hexdigest()
+        with patch("kidsstudio.mac_episode_pilot.render_godot_project") as render:
+            with self.assertRaises(EpisodeMuxError):
+                run_mac_episode_pilot(**self.params(execute=True))
+        render.assert_not_called()
 
     def test_mismatched_narration_blocks_before_render(self):
         with patch("kidsstudio.mac_episode_pilot.render_godot_project") as render:

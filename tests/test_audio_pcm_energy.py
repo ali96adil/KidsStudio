@@ -8,7 +8,7 @@ import unittest
 import wave
 
 from kidsstudio.audio_pcm_energy import (
-    AudioPresenceError, check_six_beat_pcm_energy,
+    AudioPresenceError, check_pcm_timeline_energy, check_six_beat_pcm_energy,
 )
 
 
@@ -62,6 +62,29 @@ class AudioPCMBeatTests(unittest.TestCase):
                 self.write(silent_beat=beat)
                 with self.assertRaises(AudioPresenceError):
                     self.check()
+
+    def test_general_scene_timeline_detects_a_silent_segment(self):
+        with wave.open(str(self.audio), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            active = (1000).to_bytes(2, "little", signed=True) * 3200
+            rest = b"\0\0" * (16000 * 2 - 3200)
+            wav.writeframes(active + rest + active + rest)
+        self.audio.chmod(0o600)
+        report = check_pcm_timeline_energy(
+            root=str(self.root), relative_path="test.wav", beat_durations=[2, 2])
+        self.assertEqual(report["beats_with_minimum_energy"], 2)
+
+        with wave.open(str(self.audio), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            wav.writeframes(active + rest + b"\0\0" * (16000 * 2))
+        self.audio.chmod(0o600)
+        with self.assertRaises(AudioPresenceError):
+            check_pcm_timeline_energy(
+                root=str(self.root), relative_path="test.wav", beat_durations=[2, 2])
 
     def test_entirely_silent_track_rejected(self):
         self.write(amplitude=0)

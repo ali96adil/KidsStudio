@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 
+from .audio_pcm_energy import AudioPresenceError, check_pcm_timeline_energy
 from .godot_export import GodotExportError, load_scene_spec
 from .godot_render import GodotRenderError, render_godot_project
 from .mac_episode_audio import (
@@ -86,6 +87,14 @@ def run_mac_episode_pilot(
     }
     if not execute:
         return preliminary
+    try:
+        check_pcm_timeline_energy(
+            root=narration_root, relative_path=narration_name,
+            beat_durations=[beat["end"] - beat["start"]
+                            for beat in scene["beats"]])
+    except (AudioPresenceError, OSError, ValueError) as exc:
+        raise EpisodeMuxError(
+            "Narration is missing energy in a story beat.") from exc
     native = render_godot_project(project, render_dir)
     if native.get("status") != "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW":
         raise EpisodeMuxError("Godot render did not complete its private preview.")
