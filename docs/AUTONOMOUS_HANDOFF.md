@@ -1,13 +1,15 @@
 # Kids Studio — Autonomous Development Handoff
 
-Updated: 2026-11-11
+Updated: 2026-11-12
 
 ## Repository state
 
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Code/test head: `3cb4b849b6ebf88afbcdccf3277649e2c581a9c7`.
+- Current code/test head: `f887161cee84ff69e009d7de1e84919c46d11558`.
+- Rollback before Batch 74G: `32426522fc7c58b80617f58bd03830dc13953a8b`.
+- Previous qualified code/test head before Batch 74F: `3cb4b849b6ebf88afbcdccf3277649e2c581a9c7`.
 - Handoff-only revision before this update: `f59abf92ff39280821b607f0ca966735afdf5836`.
 - Rollback before Batch 74F: `f59abf92ff39280821b607f0ca966735afdf5836`.
 - Rollback before Batch 74E: `fa8c44992f0500b177acde5129c4fa46fc3c8fb7`.
@@ -18,6 +20,14 @@ Updated: 2026-11-11
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74G — Validate queue identity during result retry
+
+- Regression tests confirmed queue and ledger read failures propagate without changing the saved terminal result.
+- A retry previously accepted a terminal queue row whose returned `job_id` differed from the dispatch identity when state and result material still matched.
+- Result recording now rejects that mismatch before comparing or returning a saved result.
+- `python scripts/run_tests.py`: **881 tests passed**; compileall and `git diff --check` passed.
+- No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74F — Terminal queue result survives pre-commit interruption
 
@@ -66,9 +76,14 @@ Updated: 2026-11-11
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **878 tests passed**.
+- Local `python scripts/run_tests.py`: **881 tests passed** on Batch 74G code.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
+- GitHub checks on Batch 74G code head `f887161cee84ff69e009d7de1e84919c46d11558` all completed successfully:
+  - CI run `43152691120` — success.
+  - macOS run `43152691100` — success.
+  - Godot run `43152691130` — success.
+  - FFmpeg run `43152691107` — success.
 - GitHub checks on base head `56e488b86b3add00ee9746700642d4841cc042a9` all passed:
   - CI run `43082246409`.
   - macOS run `43082246373`.
@@ -118,12 +133,12 @@ Updated: 2026-11-11
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Review recovery if the result record is present but later ledger reads or queue lookups fail; add regression tests before changing behavior.
+2. Continue testing the result persistence boundary under stale dispatch/queue data and transaction interruption; preserve fail-closed identity checks.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then test post-record read/lookup failures and retry behavior. Do not broaden automatic approval until the boundaries and CI are verified.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then test stale dispatch/queue snapshots and result-transaction interruption for uncovered retry conflicts. Add regression coverage before any production change; do not broaden automatic approval until boundaries and CI are verified.
 
 ## Required limits
 
