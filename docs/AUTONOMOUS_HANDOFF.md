@@ -7,7 +7,8 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code/test head: `1d889bb7a2e5c28400d40f252dc0ece62aee0661`.
+- Current code/test head: `bf57d0d066bf09be98813903677512ad49d2e828`.
+- Rollback before Batch 74I: `68fbb4ffc486a79eef8fa669c88fca40915f6624`.
 - Rollback before Batch 74H: `64021e00f85c5213571aac5252a3d1f6e30690f5`.
 - Rollback before Batch 74G: `32426522fc7c58b80617f58bd03830dc13953a8b`.
 - Previous qualified code/test head before Batch 74F: `3cb4b849b6ebf88afbcdccf3277649e2c581a9c7`.
@@ -21,6 +22,15 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74I — Reject stale queue result snapshots
+
+- Regressions simulated a queue state or result material changing after the first queue read but before Director persistence; the old code recorded the stale result.
+- Result recording now reads the queue job again and compares identity, terminal state, result code, and digest before returning or writing the ledger result. If the snapshots differ, it fails closed; retry after the state settles can recover.
+- Added coverage for state and content changes, no partial Director result on conflict, and successful retry using the settled queue state. Existing Director rollback and post-commit recovery tests remain passing.
+- Queue and Director use separate SQLite databases: this is a consistency recheck, not a cross-database atomic transaction or a guarantee against a queue change after the confirming read.
+- `python scripts/run_tests.py`: **884 tests passed**; compileall and `git diff --check` passed.
+- No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74H — Recheck dispatch before returning a saved result
 
@@ -85,9 +95,14 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **883 tests passed** on Batch 74H code.
+- Local `python scripts/run_tests.py`: **884 tests passed** on Batch 74I code.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
+- GitHub checks on Batch 74I code head `bf57d0d066bf09be98813903677512ad49d2e828` all completed successfully:
+  - CI run `43156652772` — success.
+  - macOS run `43156652889` — success.
+  - Godot run `43156652908` — success.
+  - FFmpeg run `43156652884` — success.
 - GitHub checks on Batch 74H code head `1d889bb7a2e5c28400d40f252dc0ece62aee0661` all completed successfully:
   - CI run `43154506534` — success.
   - macOS run `43154506625` — success.
@@ -147,12 +162,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Continue testing result persistence against queue-state changes and dispatch races across the separate ledger/queue databases; preserve fail-closed identity checks.
+2. Continue checking safe retry and observability around separate queue/ledger database reads; do not claim cross-database atomicity.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then test queue terminal-state changes racing with result recording across the separate SQLite databases. Add regression coverage before any production change; preserve immutable terminal-result semantics and do not broaden automatic approval.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then review remaining queue/ledger consistency and recovery boundaries, especially a queue change after the confirmation read. Add a regression before any production change; do not claim cross-database atomicity or broaden automatic approval.
 
 ## Required limits
 
