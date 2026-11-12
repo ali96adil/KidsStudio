@@ -7,8 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `f37fe02281855dfad8de1171ccd176911204ab9b`.
-- Latest regression/test head: `f37fe02281855dfad8de1171ccd176911204ab9b`.
+- Current code head: `b0a2f3c79e672b46a23856ec2c4c102676615650`.
+- Latest regression/test head: `b0a2f3c79e672b46a23856ec2c4c102676615650`.
+- Rollback before Batch 75D: `ce72200af66b21aa05a04bf62d39fbae5cfa41c4`.
 - Rollback before Batch 75C: `34e895fae3249e6414dfeff1f49b407bf8b32b48`.
 - Rollback before Batch 75B: `1b347f395c5f6fd6e0cc5775c60d723b7bad7b37`.
 - Rollback before Batch 75A: `c0ef2d1c03b43c434122af6242c3610547667ab2`.
@@ -27,7 +28,7 @@ Updated: 2026-11-12
 - Rollback before Batch 74H: `64021e00f85c5213571aac5252a3d1f6e30690f5`.
 - Rollback before Batch 74G: `32426522fc7c58b80617f58bd03830dc13953a8b`.
 - Previous qualified code/test head before Batch 74F: `3cb4b849b6ebf88afbcdccf3277649e2c581a9c7`.
-- Handoff-only revision before this update: `f59abf92ff39280821b607f0ca966735afdf5836`.
+- Branch head before Batch 75D: `ce72200af66b21aa05a04bf62d39fbae5cfa41c4`.
 - Rollback before Batch 74F: `f59abf92ff39280821b607f0ca966735afdf5836`.
 - Rollback before Batch 74E: `fa8c44992f0500b177acde5129c4fa46fc3c8fb7`.
 - Rollback before Batch 74D: `b6734c3bc6fb6b9008af17f9776c162d97f4a5ba`.
@@ -37,6 +38,15 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 75D — Gate Godot pilot on final AAC energy
+
+- A regression proved the Godot pilot muxed directly to the final episode filename and returned success without decoding/checking the AAC output. A post-mux failure could therefore leave a final-named, unverified episode.
+- The Godot path now muxes to `verified-candidate.mp4` in its private render directory, decodes AAC to a private PCM check file, and checks energy against every validated scene beat. It verifies candidate mode, size and digest, then promotes by hard link and fsync without replacing an existing final name.
+- Regression covers silent post-mux audio blocking final publication, valid per-beat decoded audio, successful candidate promotion, and a final-name race preserving the existing file. Synthetic AAC decode smoke using local FFmpeg: active two-beat tone **PASS**, silent AAC **REJECTED**.
+- `python -m unittest tests.test_mac_episode_pilot -v`: **18 passed**; `python scripts/run_tests.py`: **906 passed**; compileall and `git diff --check` passed.
+- GitHub checks on code head `b0a2f3c79e672b46a23856ec2c4c102676615650`: Python CI runs `43208029385` and `43208020687` — **success**; macOS `43208029555` — **success**; Godot `43208029448` — **success**; FFmpeg `43208029361` — **success**.
+- Hosted macOS exercised synthetic tones and the repository suite. It does not qualify the owner's Mac, Arabic voice, Godot episode review, or physical production flow. Rollback before Batch 75D: `ce72200af66b21aa05a04bf62d39fbae5cfa41c4`. No model/API, Pi deployment, upload, publication, spending or device change was used.
 
 ### Batch 75C — Gate Godot pilot narration against the scene timeline
 
@@ -340,8 +350,8 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Audit final AAC energy and no-overwrite promotion in `run_mac_episode_pilot`; add a Regression first because the original-colors path now gates post-mux AAC but the Godot path only gates source PCM. Keep the check tied to the actual scene timeline.
-3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not repeat Director retry tests without a new supported-path failure.
+2. Audit downstream episode consumers for candidate/final artifact confusion, and add Regression before any fix to a supported transfer, review, or report path.
+3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not treat energy gates as speech/language review.
 
 ## First action next session
 
