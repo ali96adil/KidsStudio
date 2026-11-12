@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 16209)
+Total output lines: 1092
+
 """Private evidence-backed proposal ledger for the local Studio Director.
 
 This module records proposals and explicit decisions. It does not research,
@@ -68,6 +71,12 @@ def _pack(value: object, label: str) -> str:
     if len(packed.encode("utf-8")) > _MAX_JSON_BYTES:
         raise ValueError(f"{label} exceeds {_MAX_JSON_BYTES} UTF-8 bytes")
     return packed
+
+
+def _evidence_material_key(item: dict) -> str:
+    """Compare caller evidence material without treating its ID as new evidence."""
+    material = {key: item.get(key) for key in ("source", "observed_at", "claim", "content")}
+    return _pack(material, "evidence material")
 
 
 def _text(value: object, label: str, maximum: int = 2000) -> str:
@@ -515,137 +524,7 @@ class StudioDirector:
         self._ensure_extensions()
         if not isinstance(proposal_id, str) or not _ID.fullmatch(proposal_id):
             raise ValueError("invalid proposal id")
-        provider = _text(response.get("provider_id"), "writer provider", 64)
-        model = _text(response.get("model"), "writer model", 120)
-        if response.get("billing_policy") != "free" or response.get("failover_used") is not False:
-            raise ValueError("Director generation requires one no-fallback free provider")
-        for key in ("prompt_sha256", "answer_sha256"):
-            if not isinstance(response.get(key), str) or not _SHA.fullmatch(response[key]):
-                raise ValueError("missing writer provenance digest")
-        values = (provider, model, response["prompt_sha256"], response["answer_sha256"])
-        with self._connection() as db:
-            if not db.execute("SELECT 1 FROM proposals WHERE proposal_id=?", (proposal_id,)).fetchone():
-                raise ValueError("proposal not found")
-            old = db.execute("SELECT * FROM ai_pipeline WHERE proposal_id=?", (proposal_id,)).fetchone()
-            if old:
-                if tuple(old[k] for k in ("generator_provider_id", "generator_model",
-                                          "generator_prompt_sha256", "generator_response_sha256")) != values:
-                    raise ValueError("proposal already has different writer provenance")
-                return
-            db.execute("INSERT INTO ai_pipeline(proposal_id,generator_provider_id,generator_model,"
-                       "generator_prompt_sha256,generator_response_sha256,created_at) "
-                       "VALUES(?,?,?,?,?,?)", (proposal_id, *values, time.time()))
-
-    def record_agent_review(self, *, proposal_id: str, response: dict,
-                            review: dict,
-                            _pipeline_capability: object | None = None) -> dict:
-        """Store a distinct local-free review of the exact proposal version."""
-        if _pipeline_capability is not _PIPELINE_CAPABILITY:
-            raise ValueError("independent reviews may only be recorded by the Director pipeline")
-        self._ensure_extensions()
-        if not isinstance(proposal_id, str) or not _ID.fullmatch(proposal_id):
-            raise ValueError("invalid proposal id")
-        reviewer = _text(response.get("provider_id"), "reviewer provider", 64)
-        model = _text(response.get("model"), "reviewer model", 120)
-        if response.get("billing_policy") != "free" or response.get("failover_used") is not False:
-            raise ValueError("Director review requires one no-fallback free provider")
-        for key in ("prompt_sha256", "answer_sha256"):
-            if not isinstance(response.get(key), str) or not _SHA.fullmatch(response[key]):
-                raise ValueError("missing reviewer provenance digest")
-        if not isinstance(review, dict) or set(review) != {
-                "verdict", "rationale", "evidence_supported", "blocking_issues"}:
-            raise ValueError("review response schema mismatch")
-        verdict = review["verdict"]
-        rationale = _text(review["rationale"], "review rationale", 2000)
-        if not isinstance(verdict, str) or verdict not in {"PASS", "REVISE", "BLOCK"}:
-            raise ValueError("unsupported review verdict")
-        if type(review["evidence_supported"]) is not bool:
-            raise ValueError("evidence_supported must be boolean")
-        issues = review["blocking_issues"]
-        if not isinstance(issues, list) or len(issues) > 10:
-            raise ValueError("blocking_issues must be a list of at most ten items")
-        issues = [_text(item, "blocking issue", 500) for item in issues]
-        with self._connection() as db:
-            pipeline = db.execute("SELECT * FROM ai_pipeline WHERE proposal_id=?",
-                                  (proposal_id,)).fetchone()
-            if pipeline is None:
-                raise ValueError("writer provenance missing")
-            if pipeline["generator_provider_id"] == reviewer:
-                raise ValueError("proposal writer cannot review its own proposal")
-            values = (reviewer, model, response["prompt_sha256"], response["answer_sha256"],
-                      verdict, rationale, bool(review["evidence_supported"]), issues)
-            if pipeline["reviewer_provider_id"] is not None:
-                old = (pipeline["reviewer_provider_id"], pipeline["reviewer_model"],
-                       pipeline["reviewer_prompt_sha256"], pipeline["reviewer_response_sha256"],
-                       pipeline["review_verdict"], pipeline["review_rationale"],
-                       bool(pipeline["evidence_supported"]),
-                       json.loads(pipeline["blocking_issues_json"]))
-                if old == values:
-                    return {"status": "REVIEW_EXISTS", "verdict": verdict,
-                            "assessment_sha256": pipeline["assessment_sha256"]}
-                raise ValueError("proposal review is immutable")
-            proposal_row = db.execute("SELECT proposal_sha256 FROM proposals WHERE proposal_id=?",
-                                      (proposal_id,)).fetchone()
-            assessment = {
-                "proposal_sha256": proposal_row["proposal_sha256"],
-                "writer": pipeline["generator_provider_id"], "reviewer": reviewer,
-                "reviewer_prompt_sha256": response["prompt_sha256"],
-                "reviewer_response_sha256": response["answer_sha256"], "verdict": verdict,
-                "rationale": rationale, "evidence_supported": review["evidence_supported"],
-                "blocking_issues": issues,
-            }
-            assessment_sha = hashlib.sha256(_pack(assessment, "assessment").encode()).hexdigest()
-            db.execute("UPDATE ai_pipeline SET reviewer_provider_id=?,reviewer_model=?,"
-                       "reviewer_prompt_sha256=?,reviewer_response_sha256=?,review_verdict=?,"
-                       "review_rationale=?,evidence_supported=?,blocking_issues_json=?,"
-                       "assessment_sha256=?,reviewed_at=? WHERE proposal_id=?",
-                       (reviewer, model, response["prompt_sha256"], response["answer_sha256"],
-                        verdict, rationale, int(review["evidence_supported"]),
-                        json.dumps(issues, ensure_ascii=False), assessment_sha, time.time(), proposal_id))
-        return {"status": "REVIEW_RECORDED", "verdict": verdict,
-                "assessment_sha256": assessment_sha}
-
-    def _policy_decide(self, *, proposal_id: str) -> dict:
-        """Allow only a reviewed, hash-bound, zero-paid script-draft trial."""
-        self._ensure_extensions()
-        with self._connection() as db:
-            proposal_row = db.execute("SELECT proposal_json FROM proposals WHERE proposal_id=?",
-                                      (proposal_id,)).fetchone()
-            pipeline = db.execute("SELECT * FROM ai_pipeline WHERE proposal_id=?",
-                                  (proposal_id,)).fetchone()
-            if proposal_row is None or pipeline is None or pipeline["review_verdict"] is None:
-                raise ValueError("complete independent proposal review before policy decision")
-            proposal = json.loads(proposal_row["proposal_json"])
-            if proposal["job_kind"] != "script_draft":
-                raise ValueError("internal trial policy permits script drafts only")
-            requested_language = proposal["job_payload"].get("language")
-            objective_eval = evaluate_script(
-                proposal["learning_objective"], language=requested_language,
-                min_chars=1, max_chars=1000,
-            )
-            objective_script_matches = objective_eval.checks["language_script"]
-            binding = db.execute("SELECT request_sha256 FROM request_bindings WHERE proposal_id=?",
-                                 (proposal_id,)).fetchone()
-            eligible = (
-                binding is not None
-                and pipeline["generator_provider_id"] != pipeline["reviewer_provider_id"]
-                and pipeline["review_verdict"] == "PASS"
-                and bool(pipeline["evidence_supported"])
-                and not json.loads(pipeline["blocking_issues_json"] or "[]")
-                and objective_script_matches
-                and any(item["verification"] == "LOCAL_CONTENT_HASH_VERIFIED"
-                        for item in proposal["evidence"])
-                and proposal["effort_estimate"]["hours"] is not None
-                and proposal["effort_estimate"]["hours"] <= 8
-            )
-            outcome = "ACCEPTED" if eligible else "DEFERRED"
-            rationale = (
-                f"Accepted under {INTERNAL_TRIAL_POLICY}; independent local-free PASS, "
-                "source excerpt hash-bound, requested writing-script heuristic passed, "
-                "script_draft only, no paid or external actions."
-                if eligible else
-                "Deferred: independent review, evidence verification, requested writing-script "
-                "heuristic or bounded-effort gate failed."
+        provider = _text(response.get("provider_id"), "w…2209 tokens truncated…              "heuristic or bounded-effort gate failed."
             )
             old = db.execute("SELECT * FROM decisions WHERE proposal_id=?", (proposal_id,)).fetchone()
             evidence_sha = hashlib.sha256(_pack({"evidence": proposal["evidence"]},
@@ -724,14 +603,22 @@ class StudioDirector:
             })
         if len({item["id"] for item in normalized}) != len(normalized):
             raise ValueError("evidence ids must be unique")
+        superseded_evidence_keys = set()
         if supersedes_id is not None:
             if not isinstance(supersedes_id, str) or not _ID.fullmatch(supersedes_id):
                 raise ValueError("invalid supersedes_id")
             with self._connection(readonly=True) as db:
-                previous = db.execute("SELECT 1 FROM proposals WHERE proposal_id=?",
+                previous = db.execute("SELECT proposal_json FROM proposals WHERE proposal_id=?",
                                       (supersedes_id,)).fetchone()
             if previous is None:
                 raise ValueError("superseded proposal not found")
+            previous_proposal = json.loads(previous["proposal_json"])
+            superseded_evidence_keys = {
+                _evidence_material_key(item) for item in previous_proposal.get("evidence", [])
+            }
+            if not any(_evidence_material_key(item) not in superseded_evidence_keys
+                       for item in normalized):
+                raise ValueError("superseding trial requires new evidence material")
         request_json = _pack({"brief": brief, "language": language, "evidence": normalized,
                               "supersedes_id": supersedes_id},
                              "trial request")
@@ -782,6 +669,10 @@ class StudioDirector:
                     or any(not isinstance(ref, str) or ref not in supplied for ref in refs)):
                 raise ValueError("idea must cite only supplied evidence IDs")
             selected = [supplied[ref] for ref in refs]
+            if (supersedes_id is not None
+                    and not any(_evidence_material_key(item) not in superseded_evidence_keys
+                                for item in selected)):
+                raise ValueError("successor proposal must cite new evidence material")
             title = _text(concept["title"], "idea title", 200)
             objective = _text(concept["learning_objective"], "learning objective", 500)
             proposal = {

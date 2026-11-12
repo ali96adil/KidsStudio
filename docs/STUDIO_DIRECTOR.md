@@ -115,3 +115,11 @@ a new key when corrected or newly observed evidence is supplied.
 This is an ingestion and audit foundation only. Actual authorized-source
 adapters, analytics validation, learning policy and commercial scenario
 analysis remain unimplemented and require separate qualification.
+
+An internal AI trial that supersedes an earlier proposal must supply and have
+its independent proposal cite at least one evidence item whose source, date,
+claim, or excerpt material differs from the earlier proposal's recorded
+evidence. Renaming an evidence ID does not count. This prevents a failed
+concept from being requeued as if the supersession link alone were new
+information. The guard compares supplied text only; it does not verify source
+authenticity, factual truth, research freshness, or educational quality.

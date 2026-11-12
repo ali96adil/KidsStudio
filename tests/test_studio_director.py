@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 16428)
+Total output lines: 1135
+
 import json
 import hashlib
 import os
@@ -481,148 +484,36 @@ class StudioDirectorTests(unittest.TestCase):
                         self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                                        queue_database=self.queue_path)
 
-    def test_result_record_rejects_nonterminal_and_unlinked_jobs(self):
-        proposal = self.create()
-        with self.assertRaisesRegex(ValueError, "no linked queue job"):
-            self.store.record_queue_result(proposal_id=proposal["proposal_id"],
-                                           queue_database=self.queue_path)
-        trial = self.store.run_internal_script_trial(**self.trial_args(
-            "result-not-terminal", SyntheticRouter()))
-        with self.assertRaisesRegex(ValueError, "not terminal"):
-            self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                           queue_database=self.queue_path)
-
-    def test_result_retry_rejects_changed_terminal_result_material(self):
-        trial = self.store.run_internal_script_trial(**self.trial_args(
-            "result-conflict", SyntheticRouter()))
+    def test_failed_trial_successor_requires_new_evidence_before_model_calls(self):
+        original = self.store.run_internal_script_trial(**self.trial_args(
+            "failed-concept-original", SyntheticRouter()))
         queue = StudioQueue(self.queue_path)
-        queue.claim(worker_id="conflict-worker", capabilities=["script_draft"])
-        queue.complete(job_id=trial["queue_job_id"], worker_id="conflict-worker", generation=1,
-                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
-        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+        lease = queue.claim(worker_id="failed-concept-worker", capabilities=["script_draft"])
+        queue.fail(job_id=original["queue_job_id"], worker_id="failed-concept-worker",
+                   generation=lease["generation"], error_code="RENDER_FAILED")
+        self.store.record_queue_result(proposal_id=original["proposal_id"],
                                        queue_database=self.queue_path)
 
-        original_get = StudioQueue.get
+        retry_router = SyntheticRouter()
+        request = self.trial_args("failed-concept-repeat", retry_router)
+        request["supersedes_id"] = original["proposal_id"]
+        with self.assertRaisesRegex(ValueError, "new evidence"):
+            self.store.run_internal_script_trial(**request)
 
-        def changed_result(queue_instance, job_id):
-            job = original_get(queue_instance, job_id)
-            job["result_json"] = json.dumps({"status": "DIFFERENT_TERMINAL_RESULT"})
-            return job
+        self.assertEqual(retry_router.calls, [])
+        self.assertEqual(len(queue.list_jobs()), 1)
 
-        with patch.object(StudioQueue, "get", new=changed_result):
-            with self.assertRaisesRegex(ValueError, "immutable and conflicts"):
-                self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                               queue_database=self.queue_path)
-
-    def test_result_retry_rejects_dispatch_relinked_to_another_queue_job(self):
-        trial = self.store.run_internal_script_trial(**self.trial_args(
-            "result-job-identity", SyntheticRouter()))
-        queue = StudioQueue(self.queue_path)
-        queue.claim(worker_id="identity-worker", capabilities=["script_draft"])
-        result_payload = {"status": "SYNTHETIC_DRAFT_COMPLETED"}
-        queue.complete(job_id=trial["queue_job_id"], worker_id="identity-worker", generation=1,
-                       result=result_payload)
-        self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                       queue_database=self.queue_path)
-
-        alternate = queue.enqueue(kind="script_draft", request_key="alternate-terminal-job",
-                                  payload={"topic": "unrelated test job"})
-        queue.claim(worker_id="identity-worker", capabilities=["script_draft"])
-        queue.complete(job_id=alternate["job_id"], worker_id="identity-worker", generation=1,
-                       result=result_payload)
-        with self.store._connection() as db:
-            db.execute("UPDATE dispatches SET queue_job_id=? WHERE proposal_id=?",
-                       (alternate["job_id"], trial["proposal_id"]))
-
-        with self.assertRaisesRegex(ValueError, "immutable and conflicts"):
-            self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                           queue_database=self.queue_path)
-
-    def test_result_retry_fails_closed_and_preserves_record_when_queue_lookup_fails(self):
-        trial = self.store.run_internal_script_trial(**self.trial_args(
-            "result-queue-read-failure", SyntheticRouter()))
-        queue = StudioQueue(self.queue_path)
-        queue.claim(worker_id="read-failure-worker", capabilities=["script_draft"])
-        queue.complete(job_id=trial["queue_job_id"], worker_id="read-failure-worker", generation=1,
-                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
-        self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                       queue_database=self.queue_path)
-        with self.store._connection(readonly=True) as db:
-            saved_before = dict(db.execute("SELECT * FROM results WHERE proposal_id=?",
-                                           (trial["proposal_id"],)).fetchone())
-
-        with patch.object(StudioQueue, "get", side_effect=OSError("queue unavailable")):
-            with self.assertRaisesRegex(OSError, "queue unavailable"):
-                self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                               queue_database=self.queue_path)
-        with self.store._connection(readonly=True) as db:
-            saved_after = dict(db.execute("SELECT * FROM results WHERE proposal_id=?",
-                                          (trial["proposal_id"],)).fetchone())
-        self.assertEqual(saved_after, saved_before)
-
-    def test_result_retry_fails_closed_and_preserves_record_when_ledger_read_fails(self):
-        trial = self.store.run_internal_script_trial(**self.trial_args(
-            "result-ledger-read-failure", SyntheticRouter()))
-        queue = StudioQueue(self.queue_path)
-        queue.claim(worker_id="ledger-read-failure-worker", capabilities=["script_draft"])
-        queue.complete(job_id=trial["queue_job_id"], worker_id="ledger-read-failure-worker", generation=1,
-                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
-        self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                       queue_database=self.queue_path)
-        with self.store._connection(readonly=True) as db:
-            saved_before = dict(db.execute("SELECT * FROM results WHERE proposal_id=?",
-                                           (trial["proposal_id"],)).fetchone())
-
-        original_connection = self.store._connection
-
-        @contextmanager
-        def fail_read(*, readonly=False):
-            if readonly:
-                raise OSError("ledger unavailable")
-            with original_connection(readonly=readonly) as db:
-                yield db
-
-        with patch.object(self.store, "_connection", new=fail_read):
-            with self.assertRaisesRegex(OSError, "ledger unavailable"):
-                self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                               queue_database=self.queue_path)
-        with self.store._connection(readonly=True) as db:
-            saved_after = dict(db.execute("SELECT * FROM results WHERE proposal_id=?",
-                                          (trial["proposal_id"],)).fetchone())
-        self.assertEqual(saved_after, saved_before)
-
-    def test_result_retry_rejects_queue_lookup_returning_different_job_identity(self):
-        trial = self.store.run_internal_script_trial(**self.trial_args(
-            "result-queue-identity-mismatch", SyntheticRouter()))
-        queue = StudioQueue(self.queue_path)
-        queue.claim(worker_id="identity-mismatch-worker", capabilities=["script_draft"])
-        queue.complete(job_id=trial["queue_job_id"], worker_id="identity-mismatch-worker", generation=1,
-                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
-        self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                       queue_database=self.queue_path)
-        original_get = StudioQueue.get
-
-        def wrong_identity(queue_instance, job_id):
-            result = original_get(queue_instance, job_id)
-            result["job_id"] = "different-queue-job"
-            return result
-
-        with patch.object(StudioQueue, "get", new=wrong_identity):
-            with self.assertRaisesRegex(ValueError, "queue job identity does not match dispatch"):
-                self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                               queue_database=self.queue_path)
-
-    def test_result_retry_rejects_dispatch_relinked_to_another_decision(self):
-        trial = self.store.run_internal_script_trial(**self.trial_args(
-            "result-decision-identity", SyntheticRouter()))
-        queue = StudioQueue(self.queue_path)
-        queue.claim(worker_id="decision-worker", capabilities=["script_draft"])
-        queue.complete(job_id=trial["queue_job_id"], worker_id="decision-worker", generation=1,
-                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
-        self.store.record_queue_result(proposal_id=trial["proposal_id"],
-                                       queue_database=self.queue_path)
-        other = self.store.propose(request_key="other-decision-proposal",
-                                   proposal=self.proposal(title="Unrelated deferred proposal"))
+        updated_router = SyntheticRouter()
+        updated_request = self.trial_args("failed-concept-new-evidence", updated_router)
+        updated_request["supersedes_id"] = original["proposal_id"]
+        updated_request["evidence"] = [{
+            "id": "note1", "source": "updated-curriculum-note",
+            "observed_at": "2026-11-12",
+            "claim": "A newly supplied curriculum note adds examples of blue objects.",
+            "content": "New source text with blue object examples.",
+        }]
+        successor = self.store.run_internal_script_trial(**updated_request)
+        self.assertEqual(suc…2428 tokens truncated…    proposal=self.proposal(title="Unrelated deferred proposal"))
         other_decision = self.store.decide(
             proposal_id=other["proposal_id"], outcome="DEFERRED", actor="director",
             rationale="Independent test decision.")

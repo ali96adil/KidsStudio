@@ -34,7 +34,7 @@ does not mark a physical Mac/Pi or public release as qualified.
 ### P4 — Measurement and learning
 - [x] Add a local append-only scaffold for caller-supplied aggregate measurements, bound to an episode-version digest and explicitly unverified; no child-level rows or external analytics connection.
 - [ ] Ingest verified authorized outcome measurements against exact published episode versions.
-- [ ] Revisit old proposals only when new evidence is recorded; avoid repeated failed concepts without new evidence.
+- [ ] Revisit old proposals only when new evidence is recorded; avoid repeated failed concepts without new evidence. Internal AI trial successors now require and cite changed evidence material; this text comparison does not authenticate sources or complete general reassessment.
 - [ ] Do not infer analytics that the owner has not authorized or supplied.
 
 ### P5 — Business and growth intelligence
