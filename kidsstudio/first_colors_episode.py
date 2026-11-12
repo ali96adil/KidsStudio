@@ -266,6 +266,17 @@ def run_first_colors_episode(
     }
     if not execute:
         return result
+    if checked_wav is not None:
+        # A valid container, duration and caller-supplied digest do not prove
+        # that the narration contains audible material. Apply the same bounded
+        # per-beat presence gate used for native synthesis before spending time
+        # rendering visuals. This still does not verify words or pronunciation.
+        try:
+            check_six_beat_pcm_energy(
+                root=narration_root, relative_path=narration_name)
+        except (AudioPresenceError, OSError, ValueError) as exc:
+            raise EpisodeMuxError(
+                "Supplied narration is missing or inaudible in a story beat.") from exc
     stage = root / (output_name.removesuffix(".mp4") + "-pilot-sources")
     stage.mkdir(mode=0o700)
     # Synthesizing and checking six short spoken beats comes BEFORE the

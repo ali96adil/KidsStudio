@@ -1,14 +1,16 @@
 """Real offline FFmpeg/Pillow end-to-end integration test for first colors pilot.
 
-Designed for CI: original generated illustrations + synthetic silent 24s WAV.
+Designed for CI: original generated illustrations + synthetic tone-only 24s WAV.
 No voice synthesis, private child media, Mac hardware, network, Pi, or YouTube.
 Output stays inside an ephemeral private directory and is not uploaded.
 """
 from __future__ import annotations
 
 import hashlib
+from array import array
 from io import BytesIO
 import json
+import math
 from pathlib import Path
 import subprocess
 import sys
@@ -18,19 +20,22 @@ import wave
 from PIL import Image
 
 from kidsstudio.first_colors_episode import DURATION, run_first_colors_episode
-from kidsstudio.audio_pcm_energy import AudioPresenceError, check_six_beat_pcm_energy
+from kidsstudio.audio_pcm_energy import check_six_beat_pcm_energy
 from kidsstudio.mac_episode_audio import _check_video, _probe
 from kidsstudio.mp4_playback_preflight import inspect_mp4_playback
 from ci_full_private_chain_smoke import check_offline_full_private_chain
 
 
-def _wav_silence(path: Path) -> str:
+def _wav_synthetic_tone(path: Path) -> str:
+    rate = 16000
+    # Codec and presence-gate fixture only: a steady tone is not speech.
+    samples = array("h", (int(5000 * math.sin(2 * math.pi * 440 * i / rate))
+                          for i in range(rate * DURATION)))
     with wave.open(str(path), "wb") as audio:
         audio.setnchannels(1)
         audio.setsampwidth(2)
-        audio.setframerate(16000)
-        for _ in range(DURATION):
-            audio.writeframes(b"\0\0" * 16000)
+        audio.setframerate(rate)
+        audio.writeframes(samples.tobytes())
     path.chmod(0o600)
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -63,18 +68,14 @@ def run_real_colors_smoke() -> dict:
         ready = base / "ready"
         audio.mkdir(mode=0o700)
         ready.mkdir(mode=0o700)
-        wav = audio / "synthetic_silent_24s.wav"
-        digest = _wav_silence(wav)
-        # The silent synthetic CI input is valid for codec testing, but must
-        # NEVER pass the native Arabic narration energy-presence gate.
-        try:
-            check_six_beat_pcm_energy(root=str(audio), relative_path=wav.name)
-        except AudioPresenceError:
-            pass
-        else:
-            raise AssertionError("Silent CI WAV misclassified as audible voice.")
+        wav = audio / "synthetic_tone_24s.wav"
+        digest = _wav_synthetic_tone(wav)
+        energy = check_six_beat_pcm_energy(
+            root=str(audio), relative_path=wav.name)
+        assert energy["status"] == "SIX_BEAT_PCM_ENERGY_PRESENT_UNREVIEWED"
+        assert energy["speech_words_verified"] is False
         report = run_first_colors_episode(
-            output_root=str(ready), output_name="ci_colors_silent_test.mp4",
+            output_root=str(ready), output_name="ci_colors_tone_test.mp4",
             voice_mode="supplied_wav",
             narration_root=str(audio), narration_name=wav.name,
             narration_sha256=digest, execute=True)
@@ -82,7 +83,7 @@ def run_real_colors_smoke() -> dict:
         assert report["publication_approved"] is False
         assert report["pi_transfer_performed"] is False
         assert report["youtube_upload_performed"] is False
-        movie = ready / "ci_colors_silent_test.mp4"
+        movie = ready / "ci_colors_tone_test.mp4"
         assert movie.is_file() and movie.stat().st_size > 0
         assert movie.stat().st_mode & 0o077 == 0
         assert hashlib.sha256(movie.read_bytes()).hexdigest() == report["final_mp4_sha256"]
@@ -133,8 +134,8 @@ def run_real_colors_smoke() -> dict:
             "decoded_color_checks": {"red_apple": True, "yellow_sun": True,
                                      "blue_sky": True},
             "sha256_verified": True,
-            "synthetic_silent_audio_only": True,
-            "synthetic_silence_correctly_rejected_as_voice": True,
+            "synthetic_tone_audio_only": True,
+            "synthetic_tone_is_not_speech_or_arabic_voice": True,
             "real_mp4_to_fake_pi_to_fake_private_youtube_chain": chain["status"],
             "ci_owner_review_only_simulated": True,
             "ci_ssh_and_google_network_calls": False,

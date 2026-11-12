@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import contextlib
+from array import array
 import hashlib
 import io
+import math
 import json
 from pathlib import Path
 import tempfile
@@ -19,12 +21,17 @@ from kidsstudio.first_colors_episode import (
 )
 
 
-def write_wav(path: Path, *, seconds=24, sample_rate=16000):
+def write_wav(path: Path, *, seconds=24, sample_rate=16000, amplitude=0):
     with wave.open(str(path), "wb") as audio:
         audio.setnchannels(1)
         audio.setsampwidth(2)
         audio.setframerate(sample_rate)
-        audio.writeframes(b"\x00\x00" * sample_rate * seconds)
+        if amplitude:
+            audio.writeframes(array("h", (
+                int(amplitude * math.sin(2 * math.pi * 440 * i / sample_rate))
+                for i in range(sample_rate * seconds))).tobytes())
+        else:
+            audio.writeframes(b"\x00\x00" * sample_rate * seconds)
     path.chmod(0o600)
 
 
@@ -88,6 +95,9 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                 narration_sha256=self.audio_sha)
 
     def test_supplied_wav_replaced_during_picture_encode_is_rejected(self):
+        write_wav(self.audio, sample_rate=16000, amplitude=5000)
+        self.audio_sha = hashlib.sha256(self.audio.read_bytes()).hexdigest()
+
         def render_and_replace_audio(stage):
             write_wav(self.audio, sample_rate=24000)
             movie = stage / "silent.mp4"
@@ -105,6 +115,53 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                     narration_sha256=self.audio_sha, execute=True)
         probe.assert_not_called()
         self.assertFalse((self.private / "colors_ar_01.mp4").exists())
+
+    def test_silent_supplied_wav_is_rejected_before_picture_encode(self):
+        def fake_visual(stage):
+            target = stage / "silent.mp4"
+            target.write_bytes(b"synthetic video")
+            target.chmod(0o600)
+            return target
+
+        with patch("kidsstudio.first_colors_episode._render_silent",
+                   side_effect=fake_visual) as render, patch(
+                "kidsstudio.first_colors_episode.mux_episode_pilot") as mux:
+            with self.assertRaises(EpisodeMuxError):
+                run_first_colors_episode(
+                    output_root=str(self.private), voice_mode="supplied_wav",
+                    narration_root=str(self.audio_root),
+                    narration_name=self.audio.name,
+                    narration_sha256=self.audio_sha, execute=True)
+        render.assert_not_called()
+        mux.assert_not_called()
+
+    def test_supplied_wav_with_presence_in_each_beat_can_render(self):
+        write_wav(self.audio, amplitude=5000)
+        digest = hashlib.sha256(self.audio.read_bytes()).hexdigest()
+
+        def fake_visual(stage):
+            target = stage / "silent.mp4"
+            target.write_bytes(b"synthetic video")
+            target.chmod(0o600)
+            return target
+
+        with patch("kidsstudio.first_colors_episode._render_silent",
+                   side_effect=fake_visual) as render, patch(
+                "kidsstudio.first_colors_episode.mux_episode_pilot",
+                return_value={
+                    "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+                    "final_mp4_sha256": "c" * 64,
+                    "final_mp4_bytes": 1234,
+                }) as mux:
+            result = run_first_colors_episode(
+                output_root=str(self.private), voice_mode="supplied_wav",
+                narration_root=str(self.audio_root),
+                narration_name=self.audio.name,
+                narration_sha256=digest, execute=True)
+        self.assertEqual(result["status"],
+                         "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED")
+        render.assert_called_once()
+        mux.assert_called_once()
 
     def test_public_audio_directory_rejected(self):
         self.audio_root.chmod(0o755)
