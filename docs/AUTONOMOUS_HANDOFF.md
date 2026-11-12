@@ -7,9 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `6ce37d6da9312ef06f8c761c0f24c259e143e353`.
-- Latest regression/test head: `6ce37d6da9312ef06f8c761c0f24c259e143e353`.
-- Previous Handoff commit: `6e38c05f891e90572fd6d95bd00a3896e251207d`.
+- Current code head: `5e3a6c3bd9f18ad3abee94519454ff77195d2f98`.
+- Latest regression/test head: `5e3a6c3bd9f18ad3abee94519454ff77195d2f98`.
+- Previous Handoff commit: `e35ccd4af327d9f1a9109a378d7daa0f0274d5a6`.
 - Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 - Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
@@ -60,7 +60,7 @@ Updated: 2026-11-12
 - Director now waits for the exact linked review job to complete, checks its source job, draft SHA, original writer provider and distinct reviewer provider, and requires the result to remain explicitly `EDITORIAL_REVIEW_UNVERIFIED` with publication approval false.
 - The result digest binds both stage results; the ledger still stores no draft or review text. Pending, failed, or mismatched review leaves no Director result row, so `record_measurement` remains ineligible.
 - `tests.test_studio_director`: **51 passed**; `python scripts/run_tests.py`: **931 passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
-- GitHub runs for Batch 76F are pending after push. Only synthetic providers/artifacts were used; no external research, paid API, child-level data, upload or publication occurred.
+- GitHub checks on Batch 76F code/test head `5e3a6c3bd9f18ad3abee94519454ff77195d2f98` all succeeded: CI `43307200667`, macOS `43307200704`, Godot `43307200691`, and FFmpeg `43307200636`. Only synthetic providers/artifacts were used; no external research, paid API, child-level data, upload or publication occurred.
 - Rollback before Batch 76F: `e35ccd4af327d9f1a9109a378d7daa0f0274d5a6`.
 
 ### Batch 76E — Route Director drafts to independent Queue review
@@ -419,10 +419,11 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **931 tests passed** on Batch 76E code/test head `6ce37d6da9312ef06f8c761c0f24c259e143e353`.
-- `tests.test_studio_director`: **51 passed** on Batch 76E.
-- `python -m compileall -q kidsstudio tests scripts`: passed on Batch 76E.
+- Local `python scripts/run_tests.py`: **931 tests passed** on Batch 76F code/test head `5e3a6c3bd9f18ad3abee94519454ff77195d2f98`.
+- `tests.test_studio_director`: **51 passed** on Batch 76F.
+- `python -m compileall -q kidsstudio tests scripts`: passed on Batch 76F.
 - `git diff --check`: passed.
+- Batch 76F GitHub CI `43307200667`, macOS `43307200704`, Godot `43307200691`, and FFmpeg `43307200636` completed successfully on test head `5e3a6c3bd9f18ad3abee94519454ff77195d2f98`.
 - Batch 76E GitHub CI `43305631424`, macOS `43305631132`, Godot `43305631050`, and FFmpeg `43305631252` completed successfully on test head `6ce37d6da9312ef06f8c761c0f24c259e143e353`.
 - Batch 76D GitHub CI `43303870074`, macOS `43303870067`, Godot `43303870076`, and FFmpeg `43303870421` completed successfully on test head `69cf55df39f6734c7e4759ea0562a46f789b3f05`.
 - Batch 76C GitHub CI `43296012922`, macOS `43296013332`, Godot `43296012900`, and FFmpeg `43296012854` completed successfully on code head `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`. Batch 76B runs `43294426534`, `43294426331`, `43294426311`, and `43294426299` also completed successfully after the prior Handoff update.
