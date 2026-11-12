@@ -8,8 +8,9 @@ Updated: 2026-11-12
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
 - Current code head: `6be355993a0c2742935fe91cef8cea0b2b20fd32`.
-- Latest regression/test head: `6be355993a0c2742935fe91cef8cea0b2b20fd32`.
-- Previous Handoff commit: `9e45ee6741a98e8306a0eb9e764c7956f9eaabb4`.
+- Latest regression/test head: `4c7be423e8b39cb49733e378e5f717832d262d74`.
+- Previous Handoff commit: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
+- Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
 - Rollback before Batch 75O: `139a8dfc0d25b8454983be0cb1649b8b91fdfd1c`.
 - Rollback before Batch 75N: `e13c9ac26c6113f3a3ad8eb51c365a3ddb597200`.
 - Rollback before Batch 75M: `c7bebde6785cec00a6254bc35f47d1f7b11dc1dd`.
@@ -50,6 +51,13 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 75P — Recover after losing the final upload response
+
+- Added a synthetic regression for the server completing the last chunk while the client loses its final response. A retry probes the existing resumable session, recovers the video ID, verifies PRIVATE status, and does not create another session or resend chunks.
+- Existing implementation passed the recovery scenario; no production change was needed. `python -m unittest tests.test_pi_youtube_private_upload -q`: **33 passed**; `python scripts/run_tests.py`: **924 passed**; compileall and `git diff --check` passed.
+- On test head `4c7be423e8b39cb49733e378e5f717832d262d74`, CI `43292096183`, macOS `43292096247`, FFmpeg `43292096180`, and Godot `43292096143` were in progress at handoff preparation.
+- Only synthetic transport and media were used. No real OAuth, upload, publication, spending, or device operation. Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
 
 ### Batch 75O — Normalize oversized resumable ranges
 
@@ -450,12 +458,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Continue reviewing malformed remote resumable responses and `SESSION_ACTIVE` recovery boundaries for uncaught exceptions or side effects; Regression first and synthetic transport only.
-3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not treat energy gates as speech/language review.
+2. Close any remaining high-value synthetic upload-recovery gaps, then stop repeating uploader checks without new evidence. The owner's real Mac/Pi/PRIVATE qualification remains pending and requires owner-supervised access.
+3. Resume the software roadmap at the highest safe dependency after the device gate, especially authorized aggregate outcome measurement and evidence-backed learning; don't collect child-level data or imply external analytics access.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. On code head `6be355993a0c2742935fe91cef8cea0b2b20fd32`, CI `43290801982`, Godot `43290802120`, and FFmpeg `43290802085` succeeded; macOS `43290802030` was still running at the last check. The latest Handoff head was `9e45ee6741a98e8306a0eb9e764c7956f9eaabb4`, with CI `43290981654`, Godot `43290981576`, and FFmpeg `43290981209` successful; macOS `43290981463` was queued at last check. Then continue reviewing malformed remote resumable responses and `SESSION_ACTIVE` recovery boundaries for uncaught exceptions or side effects; Regression first and synthetic transport only. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (Batch 75P runs `43292096183`, `43292096247`, `43292096180`, `43292096143` were in progress at handoff preparation). If no new high-value upload gap is found, stop repeating uploader tests and work on a safe, privacy-preserving measurement/learning dependency from the roadmap. Keep real owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data or unverified analytics; do not claim atomicity across separate databases.
 
 ## Required limits
 
