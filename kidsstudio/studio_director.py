@@ -1022,12 +1022,14 @@ class StudioDirector:
         packed = _pack(measurement, "measurement")
         digest = hashlib.sha256(packed.encode("utf-8")).hexdigest()
         with self._connection() as db:
-            eligible = db.execute("SELECT d.outcome,r.queue_state FROM decisions d "
+            eligible = db.execute("SELECT d.outcome,r.queue_state,r.result_status FROM decisions d "
                                   "JOIN results r USING(proposal_id) WHERE d.proposal_id=?",
                                   (proposal_id,)).fetchone()
             if eligible is None or eligible["outcome"] != "ACCEPTED" \
-                    or eligible["queue_state"] != "COMPLETED":
-                raise ValueError("measurement requires an accepted proposal with a completed production result")
+                    or eligible["queue_state"] != "COMPLETED" \
+                    or eligible["result_status"] != "DRAFT_AND_EDITORIAL_REVIEW_RECORDED":
+                raise ValueError("measurement requires an accepted proposal with a completed production result "
+                                 "and independent editorial review")
             prior = db.execute("SELECT * FROM measurements WHERE request_key=?", (request_key,)).fetchone()
             if prior:
                 if prior["measurement_sha256"] != digest:

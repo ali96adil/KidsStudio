@@ -1098,8 +1098,22 @@ class StudioDirectorTests(unittest.TestCase):
         queue = StudioQueue(self.queue_path)
         claimed = queue.claim(worker_id="measurement-worker", capabilities=["script_draft"])
         self.assertEqual(claimed["job_id"], trial["queue_job_id"])
-        queue.complete(job_id=trial["queue_job_id"], worker_id="measurement-worker",
-                       generation=1, result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        draft = queue.complete_draft_and_enqueue_review(
+            job_id=trial["queue_job_id"], worker_id="measurement-worker",
+            generation=claimed["generation"], language="en",
+            result={"status": "DRAFTED_UNREVIEWED", "provider_id": "writer-local",
+                    "artifact_sha256": "a" * 64,
+                    "artifact_manifest": "/private/test/draft/result.json",
+                    "publication_approved": False})
+        review_id = json.loads(draft["result_json"])["next_review_job_id"]
+        review = queue.claim(worker_id="measurement-reviewer", capabilities=["editorial_review"])
+        self.assertEqual(review["job_id"], review_id)
+        queue.complete(job_id=review_id, worker_id="measurement-reviewer",
+                       generation=review["generation"],
+                       result={"status": "EDITORIAL_REVIEW_UNVERIFIED",
+                               "provider_id": "reviewer-local",
+                               "artifact_sha256": "b" * 64,
+                               "publication_approved": False})
         self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                        queue_database=self.queue_path)
         return trial["proposal_id"]
@@ -1132,6 +1146,24 @@ class StudioDirectorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "different measurement"):
             self.store.record_measurement(**{**args, "metrics": {"views": 121}})
         self.assertEqual(len(self.store.list_measurements(proposal_id=proposal_id)), 1)
+
+    def test_measurement_requires_completed_independent_review_result(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "measurement-unreviewed-result", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        lease = queue.claim(worker_id="unreviewed-measurement", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="unreviewed-measurement",
+                       generation=lease["generation"],
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        recorded = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                  queue_database=self.queue_path)
+        self.assertEqual(recorded["queue_state"], "COMPLETED")
+        args = dict(proposal_id=trial["proposal_id"], request_key="measurement-unreviewed-result",
+                    episode_version_sha256="c" * 64, metrics={"views": 1},
+                    source_kind="OWNER_SUPPLIED_AGGREGATE", observed_at="2026-11-12")
+        with self.assertRaisesRegex(ValueError, "completed production result and independent editorial review"):
+            self.store.record_measurement(**args)
+        self.assertEqual(self.store.list_measurements(proposal_id=trial["proposal_id"]), [])
 
     def test_concurrent_measurement_retries_are_idempotent(self):
         proposal_id = self._completed_trial("concurrent-measurement-trial")
