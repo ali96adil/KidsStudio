@@ -86,6 +86,32 @@ request key makes a retry link to the same job rather than creating another.
 Unit tests cover validation, evidence/rationale digest binding, immutable
 decisions, successor links, secret/symlink/private-file rejection, and accepted
 versus rejected queue handoff. No source connector, autonomous decision model,
-human identity verification, cost estimator, audience analytics, or real
+human identity verification, cost estimator, verified analytics, or real
 research source is implemented. The owner retains all spend, external-contact,
 commercial and public-publishing decisions.
+
+## Aggregate outcome measurement scaffold
+
+`StudioDirector.record_measurement(...)` appends a small aggregate outcome
+record to a completed, accepted proposal. Each record is bound to a caller-
+provided episode-version SHA-256 and an idempotency request key. Supported
+numeric fields are `views`, `watch_time_seconds`,
+`average_view_duration_seconds`, `likes`, `comments`, `shares`, and
+`subscribers_gained`; unknown fields and negative, non-finite, boolean, or
+out-of-range values are rejected. There are no per-child IDs, demographic
+rows, comments, or free-text metric names.
+
+The source is only `OWNER_SUPPLIED_AGGREGATE` or
+`AUTHORIZED_EXPORT_ASSERTION`. These are caller assertions, not authenticated
+permissions or source verification. Every record is labeled
+`CALLER_SUPPLIED_UNVERIFIED`; a digest binds the stored measurement bytes but
+does not prove that the source is real or that the episode SHA is correct.
+The feature does not contact YouTube or another analytics service, infer
+missing data, calculate profitability, authorize spending, or make a
+publication/commercial decision. Use `list_measurements(proposal_id=...)` for
+local review. Changing data under an existing request key is rejected; record
+a new key when corrected or newly observed evidence is supplied.
+
+This is an ingestion and audit foundation only. Actual authorized-source
+adapters, analytics validation, learning policy and commercial scenario
+analysis remain unimplemented and require separate qualification.

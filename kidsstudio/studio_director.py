@@ -10,6 +10,7 @@ import argparse
 from contextlib import contextmanager
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -32,6 +33,11 @@ _MAX_JSON_BYTES = 32_768
 _SECRET_VALUE = re.compile(r"(?:bearer\s+\S+|(?:token|secret|password|api[_-]?key)=\S+|://[^/@]+:[^/@]+@)", re.I)
 _EVIDENCE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z")
 _RESULT_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,79}\Z")
+_MEASUREMENT_SOURCE_KINDS = {"OWNER_SUPPLIED_AGGREGATE", "AUTHORIZED_EXPORT_ASSERTION"}
+_MEASUREMENT_METRICS = {
+    "views", "watch_time_seconds", "average_view_duration_seconds",
+    "likes", "comments", "shares", "subscribers_gained",
+}
 INTERNAL_TRIAL_POLICY = "internal-script-draft-v1"
 _PIPELINE_CAPABILITY = object()
 
@@ -289,6 +295,19 @@ class StudioDirector:
             proposal_id TEXT PRIMARY KEY REFERENCES proposals(proposal_id),
             request_sha256 TEXT NOT NULL,
             created_at REAL NOT NULL
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS measurements (
+            measurement_id TEXT PRIMARY KEY,
+            proposal_id TEXT NOT NULL REFERENCES proposals(proposal_id),
+            request_key TEXT NOT NULL UNIQUE,
+            episode_version_sha256 TEXT NOT NULL,
+            metrics_json TEXT NOT NULL,
+            source_kind TEXT NOT NULL CHECK(source_kind IN
+                ('OWNER_SUPPLIED_AGGREGATE','AUTHORIZED_EXPORT_ASSERTION')),
+            observed_at TEXT NOT NULL,
+            verification TEXT NOT NULL CHECK(verification='CALLER_SUPPLIED_UNVERIFIED'),
+            measurement_sha256 TEXT NOT NULL,
+            recorded_at REAL NOT NULL
         )""")
 
     def _ensure_extensions(self) -> None:
@@ -899,6 +918,76 @@ class StudioDirector:
         return {"status": "RESULT_RECORDED", "queue_job_id": queue_job["job_id"],
                 "queue_state": state, "result_status": result_status,
                 "result_sha256": digest, "result_content_stored": False}
+
+    def record_measurement(self, *, proposal_id: str, request_key: str,
+                           episode_version_sha256: str, metrics: object,
+                           source_kind: str, observed_at: str) -> dict:
+        """Append owner-supplied aggregate metrics without child-level data."""
+        self._ensure_extensions()
+        if not isinstance(proposal_id, str) or not _ID.fullmatch(proposal_id):
+            raise ValueError("invalid proposal id")
+        if not isinstance(request_key, str) or not _KEY.fullmatch(request_key):
+            raise ValueError("invalid measurement request key")
+        if not isinstance(episode_version_sha256, str) or not _SHA.fullmatch(episode_version_sha256):
+            raise ValueError("invalid episode version sha256")
+        if not isinstance(source_kind, str) or source_kind not in _MEASUREMENT_SOURCE_KINDS:
+            raise ValueError("measurement source must be an allowed caller assertion")
+        observed_at = _text(observed_at, "measurement observed_at", 40)
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})?)?", observed_at):
+            raise ValueError("measurement observed_at must be an ISO date or timestamp")
+        if not isinstance(metrics, dict) or not metrics or set(metrics) - _MEASUREMENT_METRICS:
+            raise ValueError("metrics must contain only supported aggregate counters")
+        clean_metrics = {}
+        for name, value in metrics.items():
+            if (type(value) not in (int, float) or value < 0 or value > 10**12
+                    or not math.isfinite(value)):
+                raise ValueError("aggregate metrics must be finite nonnegative numbers within bounds")
+            clean_metrics[name] = value
+        metrics_json = _pack(clean_metrics, "aggregate metrics")
+        measurement = {
+            "proposal_id": proposal_id,
+            "episode_version_sha256": episode_version_sha256,
+            "metrics": clean_metrics,
+            "source_kind": source_kind,
+            "observed_at": observed_at,
+            "verification": "CALLER_SUPPLIED_UNVERIFIED",
+        }
+        packed = _pack(measurement, "measurement")
+        digest = hashlib.sha256(packed.encode("utf-8")).hexdigest()
+        with self._connection() as db:
+            eligible = db.execute("SELECT d.outcome,r.queue_state FROM decisions d "
+                                  "JOIN results r USING(proposal_id) WHERE d.proposal_id=?",
+                                  (proposal_id,)).fetchone()
+            if eligible is None or eligible["outcome"] != "ACCEPTED" \
+                    or eligible["queue_state"] != "COMPLETED":
+                raise ValueError("measurement requires an accepted proposal with a completed production result")
+            prior = db.execute("SELECT * FROM measurements WHERE request_key=?", (request_key,)).fetchone()
+            if prior:
+                if prior["measurement_sha256"] != digest:
+                    raise ValueError("measurement request key was already used for different measurement")
+                return {"status": "MEASUREMENT_EXISTS", "measurement_id": prior["measurement_id"],
+                        "measurement_sha256": digest, "verification": prior["verification"],
+                        "external_source_verified": False, "child_level_data_collected": False}
+            measurement_id = secrets.token_hex(16)
+            db.execute("INSERT INTO measurements VALUES(?,?,?,?,?,?,?,?,?,?)",
+                       (measurement_id, proposal_id, request_key, episode_version_sha256,
+                        metrics_json, source_kind, observed_at, "CALLER_SUPPLIED_UNVERIFIED",
+                        digest, time.time()))
+        return {"status": "MEASUREMENT_RECORDED", "measurement_id": measurement_id,
+                "measurement_sha256": digest, "verification": "CALLER_SUPPLIED_UNVERIFIED",
+                "external_source_verified": False, "child_level_data_collected": False}
+
+    def list_measurements(self, *, proposal_id: str) -> list[dict]:
+        self._ensure_extensions()
+        if not isinstance(proposal_id, str) or not _ID.fullmatch(proposal_id):
+            raise ValueError("invalid proposal id")
+        with self._connection(readonly=True) as db:
+            rows = db.execute("SELECT measurement_id,request_key,episode_version_sha256,metrics_json,"
+                              "source_kind,observed_at,verification,measurement_sha256,recorded_at "
+                              "FROM measurements WHERE proposal_id=? ORDER BY recorded_at,measurement_id",
+                              (proposal_id,)).fetchall()
+        return [{**{key: row[key] for key in row.keys() if key != "metrics_json"},
+                 "metrics": json.loads(row["metrics_json"])} for row in rows]
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1001,6 +1001,74 @@ class StudioDirectorTests(unittest.TestCase):
             self.store.enqueue_accepted(proposal_id=proposal["proposal_id"],
                                         queue_database=self.queue_path)
 
+    def _completed_trial(self, request_key="measurement-trial"):
+        trial = self.store.run_internal_script_trial(
+            router=SyntheticRouter(), queue_database=self.queue_path,
+            request_key=request_key, brief="Teach colors through a story.",
+            language="en", evidence=self.trial_args(request_key, SyntheticRouter())["evidence"])
+        queue = StudioQueue(self.queue_path)
+        claimed = queue.claim(worker_id="measurement-worker", capabilities=["script_draft"])
+        self.assertEqual(claimed["job_id"], trial["queue_job_id"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="measurement-worker",
+                       generation=1, result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                       queue_database=self.queue_path)
+        return trial["proposal_id"]
+
+    def test_aggregate_measurement_is_versioned_unverified_and_idempotent(self):
+        proposal_id = self._completed_trial()
+        args = dict(proposal_id=proposal_id, request_key="analytics-export-v1",
+                    episode_version_sha256="a" * 64,
+                    metrics={"views": 120, "average_view_duration_seconds": 38.5},
+                    source_kind="OWNER_SUPPLIED_AGGREGATE", observed_at="2026-11-12T12:00:00Z")
+        saved = self.store.record_measurement(**args)
+        repeated = self.store.record_measurement(**args)
+        self.assertEqual(saved["status"], "MEASUREMENT_RECORDED")
+        self.assertEqual(repeated["status"], "MEASUREMENT_EXISTS")
+        self.assertEqual(saved["measurement_sha256"], repeated["measurement_sha256"])
+        self.assertEqual(saved["verification"], "CALLER_SUPPLIED_UNVERIFIED")
+        self.assertFalse(saved["external_source_verified"])
+        self.assertFalse(saved["child_level_data_collected"])
+        listed = self.store.list_measurements(proposal_id=proposal_id)
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["episode_version_sha256"], "a" * 64)
+        self.assertEqual(listed[0]["metrics"], args["metrics"])
+
+    def test_measurement_request_key_cannot_be_reused_with_changed_metrics(self):
+        proposal_id = self._completed_trial()
+        args = dict(proposal_id=proposal_id, request_key="analytics-export-conflict",
+                    episode_version_sha256="b" * 64, metrics={"views": 120},
+                    source_kind="OWNER_SUPPLIED_AGGREGATE", observed_at="2026-11-12")
+        self.store.record_measurement(**args)
+        with self.assertRaisesRegex(ValueError, "different measurement"):
+            self.store.record_measurement(**{**args, "metrics": {"views": 121}})
+        self.assertEqual(len(self.store.list_measurements(proposal_id=proposal_id)), 1)
+
+    def test_measurement_rejects_child_or_unbounded_metric_fields(self):
+        proposal_id = self._completed_trial()
+        base = dict(proposal_id=proposal_id, request_key="unsafe-metric",
+                    episode_version_sha256="c" * 64, source_kind="OWNER_SUPPLIED_AGGREGATE",
+                    observed_at="2026-11-12")
+        for metrics in ({"child_id": 123}, {"views": "many"},
+                        {"views": -1}, {"views": True}, {"views": 10**15},
+                        {"views": 10**5000}):
+            with self.subTest(metric=next(iter(metrics))), self.assertRaises(ValueError):
+                self.store.record_measurement(**base, metrics=metrics)
+        self.assertEqual(self.store.list_measurements(proposal_id=proposal_id), [])
+
+    def test_measurement_requires_completed_linked_proposal_and_valid_version_hash(self):
+        proposal = self.create()
+        args = dict(proposal_id=proposal["proposal_id"], request_key="measurement-unlinked",
+                    episode_version_sha256="d" * 64, metrics={"views": 1},
+                    source_kind="OWNER_SUPPLIED_AGGREGATE", observed_at="2026-11-12")
+        with self.assertRaisesRegex(ValueError, "completed production result"):
+            self.store.record_measurement(**args)
+        completed_id = self._completed_trial("measurement-valid-hash")
+        with self.assertRaisesRegex(ValueError, "version sha256"):
+            self.store.record_measurement(**{**args, "proposal_id": completed_id,
+                                              "request_key": "measurement-bad-sha",
+                                              "episode_version_sha256": "not-a-sha"})
+
 
 if __name__ == "__main__":
     unittest.main()

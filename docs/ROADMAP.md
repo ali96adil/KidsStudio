@@ -32,7 +32,8 @@ does not mark a physical Mac/Pi or public release as qualified.
 - [ ] Evaluate real Arabic/English quality and safety with qualified human review where required.
 
 ### P4 — Measurement and learning
-- [ ] Record authorized outcome measurements against exact published episode versions.
+- [x] Add a local append-only scaffold for caller-supplied aggregate measurements, bound to an episode-version digest and explicitly unverified; no child-level rows or external analytics connection.
+- [ ] Ingest verified authorized outcome measurements against exact published episode versions.
 - [ ] Revisit old proposals only when new evidence is recorded; avoid repeated failed concepts without new evidence.
 - [ ] Do not infer analytics that the owner has not authorized or supplied.
 
