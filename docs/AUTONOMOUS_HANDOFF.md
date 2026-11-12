@@ -7,9 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `ef5e82bdb31fa4889de0730f71441704234c20df`.
-- Latest regression/test head: `ef5e82bdb31fa4889de0730f71441704234c20df`.
-- Previous Handoff commit: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
+- Current code head: `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`.
+- Latest regression/test head: `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`.
+- Previous Handoff commit: `c026fff269b46e150a35a14eba9af36bfebea4a7`.
 - Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 - Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
@@ -53,6 +53,21 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 76D — Qualify concurrent measurement idempotency
+
+- Added a deterministic concurrent-retry regression: two threads record the same aggregate measurement with the same request key at once. Exactly one receipt is inserted; callers receive `MEASUREMENT_RECORDED` and `MEASUREMENT_EXISTS` with the same measurement ID and digest.
+- The existing `BEGIN IMMEDIATE` transaction and unique request-key constraint serialized the retries correctly. No production-code fix was needed.
+- `tests.test_studio_director`: **51 passed**; `python scripts/run_tests.py`: **931 passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
+- GitHub checks on the Batch 76D commit are pending; record their results after push. No source, analytics service, child-level data, or external API was used.
+
+### Batch 76C — Require new evidence for trial successors
+
+- Internal successor trials must include at least one evidence item whose source, observed date, claim, or excerpt differs from the superseded proposal, and the generated successor must cite changed material. Renaming an evidence ID alone is insufficient. The check compares caller-supplied text only; it does not authenticate sources or establish factual truth.
+- The intermediate commit `73aa49443da35fa9f7a57f21892f4e625bd936f9` contained literal truncation markers in `kidsstudio/studio_director.py` and `tests/test_studio_director.py` (`…2209 tokens truncated…`, `…2428 tokens truncated…`). Python imports failed with `SyntaxError` (`studio_director.py:527`), and its CI, macOS and Godot runs failed; the FFmpeg smoke passed. This was an incomplete file transfer, not a project regression. The complete files were restored from their correct Git objects in commit `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`; no production repair was repeated.
+- On restored code head `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`, `python scripts/run_tests.py`: **930 passed**; `tests.test_studio_director`: **50 passed**; `python -m compileall -q kidsstudio tests scripts`, `git diff --check`, and `git fsck --no-reflogs --unreachable --no-progress` passed.
+- GitHub runs on the restored head all succeeded: CI `43296012922`, macOS `43296013332`, Godot `43296012900`, FFmpeg `43296012854`. Intermediate head `73aa49443da35fa9f7a57f21892f4e625bd936f9` runs: CI `43295551285`, macOS `43295551448`, and Godot `43295551197` failed from the truncated Python files; FFmpeg `43295551350` succeeded.
+- Rollback before Batch 76C code: `ef5e82bdb31fa4889de0730f71441704234c20df`.
 
 ### Batch 76B — Validate measurement calendar dates
 
@@ -385,11 +400,11 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **929 tests passed** on Batch 76B code head `ef5e82bdb31fa4889de0730f71441704234c20df`.
-- `tests.test_studio_director`: **49 passed** on Batch 76B.
-- `python -m compileall -q kidsstudio tests`: passed.
+- Local `python scripts/run_tests.py`: **930 tests passed** on Batch 76C code head `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`.
+- `tests.test_studio_director`: **50 passed** on Batch 76C.
+- `python -m compileall -q kidsstudio tests scripts`: passed on Batch 76C.
 - `git diff --check`: passed.
-- Batch 76B GitHub CI, macOS, Godot and FFmpeg runs were still in progress at Handoff update: `43294426534`, `43294426331`, `43294426311`, `43294426299` respectively.
+- Batch 76C GitHub CI `43296012922`, macOS `43296013332`, Godot `43296012900`, and FFmpeg `43296012854` completed successfully on code head `257ac5851e80f2cb3a60eead0c9fd396d64de7e2`. Batch 76B runs `43294426534`, `43294426331`, `43294426311`, and `43294426299` also completed successfully after the prior Handoff update.
 - GitHub checks on Batch 74N head `269aaeb23943375621d58142150fab623afe1322` all completed successfully:
   - CI run `43164779987` — success.
   - macOS run `43164779979` — success.
@@ -479,12 +494,13 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Continue P4 by defining how new verified evidence may support proposal reassessment; the current measurement receipt is unverified ingestion only. Keep any analytics adapter read-only, explicitly authorized, aggregate-only, and separate from owner decisions.
-3. Keep owner Mac/Pi/PRIVATE transfer and upload qualification pending for supervised operation; do not replace these requirements with synthetic checks.
+2. Review measurement idempotency under concurrent retries, then connect Director-created drafts to the existing atomic Queue editorial-review handoff. Keep caller evidence unverified; do not introduce external research or child-level data.
+3. Continue the P3 team integration using the current Director and Queue, with separate provenance for research inputs, creative drafts, editorial reviews, production jobs, and independent review. Expand only after each prior stage is tied to its exact source artifact and existing policy gates.
+4. Keep owner Mac/Pi/PRIVATE transfer and upload qualification pending for supervised operation; do not replace these requirements with synthetic checks.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, then verify Batch 76B runs `43294426534`, `43294426331`, `43294426311`, and `43294426299` on code head `ef5e82bdb31fa4889de0730f71441704234c20df`; they were in progress at the latest update. If any failed, inspect its logs before another code change. Continue P4 by reviewing evidence provenance and decision reassessment using only the existing proposal ledger; caller-supplied measurements remain unverified and must never be promoted to verified by hash or label alone. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data or unverified analytics; do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify the latest checks before each batch. Continue with measurement retry idempotency and then the Director-to-Queue draft review handoff. Hashes bind stored bytes only; do not promote caller-supplied measurements or sources to verified based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
 
 ## Required limits
 

@@ -1092,6 +1092,49 @@ class StudioDirectorTests(unittest.TestCase):
             self.store.record_measurement(**{**args, "metrics": {"views": 121}})
         self.assertEqual(len(self.store.list_measurements(proposal_id=proposal_id)), 1)
 
+    def test_concurrent_measurement_retries_are_idempotent(self):
+        proposal_id = self._completed_trial("concurrent-measurement-trial")
+        args = dict(proposal_id=proposal_id, request_key="concurrent-analytics-export",
+                    episode_version_sha256="f" * 64,
+                    metrics={"views": 120, "average_view_duration_seconds": 38.5},
+                    source_kind="OWNER_SUPPLIED_AGGREGATE",
+                    observed_at="2026-11-12T12:00:00Z")
+
+        original_connection = self.store._connection
+        write_starts = threading.Barrier(2)
+
+        @contextmanager
+        def synchronize_measurement_writes(*, readonly=False):
+            if not readonly:
+                write_starts.wait(timeout=5)
+            with original_connection(readonly=readonly) as db:
+                yield db
+
+        outcomes, errors = [], []
+
+        def record():
+            try:
+                outcomes.append(self.store.record_measurement(**args))
+            except Exception as exc:
+                errors.append(exc)
+
+        with patch.object(self.store, "_connection", new=synchronize_measurement_writes):
+            threads = [threading.Thread(target=record) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=10)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads),
+                         "measurement writer thread hung")
+        self.assertEqual(errors, [])
+        self.assertEqual(sorted(item["status"] for item in outcomes),
+                         ["MEASUREMENT_EXISTS", "MEASUREMENT_RECORDED"])
+        self.assertEqual(outcomes[0]["measurement_id"], outcomes[1]["measurement_id"])
+        self.assertEqual(outcomes[0]["measurement_sha256"],
+                         outcomes[1]["measurement_sha256"])
+        self.assertEqual(len(self.store.list_measurements(proposal_id=proposal_id)), 1)
+
     def test_measurement_rejects_child_or_unbounded_metric_fields(self):
         proposal_id = self._completed_trial()
         base = dict(proposal_id=proposal_id, request_key="unsafe-metric",
