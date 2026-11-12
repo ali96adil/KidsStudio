@@ -7,9 +7,11 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `6ea4f3f16b1c56736f088c41ccc75c5affdb53a5`.
-- Latest regression/test head: `6ea4f3f16b1c56736f088c41ccc75c5affdb53a5`.
-- Handoff update parent: `f1b035e66eeb19c381cb11f8a25c1f20807c8138`.
+- Current code head: `5fb605658e69f95dd1480e81c61dfbbcaa32dc95`.
+- Latest regression/test head: `5fb605658e69f95dd1480e81c61dfbbcaa32dc95`.
+- Handoff update parent: `c7d9e2d84f4f7167ed9fa0a6fc29b89fc29d1e25`.
+- Rollback before Batch 75I: `aa191c328ca644a926bfa12eec2567716a744f32`.
+- Rollback before Batch 75H: `c7d9e2d84f4f7167ed9fa0a6fc29b89fc29d1e25`.
 - Rollback before Batch 75G: `f1b035e66eeb19c381cb11f8a25c1f20807c8138`.
 - Rollback before Batch 75F: `9b69cabe016f0d739e99eaad967465d1d515b22a`.
 - Rollback before Batch 75E: `ba64db7117a8c4161626300654ad9292ea003ca9`.
@@ -42,6 +44,22 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 75I — Prove internal candidate stops before Pi uploader side effects
+
+- Added an end-to-end uploader regression for the reserved `verified-candidate.mp4`: even with explicit synthetic authorization and matching digest, execution stops before OAuth token retrieval, transport calls, or journal creation.
+- The existing upload gate and dry-run → handoff chain already enforced the block; no uploader production change was required.
+- Focused Pi upload/handoff/review/inbox suite: **78 passed**; `python scripts/run_tests.py`: **914 passed**; compileall and `git diff --check` passed.
+- GitHub CI, macOS, Godot, and FFmpeg runs for `5fb605658e69f95dd1480e81c61dfbbcaa32dc95` (`43220358930`, `43220358984`, `43220359028`, `43220358999`) are **in progress** at handoff preparation.
+- No real credential, network call, upload, owner device, or publication was used. Rollback before Batch 75I: `aa191c328ca644a926bfa12eec2567716a744f32`.
+
+### Batch 75H — Qualify reserved candidate blocking in Pi review inbox
+
+- Added an inbox-level regression with a synthetic confirmed journal pointing to `verified-candidate.mp4`. The inbox reports `BLOCKED_LOCAL_EVIDENCE`, omits episode/video identities, does not mark bytes SHA-verified, and never counts it as owner review eligible.
+- The existing shared review inspection already provided the block; no production-code change was required.
+- `python -m unittest tests.test_pi_private_draft_inbox`: **21 passed**; full suite on the following code head: **914 passed**.
+- Runs on test head `aa191c328ca644a926bfa12eec2567716a744f32`: CI `43220090382`, Godot `43220090551`, and FFmpeg `43220090459` — **success**; macOS `43220090533` was **in progress** at last check.
+- Rollback before Batch 75H: `c7d9e2d84f4f7167ed9fa0a6fc29b89fc29d1e25`.
 
 ### Batch 75G — Block internal mux candidate from Pi upload and review
 
@@ -378,12 +396,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Audit Pi inbox/web and uploader recovery consumers for stale artifact identity or review-state mismatches; add Regression before any supported-path fix.
+2. Audit Pi upload-journal recovery/resume paths for stale artifact identity and side-effect ordering; add Regression before any supported-path fix. Keep all credential/network checks synthetic.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not treat energy gates as speech/language review.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (including macOS run `43219330562`, pending at this handoff update). Then audit Pi inbox/web and uploader recovery consumers for stale artifact identity or review-state mismatches; write a regression first if a supported-path gap exists. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (runs `43220358930`, `43220358984`, `43220359028`, `43220358999` were pending at this handoff update). Then audit Pi upload-journal recovery/resume paths for stale artifact identity and side-effect ordering; write a regression first if a supported-path gap exists and keep credentials/network synthetic. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
 
 ## Required limits
 
