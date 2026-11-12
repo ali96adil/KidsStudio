@@ -7,8 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `f785b522089c0bb409c48cb43867cb7165c33554`.
-- Latest regression/test head: `f785b522089c0bb409c48cb43867cb7165c33554`.
+- Current code head: `ef09fb59f21e1ea8026173bb96c26a3524942a4d`.
+- Latest regression/test head: `ef09fb59f21e1ea8026173bb96c26a3524942a4d`.
+- Rollback before Batch 75B: `1b347f395c5f6fd6e0cc5775c60d723b7bad7b37`.
 - Rollback before Batch 75A: `c0ef2d1c03b43c434122af6242c3610547667ab2`.
 - Rollback before Batch 74T: `207f0e859edc8c76d0973d9b29e74de491e9bffe`.
 - Rollback before Batch 74S: `87e42cf1ce1dedfdb85deddfec3ef9faa110d590`.
@@ -35,6 +36,16 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 75B — Block direct transfer of unverified episode candidates
+
+- A regression showed the generic Mac→Pi transfer planner accepted the first-colors pipeline's `verified-candidate.mp4` from its private `*-pilot-sources-<random>` directory when given an explicit path and digest. The reviewed handoff already requires a matching simple final filename and independent review evidence; the lower-level generic transfer API did not distinguish this internal staging artifact.
+- The transfer planner now rejects the reserved candidate filename and per-attempt stage path markers, including Windows-style separators, before filesystem verification or SSH. Normal final episode transfer behavior is unchanged. Regression verifies no remote runner is reached.
+- `python -m unittest tests.test_mac_to_pi_transfer tests.test_first_colors_episode -v`: **43 tests passed**; `python scripts/run_tests.py`: **899 tests passed**; compileall and `git diff --check` passed.
+- GitHub on code head `ef09fb59f21e1ea8026173bb96c26a3524942a4d`: CI `43198600966`, macOS `43198600985`, Godot `43198601203`, and FFmpeg `43198601009` all **success**.
+- This only blocks direct use of the internal candidate path/name. It does not authenticate arbitrary files that a person copies or renames; the reviewed Mac→Pi path still requires exact sidecar and owner review assertions. No actual Pi transfer, upload, real model, paid API, spending or publication was performed.
+- Rollback before Batch 75B: `1b347f395c5f6fd6e0cc5775c60d723b7bad7b37`.
+
 
 ### Batch 75A — Publish the episode only after final audio verification
 
@@ -318,7 +329,7 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Audit downstream episode consumers to confirm they only accept the final promoted filename and do not mistake private attempt candidates for completed media; add a regression before changing behavior.
+2. Audit `run_mac_episode_pilot` (Godot renderer path) for a missing per-beat audio presence gate; add a regression first and only repair if the silent/partial-WAV case is accepted.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not repeat Director retry tests without a new supported-path failure.
 
 ## First action next session
