@@ -9,7 +9,7 @@ Updated: 2026-11-12
 - Draft PR: #33 — open, draft, not merged.
 - Current code head: `6be355993a0c2742935fe91cef8cea0b2b20fd32`.
 - Latest regression/test head: `6be355993a0c2742935fe91cef8cea0b2b20fd32`.
-- Previous Handoff commit: `139a8dfc0d25b8454983be0cb1649b8b91fdfd1c`.
+- Previous Handoff commit: `9e45ee6741a98e8306a0eb9e764c7956f9eaabb4`.
 - Rollback before Batch 75O: `139a8dfc0d25b8454983be0cb1649b8b91fdfd1c`.
 - Rollback before Batch 75N: `e13c9ac26c6113f3a3ad8eb51c365a3ddb597200`.
 - Rollback before Batch 75M: `c7bebde6785cec00a6254bc35f47d1f7b11dc1dd`.
@@ -56,7 +56,7 @@ Updated: 2026-11-12
 - A Regression first showed that a syntactically digit-only but 5,000-digit `Range` from the resumable response escaped as Python's raw `ValueError` during integer conversion.
 - `_offset` now converts that conversion failure to the uploader's controlled `YouTubePrivateError`, preserving fail-closed behavior and preventing parser details from escaping to direct callers.
 - `python -m unittest tests.test_pi_youtube_private_upload -q`: **32 passed**; `python scripts/run_tests.py`: **923 passed**; compileall and `git diff --check` passed.
-- On code head `6be355993a0c2742935fe91cef8cea0b2b20fd32`, CI `43290801982` and macOS `43290802030` were queued; Godot `43290802120` and FFmpeg `43290802085` were in progress at handoff preparation.
+- On code head `6be355993a0c2742935fe91cef8cea0b2b20fd32`, CI `43290801982`, Godot `43290802120`, and FFmpeg `43290802085` succeeded; macOS `43290802030` remained in progress at the latest check.
 - Only synthetic media and transport were used. No real OAuth/upload, spending, publication, or device operation. Rollback before Batch 75O: `139a8dfc0d25b8454983be0cb1649b8b91fdfd1c`.
 
 ### Batch 75N — Validate missing active upload session safely
@@ -455,7 +455,7 @@ Updated: 2026-11-12
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. On code head `6be355993a0c2742935fe91cef8cea0b2b20fd32`, CI `43290801982` and macOS `43290802030` were queued; Godot `43290802120` and FFmpeg `43290802085` were in progress at handoff preparation. Batch 75N checks on `33e229917339aaf50e94bd5de5a958e5f59a09b8` all passed. Then continue reviewing malformed remote resumable responses and `SESSION_ACTIVE` recovery boundaries for uncaught exceptions or side effects; Regression first and synthetic transport only. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. On code head `6be355993a0c2742935fe91cef8cea0b2b20fd32`, CI `43290801982`, Godot `43290802120`, and FFmpeg `43290802085` succeeded; macOS `43290802030` was still running at the last check. The latest Handoff head was `9e45ee6741a98e8306a0eb9e764c7956f9eaabb4`, with CI `43290981654`, Godot `43290981576`, and FFmpeg `43290981209` successful; macOS `43290981463` was queued at last check. Then continue reviewing malformed remote resumable responses and `SESSION_ACTIVE` recovery boundaries for uncaught exceptions or side effects; Regression first and synthetic transport only. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
 
 ## Required limits
 
