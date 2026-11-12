@@ -89,6 +89,13 @@ different provider. This second review result remains
 `EDITORIAL_REVIEW_UNVERIFIED`; neither it nor the earlier concept review
 approves publication.
 
+`record_queue_result(...)` waits for that linked review to complete with the
+exact source job, draft SHA, and a provider different from the writer. The
+stored result digest binds both stage results while the ledger stores no draft
+or review text. Pending, failed, or mismatched review leaves no Director result
+row, so the aggregate measurement scaffold cannot accept a receipt for that
+trial yet.
+
 ## Qualification boundary
 
 Unit tests cover validation, evidence/rationale digest binding, immutable

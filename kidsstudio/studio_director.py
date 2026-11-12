@@ -880,6 +880,50 @@ class StudioDirector:
                 if not isinstance(decoded, dict):
                     raise ValueError("completed queue result must be an object")
                 result_status = _result_code(decoded.get("status", "COMPLETED"))
+                if decoded.get("status") == "DRAFTED_UNREVIEWED":
+                    review_id = decoded.get("next_review_job_id")
+                    draft_sha = decoded.get("artifact_sha256")
+                    writer = decoded.get("provider_id")
+                    if (not isinstance(review_id, str) or not _ID.fullmatch(review_id)
+                            or not isinstance(draft_sha, str) or not _SHA.fullmatch(draft_sha)
+                            or not isinstance(writer, str) or not _KEY.fullmatch(writer)
+                            or decoded.get("publication_approved") is not False):
+                        raise ValueError("draft result lacks a valid linked editorial review")
+                    review_job = queue.get(review_id)
+                    if (review_job.get("kind") != "editorial_review"
+                            or review_job.get("state") != "COMPLETED"):
+                        raise ValueError("linked editorial review is not complete")
+                    review_payload = json.loads(review_job["payload"])
+                    parent_payload = json.loads(job["payload"])
+                    expected_review_payload = {
+                        "language": parent_payload.get("language"),
+                        "source_job_id": job["job_id"],
+                        "source_answer_sha256": draft_sha,
+                        "original_provider_id": writer,
+                    }
+                    if review_payload != expected_review_payload:
+                        raise ValueError("linked editorial review provenance does not match draft")
+                    review_material = review_job.get("result_json")
+                    if not isinstance(review_material, str):
+                        raise ValueError("completed editorial review has no result record")
+                    review_result = json.loads(review_material)
+                    if not isinstance(review_result, dict):
+                        raise ValueError("editorial review result must be an object")
+                    reviewer = review_result.get("provider_id")
+                    review_sha = review_result.get("artifact_sha256")
+                    if (review_result.get("status") != "EDITORIAL_REVIEW_UNVERIFIED"
+                            or review_result.get("publication_approved") is not False
+                            or not isinstance(reviewer, str) or not _KEY.fullmatch(reviewer)
+                            or reviewer == writer
+                            or not isinstance(review_sha, str) or not _SHA.fullmatch(review_sha)):
+                        raise ValueError("linked editorial review result is invalid")
+                    result_status = _result_code("DRAFT_AND_EDITORIAL_REVIEW_RECORDED")
+                    material = json.dumps(
+                        {"draft_result": decoded, "review_job_id": review_id,
+                         "review_result": review_result},
+                        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                        allow_nan=False,
+                    )
             elif state == "FAILED":
                 result_status = _result_code(job.get("error_code") or "FAILED")
                 material = json.dumps({"state": state, "error_code": result_status}, sort_keys=True)

@@ -228,6 +228,19 @@ class StudioDirectorTests(unittest.TestCase):
         self.assertEqual(review_payload["original_provider_id"], "writer-local")
         self.assertNotIn("script_text", review_payload)
 
+        with self.assertRaisesRegex(ValueError, "linked editorial review is not complete"):
+            self.store.record_queue_result(proposal_id=result["proposal_id"],
+                                           queue_database=self.queue_path)
+        self.assertIsNone(self.store.get(proposal_id=result["proposal_id"])["result"])
+        measurement_args = dict(
+            proposal_id=result["proposal_id"], request_key="measurement-before-review",
+            episode_version_sha256="c" * 64, metrics={"views": 1},
+            source_kind="OWNER_SUPPLIED_AGGREGATE", observed_at="2026-11-12",
+        )
+        with self.assertRaisesRegex(ValueError, "completed production result"):
+            self.store.record_measurement(**measurement_args)
+        self.assertEqual(self.store.list_measurements(proposal_id=result["proposal_id"]), [])
+
         review_lease = queue.claim(worker_id="synthetic-reviewer",
                                    capabilities=["editorial_review"])
         self.assertEqual(review_lease["job_id"], review_id)
@@ -240,6 +253,8 @@ class StudioDirectorTests(unittest.TestCase):
         recorded = self.store.record_queue_result(proposal_id=result["proposal_id"],
                                                   queue_database=self.queue_path)
         self.assertEqual(recorded["status"], "RESULT_RECORDED")
+        self.assertEqual(recorded["result_status"],
+                         "DRAFT_AND_EDITORIAL_REVIEW_RECORDED")
         self.assertEqual(recorded["queue_state"], "COMPLETED")
         self.assertFalse(recorded["result_content_stored"])
         record = self.store.get(proposal_id=result["proposal_id"])

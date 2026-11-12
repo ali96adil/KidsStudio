@@ -54,6 +54,15 @@ Updated: 2026-11-12
 
 ## Last completed batch
 
+### Batch 76F — Bind Director results to completed editorial review
+
+- A regression showed `record_queue_result` could persist a completed `DRAFTED_UNREVIEWED` parent job while its linked `editorial_review` job was still queued. This also made an unreviewed trial eligible for measurement ingestion.
+- Director now waits for the exact linked review job to complete, checks its source job, draft SHA, original writer provider and distinct reviewer provider, and requires the result to remain explicitly `EDITORIAL_REVIEW_UNVERIFIED` with publication approval false.
+- The result digest binds both stage results; the ledger still stores no draft or review text. Pending, failed, or mismatched review leaves no Director result row, so `record_measurement` remains ineligible.
+- `tests.test_studio_director`: **51 passed**; `python scripts/run_tests.py`: **931 passed**; `python -m compileall -q kidsstudio tests scripts` and `git diff --check` passed.
+- GitHub runs for Batch 76F are pending after push. Only synthetic providers/artifacts were used; no external research, paid API, child-level data, upload or publication occurred.
+- Rollback before Batch 76F: `e35ccd4af327d9f1a9109a378d7daa0f0274d5a6`.
+
 ### Batch 76E — Route Director drafts to independent Queue review
 
 - A regression first showed that Director-created `script_draft` jobs set `auto_review=False`, so the local worker completed a draft without creating the existing linked `editorial_review` job.
@@ -506,13 +515,13 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Connect Director result recording to the linked draft and independent editorial-review provenance; do not record a successful reviewed outcome or allow a measurement receipt while that review is pending or failed.
-3. Continue P3 with explicit research evidence provenance and source-bound production handoff. Research remains caller-supplied and unverified; do not introduce external calls or child-level data. Production stays gated on the exact reviewed artifact and owner-controlled decisions.
+2. Continue P3 with explicit research evidence provenance and a source-bound production handoff. Research remains caller-supplied and unverified; do not introduce external calls or child-level data. Production stays gated on the exact reviewed artifact and owner-controlled decisions.
+3. Keep post-draft editorial review explicitly unverified; do not treat completion as a PASS, owner approval, production authorization or public-publishing decision.
 4. Keep owner Mac/Pi/PRIVATE transfer and upload qualification pending for supervised operation; do not replace these requirements with synthetic checks.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify Batch 76E's latest checks. Then add a regression proving Director result recording and measurement ingestion wait for the exact linked editorial review to complete. Continue source-bound production integration only within existing Queue and owner gates. Hashes bind stored bytes only; do not promote caller-supplied measurements or sources to verified based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify Batch 76F's latest checks. Update the stale PR description to match the verified branch head, then continue source-bound production integration only within existing Queue and owner gates. Keep research evidence caller-supplied and unverified. Hashes bind stored bytes only; do not promote sources based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
 
 ## Required limits
 
