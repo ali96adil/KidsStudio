@@ -7,9 +7,10 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `6be355993a0c2742935fe91cef8cea0b2b20fd32`.
-- Latest regression/test head: `4c7be423e8b39cb49733e378e5f717832d262d74`.
-- Previous Handoff commit: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
+- Current code head: `2c3c88c679b1e6412c05349dd7023962309cbf91`.
+- Latest regression/test head: `2c3c88c679b1e6412c05349dd7023962309cbf91`.
+- Previous Handoff commit: `885efc729910597458b30031563f9969c960965b`.
+- Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 - Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
 - Rollback before Batch 75O: `139a8dfc0d25b8454983be0cb1649b8b91fdfd1c`.
 - Rollback before Batch 75N: `e13c9ac26c6113f3a3ad8eb51c365a3ddb597200`.
@@ -52,11 +53,20 @@ Updated: 2026-11-12
 
 ## Last completed batch
 
+### Batch 76A — Add privacy-safe aggregate measurement receipts
+
+- Added an append-only local measurement table to the existing Studio Director ledger. A record requires an accepted proposal with a completed queue result, a caller-provided episode-version SHA, a stable idempotency key, an ISO date/timestamp and a bounded allowlisted aggregate metric set.
+- Only aggregate counters/durations are supported; child IDs, demographic rows, comments, free-text metric keys, booleans, negative, non-finite and out-of-range values are rejected. Reusing a key with different measurement material fails closed.
+- Every row is labeled `CALLER_SUPPLIED_UNVERIFIED`; source kinds are caller assertions only. No analytics service connection, source verification, child-level collection, profit calculation, spending decision or publication action exists. A hash binds stored bytes; it does not prove source truth or episode identity.
+- `tests.test_studio_director`: **48 passed**; `python scripts/run_tests.py`: **928 passed**; compileall and `git diff --check` passed.
+- On code head `2c3c88c679b1e6412c05349dd7023962309cbf91`, CI `43293699134`, Godot `43293699220`, and FFmpeg `43293699184` were in progress; macOS `43293699231` was queued at handoff preparation.
+- Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
+
 ### Batch 75P — Recover after losing the final upload response
 
 - Added a synthetic regression for the server completing the last chunk while the client loses its final response. A retry probes the existing resumable session, recovers the video ID, verifies PRIVATE status, and does not create another session or resend chunks.
 - Existing implementation passed the recovery scenario; no production change was needed. `python -m unittest tests.test_pi_youtube_private_upload -q`: **33 passed**; `python scripts/run_tests.py`: **924 passed**; compileall and `git diff --check` passed.
-- On test head `4c7be423e8b39cb49733e378e5f717832d262d74`, CI `43292096183`, macOS `43292096247`, FFmpeg `43292096180`, and Godot `43292096143` were in progress at handoff preparation.
+- On test head `4c7be423e8b39cb49733e378e5f717832d262d74`, CI `43292096183`, macOS `43292096247`, FFmpeg `43292096180`, and Godot `43292096143` all succeeded.
 - Only synthetic transport and media were used. No real OAuth, upload, publication, spending, or device operation. Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
 
 ### Batch 75O — Normalize oversized resumable ranges
@@ -458,12 +468,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Close any remaining high-value synthetic upload-recovery gaps, then stop repeating uploader checks without new evidence. The owner's real Mac/Pi/PRIVATE qualification remains pending and requires owner-supervised access.
-3. Resume the software roadmap at the highest safe dependency after the device gate, especially authorized aggregate outcome measurement and evidence-backed learning; don't collect child-level data or imply external analytics access.
+2. Continue P4 by defining how new verified evidence may support proposal reassessment; the current measurement receipt is unverified ingestion only. Keep any analytics adapter read-only, explicitly authorized, aggregate-only, and separate from owner decisions.
+3. Keep owner Mac/Pi/PRIVATE transfer and upload qualification pending for supervised operation; do not replace these requirements with synthetic checks.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (Batch 75P runs `43292096183`, `43292096247`, `43292096180`, `43292096143` were in progress at handoff preparation). If no new high-value upload gap is found, stop repeating uploader tests and work on a safe, privacy-preserving measurement/learning dependency from the roadmap. Keep real owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data or unverified analytics; do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (Batch 76A runs `43293699134`, `43293699220`, `43293699231`, `43293699184` were in progress or queued at handoff preparation). Batch 75P runs `43292096183`, `43292096247`, `43292096180`, and `43292096143` have all passed. Continue P4 by defining how new verified evidence can support proposal reassessment; measurement receipts currently remain caller-supplied and unverified. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data or unverified analytics; do not claim atomicity across separate databases.
 
 ## Required limits
 
