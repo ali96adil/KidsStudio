@@ -7,9 +7,10 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `8d33abb13cdbf4b03244ff6635a2dda99580abb5`.
-- Latest regression/test head: `8d33abb13cdbf4b03244ff6635a2dda99580abb5`.
-- Handoff update parent: `f65df1eb2c65dd06e7b05ee38c4ec41fb42e290e`.
+- Current code head: `57aa8e54a0fe69ff1018c0bc08ea4972eac9c80c`.
+- Latest regression/test head: `57aa8e54a0fe69ff1018c0bc08ea4972eac9c80c`.
+- Handoff update parent: `d5f267388c6f74fe5b3bacfbbe7766959e463c8b`.
+- Rollback before Batch 75K: `d5f267388c6f74fe5b3bacfbbe7766959e463c8b`.
 - Rollback before Batch 75J: `f65df1eb2c65dd06e7b05ee38c4ec41fb42e290e`.
 - Rollback before Batch 75I: `aa191c328ca644a926bfa12eec2567716a744f32`.
 - Rollback before Batch 75H: `c7d9e2d84f4f7167ed9fa0a6fc29b89fc29d1e25`.
@@ -46,12 +47,20 @@ Updated: 2026-11-12
 
 ## Last completed batch
 
+### Batch 75K — Validate persisted video IDs before status checks
+
+- Regressions showed confirmed and `REMOTE_COMPLETED_UNVERIFIED` journals accepted an invalid `video_id` until after OAuth token retrieval and transport invocation.
+- Uploader retry now validates persisted video IDs in those terminal-recovery states alongside the media identity checks; invalid values fail before requesting a token or calling transport. The test covers both states and verifies no side effects.
+- `python -m unittest tests.test_pi_youtube_private_upload -q`: **26 passed**; `python scripts/run_tests.py`: **917 passed**; compileall and `git diff --check` passed.
+- GitHub CI `43242106801`, FFmpeg `43242106656`, Godot `43242106730`, and macOS `43242106880` on code head `57aa8e54a0fe69ff1018c0bc08ea4972eac9c80c` were **in progress** at handoff preparation.
+- Only synthetic transports and tokens were used. No real OAuth, upload, owner device, publication or spending. Rollback before Batch 75K: `d5f267388c6f74fe5b3bacfbbe7766959e463c8b`.
+
 ### Batch 75J — Bind uploader recovery to journal media anchors
 
 - Regression reproduced that, after an interrupted resumable upload, changing the private journal's `media_name` while retaining the request fingerprint still allowed retry to continue and call transport.
 - Existing-journal validation now requires the persisted media SHA, exact byte count, media name, and episode ID to match the current verified request, in addition to the request fingerprint. Mismatch is rejected before OAuth token retrieval or transport, and the conflicting journal is left untouched for diagnosis.
 - `python -m unittest tests.test_pi_youtube_private_upload -v`: **24 passed**; `python scripts/run_tests.py`: **915 passed**; compileall and `git diff --check` passed.
-- GitHub runs on code head `8d33abb13cdbf4b03244ff6635a2dda99580abb5`: CI `43241365265`, macOS `43241364653`, Godot `43241364752`, and FFmpeg `43241364712` were pending at handoff preparation. Do not infer completion.
+- GitHub on code head `8d33abb13cdbf4b03244ff6635a2dda99580abb5`: CI `43241365265`, macOS `43241364653`, Godot `43241364752`, and FFmpeg `43241364712` — **success**.
 - Only synthetic transport/credentials were used. No real OAuth, upload, Pi, owner-device operation, publication or spending. Rollback before Batch 75J: `f65df1eb2c65dd06e7b05ee38c4ec41fb42e290e`.
 
 ### Batch 75I — Prove internal candidate stops before Pi uploader side effects
@@ -405,12 +414,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Inspect remaining uploader journal states and interruption boundaries for mismatched persisted fields or unsafe retry side effects; Regression first and use synthetic transport only.
+2. Continue reviewing remaining upload-journal states and interruption boundaries for unbound persisted fields or unsafe retry side effects; Regression first and synthetic transport only.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not treat energy gates as speech/language review.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (runs `43241365265`, `43241364653`, `43241364752`, `43241364712` were pending at this handoff update). Then inspect remaining uploader journal states and interruption boundaries for mismatched persisted fields or unsafe retry side effects; Regression first and synthetic transport only. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (runs `43242106801`, `43242106880`, `43242106730`, `43242106656` were pending at this handoff update). Then continue reviewing upload-journal states and interruption boundaries for unbound persisted fields or unsafe retry side effects; Regression first and synthetic transport only. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
 
 ## Required limits
 
