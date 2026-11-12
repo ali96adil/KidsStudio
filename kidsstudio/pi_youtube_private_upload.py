@@ -341,7 +341,13 @@ def execute_private_upload(
     with _journal_lock(journal_path):
         if journal_path.exists():
             record = _load_journal(journal_path)
-            if record.get("schema_version") != 1 or record.get("intent_sha256") != fingerprint:
+            if (record.get("schema_version") != 1
+                    or record.get("intent_sha256") != fingerprint
+                    or record.get("media_sha256") != preview["artifact_sha256"]
+                    or type(record.get("media_bytes")) is not int
+                    or record.get("media_bytes") != total
+                    or record.get("media_name") != relative_path
+                    or record.get("episode_id") != episode_id):
                 raise YouTubePrivateError("Upload journal is not for this exact immutable request.")
             state = record.get("state")
             if state == "PRIVATE_UPLOAD_CONFIRMED":

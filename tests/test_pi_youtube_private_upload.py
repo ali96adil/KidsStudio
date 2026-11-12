@@ -230,6 +230,36 @@ class PrivateUploaderTests(unittest.TestCase):
         self.assertIn("session_url", _load_journal(self.journal))
         self.assertEqual(self.journal.stat().st_mode & 0o077, 0)
 
+    def test_resumable_journal_anchor_mismatches_block_before_side_effects(self):
+        from kidsstudio.pi_youtube_private_upload import _save_journal
+
+        backend = FakeYouTube()
+        first = self.upload(backend, max_chunks_per_run=1)
+        self.assertEqual(first["status"], "UPLOAD_PAUSED_RESUMABLE")
+        baseline = _load_journal(self.journal)
+        token_calls = []
+
+        def token_provider():
+            token_calls.append(True)
+            return "FAKE_ACCESS_TOKEN_12345"
+
+        for field, value in (
+            ("media_name", "different-episode.mp4"),
+            ("episode_id", "different_episode"),
+            ("media_sha256", "0" * 64),
+            ("media_bytes", baseline["media_bytes"] + 1),
+        ):
+            with self.subTest(field=field):
+                changed = dict(baseline, **{field: value})
+                _save_journal(self.journal, changed)
+                before_calls = list(backend.calls)
+                with self.assertRaises(YouTubePrivateError):
+                    self.upload(backend, token_provider=token_provider)
+                self.assertEqual(backend.calls, before_calls)
+                self.assertEqual(token_calls, [])
+                self.assertEqual(_load_journal(self.journal)[field], value)
+                _save_journal(self.journal, baseline)
+
     def test_changed_metadata_cannot_use_existing_session(self):
         backend = FakeYouTube()
         self.upload(backend, max_chunks_per_run=1)
