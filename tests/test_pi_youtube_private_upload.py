@@ -214,6 +214,63 @@ class PrivateUploaderTests(unittest.TestCase):
         self.assertEqual(backend.started, 1)
         self.assertGreaterEqual(sum(c[0] == "probe" for c in backend.calls), 2)
 
+    def test_lost_chunk_response_recovers_from_remote_ack_not_stale_local_offset(self):
+        from kidsstudio.pi_youtube_private_upload import _save_journal
+
+        backend = FakeYouTube()
+        original_send = backend.send_chunk
+        lost_response = [True]
+
+        def accept_then_disconnect(**kwargs):
+            result = original_send(**kwargs)
+            if lost_response[0]:
+                lost_response[0] = False
+                raise YouTubePrivateError("synthetic response lost after remote acknowledgement")
+            return result
+
+        backend.send_chunk = accept_then_disconnect
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(backend)
+        acknowledged = backend.ack
+        self.assertGreater(acknowledged, 0)
+        self.assertEqual(_load_journal(self.journal)["state"], "SESSION_ACTIVE")
+
+        # Older or interrupted clients may leave a stale local progress hint.
+        # Recovery must probe the resumable endpoint and use its confirmed range.
+        record = _load_journal(self.journal)
+        record["bytes_remote_acknowledged"] = self.file.stat().st_size
+        _save_journal(self.journal, record)
+        result = self.upload(backend)
+
+        self.assertEqual(result["status"], "PRIVATE_UPLOAD_CONFIRMED")
+        self.assertEqual(backend.started, 1)
+        self.assertEqual(backend.ack, self.file.stat().st_size)
+        chunk_starts = [call[1] for call in backend.calls if call[0] == "chunk"]
+        self.assertEqual(chunk_starts[0], 0)
+        self.assertEqual(chunk_starts[1], acknowledged)
+
+    def test_invalid_active_session_recovery_fails_before_token_or_transport(self):
+        from kidsstudio.pi_youtube_private_upload import _save_journal
+
+        backend = FakeYouTube()
+        self.upload(backend, max_chunks_per_run=1)
+        record = _load_journal(self.journal)
+        record["session_url"] = "https://attacker.example/upload?upload_id=stolen"
+        _save_journal(self.journal, record)
+        calls_before = list(backend.calls)
+        token_calls = []
+
+        def token_provider():
+            token_calls.append(True)
+            return "FAKE_ACCESS_TOKEN_12345"
+
+        with self.assertRaises(YouTubePrivateError):
+            self.upload(backend, token_provider=token_provider)
+        self.assertEqual(backend.calls, calls_before)
+        self.assertEqual(token_calls, [])
+        self.assertEqual(_load_journal(self.journal)["session_url"],
+                         "https://attacker.example/upload?upload_id=stolen")
+
     def test_pause_after_one_chunk_then_resume(self):
         backend = FakeYouTube()
         first = self.upload(backend, max_chunks_per_run=1)
