@@ -816,27 +816,36 @@ class StudioDirector:
             prior = db.execute("SELECT * FROM results WHERE proposal_id=?", (proposal_id,)).fetchone()
         if dispatch is None:
             raise ValueError("proposal has no linked queue job")
-        queue_job = StudioQueue(queue_database).get(dispatch["queue_job_id"])
-        if queue_job.get("job_id") != dispatch["queue_job_id"]:
-            raise ValueError("queue job identity does not match dispatch")
-        state = queue_job["state"]
-        if state not in {"COMPLETED", "FAILED", "CANCELLED"}:
-            raise ValueError("queue job is not terminal; result cannot be recorded yet")
-        if state == "COMPLETED":
-            material = queue_job.get("result_json")
-            if not isinstance(material, str):
-                raise ValueError("completed queue job has no result record")
-            decoded = json.loads(material)
-            if not isinstance(decoded, dict):
-                raise ValueError("completed queue result must be an object")
-            result_status = _result_code(decoded.get("status", "COMPLETED"))
-        elif state == "FAILED":
-            result_status = _result_code(queue_job.get("error_code") or "FAILED")
-            material = json.dumps({"state": state, "error_code": result_status}, sort_keys=True)
-        else:
-            result_status = "CANCELLED"
-            material = json.dumps({"state": state}, sort_keys=True)
-        digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
+        queue = StudioQueue(queue_database)
+
+        def result_snapshot(job: dict) -> tuple[str, str, str]:
+            if job.get("job_id") != dispatch["queue_job_id"]:
+                raise ValueError("queue job identity does not match dispatch")
+            state = job["state"]
+            if state not in {"COMPLETED", "FAILED", "CANCELLED"}:
+                raise ValueError("queue job is not terminal; result cannot be recorded yet")
+            if state == "COMPLETED":
+                material = job.get("result_json")
+                if not isinstance(material, str):
+                    raise ValueError("completed queue job has no result record")
+                decoded = json.loads(material)
+                if not isinstance(decoded, dict):
+                    raise ValueError("completed queue result must be an object")
+                result_status = _result_code(decoded.get("status", "COMPLETED"))
+            elif state == "FAILED":
+                result_status = _result_code(job.get("error_code") or "FAILED")
+                material = json.dumps({"state": state, "error_code": result_status}, sort_keys=True)
+            else:
+                result_status = "CANCELLED"
+                material = json.dumps({"state": state}, sort_keys=True)
+            return state, result_status, hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+        queue_job = queue.get(dispatch["queue_job_id"])
+        state, result_status, digest = result_snapshot(queue_job)
+        confirmed_state, confirmed_status, confirmed_digest = result_snapshot(
+            queue.get(dispatch["queue_job_id"]))
+        if (confirmed_state, confirmed_status, confirmed_digest) != (state, result_status, digest):
+            raise ValueError("queue result changed during Director recording")
 
         def matches_saved_result(row, dispatch_row) -> bool:
             return (row["decision_id"] == dispatch_row["decision_id"]

@@ -670,6 +670,42 @@ class StudioDirectorTests(unittest.TestCase):
                                                  queue_database=self.queue_path)
         self.assertEqual(resumed["status"], "RESULT_RECORDED")
 
+    def test_queue_snapshot_change_before_result_write_is_rejected_and_recoverable(self):
+        for change in ("state", "material"):
+            with self.subTest(change=change):
+                trial = self.store.run_internal_script_trial(**self.trial_args(
+                    f"stale-queue-snapshot-{change}", SyntheticRouter()))
+                queue = StudioQueue(self.queue_path)
+                queue.claim(worker_id="queue-snapshot-worker", capabilities=["script_draft"])
+                queue.complete(job_id=trial["queue_job_id"], worker_id="queue-snapshot-worker", generation=1,
+                               result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+                original_get = StudioQueue.get
+                changed = {"value": False}
+
+                def mutate_after_snapshot(queue_instance, job_id):
+                    snapshot = original_get(queue_instance, job_id)
+                    if not changed["value"]:
+                        changed["value"] = True
+                        with queue_instance._connection(write=True) as db:
+                            if change == "state":
+                                db.execute("UPDATE jobs SET state='FAILED',error_code='SYNTHETIC_FAILURE',"
+                                           "result_json=NULL WHERE job_id=?", (job_id,))
+                            else:
+                                db.execute("UPDATE jobs SET result_json=? WHERE job_id=?",
+                                           (json.dumps({"status": "CHANGED_AFTER_SNAPSHOT"}), job_id))
+                    return snapshot
+
+                with patch.object(StudioQueue, "get", new=mutate_after_snapshot):
+                    with self.assertRaisesRegex(ValueError, "queue result changed during Director recording"):
+                        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                       queue_database=self.queue_path)
+                self.assertIsNone(self.store.get(proposal_id=trial["proposal_id"])["result"])
+                recovered = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                           queue_database=self.queue_path)
+                self.assertEqual(recovered["status"], "RESULT_RECORDED")
+                expected = "FAILED" if change == "state" else "COMPLETED"
+                self.assertEqual(recovered["queue_state"], expected)
+
     def test_failed_independent_review_defers_without_queue(self):
         router = SyntheticRouter(verdict="REVISE")
         content = "The caller supplied this local note."
