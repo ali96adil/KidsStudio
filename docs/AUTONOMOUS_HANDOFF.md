@@ -9,7 +9,7 @@ Updated: 2026-11-12
 - Draft PR: #33 — open, draft, not merged.
 - Current code head: `5e3a6c3bd9f18ad3abee94519454ff77195d2f98`.
 - Latest regression/test head: `5e3a6c3bd9f18ad3abee94519454ff77195d2f98`.
-- Previous Handoff commit: `e35ccd4af327d9f1a9109a378d7daa0f0274d5a6`.
+- Previous Handoff commit: `5965155f709c8105cfec35af34e1517f2a6093c1`.
 - Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 - Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
@@ -522,7 +522,7 @@ Updated: 2026-11-12
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify Batch 76F's latest checks. Update the stale PR description to match the verified branch head, then continue source-bound production integration only within existing Queue and owner gates. Keep research evidence caller-supplied and unverified. Hashes bind stored bytes only; do not promote sources based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify that the PR description matches the head and latest checks. Continue source-bound production integration only within existing Queue and owner gates. Keep research evidence caller-supplied and unverified. Hashes bind stored bytes only; do not promote sources based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
 
 ## Required limits
 
