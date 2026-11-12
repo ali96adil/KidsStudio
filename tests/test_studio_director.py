@@ -496,6 +496,80 @@ class StudioDirectorTests(unittest.TestCase):
             self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                            queue_database=self.queue_path)
 
+    def test_result_retry_fails_closed_and_preserves_record_when_queue_lookup_fails(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "result-queue-read-failure", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="read-failure-worker", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="read-failure-worker", generation=1,
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                       queue_database=self.queue_path)
+        with self.store._connection(readonly=True) as db:
+            saved_before = dict(db.execute("SELECT * FROM results WHERE proposal_id=?",
+                                           (trial["proposal_id"],)).fetchone())
+
+        with patch.object(StudioQueue, "get", side_effect=OSError("queue unavailable")):
+            with self.assertRaisesRegex(OSError, "queue unavailable"):
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+        with self.store._connection(readonly=True) as db:
+            saved_after = dict(db.execute("SELECT * FROM results WHERE proposal_id=?",
+                                          (trial["proposal_id"],)).fetchone())
+        self.assertEqual(saved_after, saved_before)
+
+    def test_result_retry_fails_closed_and_preserves_record_when_ledger_read_fails(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "result-ledger-read-failure", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="ledger-read-failure-worker", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="ledger-read-failure-worker", generation=1,
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                       queue_database=self.queue_path)
+        with self.store._connection(readonly=True) as db:
+            saved_before = dict(db.execute("SELECT * FROM results WHERE proposal_id=?",
+                                           (trial["proposal_id"],)).fetchone())
+
+        original_connection = self.store._connection
+
+        @contextmanager
+        def fail_read(*, readonly=False):
+            if readonly:
+                raise OSError("ledger unavailable")
+            with original_connection(readonly=readonly) as db:
+                yield db
+
+        with patch.object(self.store, "_connection", new=fail_read):
+            with self.assertRaisesRegex(OSError, "ledger unavailable"):
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+        with self.store._connection(readonly=True) as db:
+            saved_after = dict(db.execute("SELECT * FROM results WHERE proposal_id=?",
+                                          (trial["proposal_id"],)).fetchone())
+        self.assertEqual(saved_after, saved_before)
+
+    def test_result_retry_rejects_queue_lookup_returning_different_job_identity(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "result-queue-identity-mismatch", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="identity-mismatch-worker", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="identity-mismatch-worker", generation=1,
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                       queue_database=self.queue_path)
+        original_get = StudioQueue.get
+
+        def wrong_identity(queue_instance, job_id):
+            result = original_get(queue_instance, job_id)
+            result["job_id"] = "different-queue-job"
+            return result
+
+        with patch.object(StudioQueue, "get", new=wrong_identity):
+            with self.assertRaisesRegex(ValueError, "queue job identity does not match dispatch"):
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+
     def test_result_retry_rejects_dispatch_relinked_to_another_decision(self):
         trial = self.store.run_internal_script_trial(**self.trial_args(
             "result-decision-identity", SyntheticRouter()))

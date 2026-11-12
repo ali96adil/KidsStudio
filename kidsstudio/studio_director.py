@@ -817,6 +817,8 @@ class StudioDirector:
         if dispatch is None:
             raise ValueError("proposal has no linked queue job")
         queue_job = StudioQueue(queue_database).get(dispatch["queue_job_id"])
+        if queue_job.get("job_id") != dispatch["queue_job_id"]:
+            raise ValueError("queue job identity does not match dispatch")
         state = queue_job["state"]
         if state not in {"COMPLETED", "FAILED", "CANCELLED"}:
             raise ValueError("queue job is not terminal; result cannot be recorded yet")
