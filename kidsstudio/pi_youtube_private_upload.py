@@ -291,7 +291,10 @@ def _offset(code: int, headers: dict, body: bytes, *, total: int) -> tuple[int |
         matched = _RANGE.fullmatch(range_header)
         if not matched:
             raise YouTubePrivateError("Invalid remote upload byte range.")
-        offset = int(matched.group(1)) + 1
+        try:
+            offset = int(matched.group(1)) + 1
+        except ValueError as exc:
+            raise YouTubePrivateError("Invalid remote upload byte range.") from exc
         if offset >= total:
             raise YouTubePrivateError("Remote upload range is inconsistent.")
         return offset, None

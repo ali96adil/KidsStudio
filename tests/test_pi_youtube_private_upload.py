@@ -489,6 +489,11 @@ class PrivateUploaderTests(unittest.TestCase):
             _offset(308, {"range": "bytes=0-999"}, b"", total=1000)
         self.assertEqual(_offset(308, {}, b"", total=1000), (0, None))
 
+    def test_resumable_range_with_oversized_integer_is_a_safe_error(self):
+        header = "bytes=0-" + ("9" * 5000)
+        with self.assertRaises(YouTubePrivateError):
+            _offset(308, {"range": header}, b"", total=1000)
+
     def test_private_oauth_file_permissions_enforced(self):
         oauth = self.root / "oauth.json"
         oauth.write_text(json.dumps({
