@@ -7,9 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `b14e74dad927249ab86df59777846b49160a2d32`.
-- Latest regression/test head: `b14e74dad927249ab86df59777846b49160a2d32`.
-- Previous Handoff-only commit before Batch 76G: `f358bb97b98d86fbf3b2a6f02da7aed87c8ddf68`.
+- Current code head: `c12ff583c9df0012575c855f127b4d9d051b868d`.
+- Latest regression/test head: `c12ff583c9df0012575c855f127b4d9d051b868d`.
+- Previous Handoff-only commit before Batch 76H: `f858660dc4a8f7228ca146991de09c0763c10744`.
 - Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 - Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
@@ -53,6 +53,15 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 76H — Add an owner-gated source-bound production reference
+
+- A review of the Director/Queue integration showed that the ledger stored a digest binding the draft and completed editorial-review results, but exposed no safe handoff reference for a private-production preparation step.
+- Added `prepare-production-handoff` (CLI) and `prepare_private_production_handoff(...)` (API). It requires an accepted internal policy decision, the recorded `DRAFT_AND_EDITORIAL_REVIEW_RECORDED` status, and a current Queue snapshot whose completed review still points to the exact draft job, hash, and writer. It double-reads the Queue snapshot and verifies it matches the Director result digest.
+- The reference contains IDs, provider IDs, statuses and digests only. It copies no draft/review text or artifact paths, enqueues no work and sets `owner_review_required=true`, `production_authorized=false`, and `publication_approved=false`. Research and artifact authenticity remain unverified; hashes bind records only.
+- Regressions cover pending-review rejection, linked source/job provenance, no copied text/path, no approval, and no Queue or Director result mutation. `tests.test_studio_director`: **54 passed**; `python scripts/run_tests.py`: **934 passed**; `python -m compileall -q kidsstudio tests scripts`, `git diff --check`, and CLI `--help` check passed.
+- GitHub checks on Batch 76H code/test head `c12ff583c9df0012575c855f127b4d9d051b868d` all succeeded: CI `43312242654`, macOS `43312242288`, Godot `43312242511`, and FFmpeg `43312242326`.
+- Rollback before Batch 76H: `f858660dc4a8f7228ca146991de09c0763c10744`.
 
 ### Batch 76G — Require independent review before measurement ingestion
 
@@ -525,14 +534,14 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Continue P3 by defining a source-bound private-production preparation handoff from the exact reviewed artifact, using the existing Director and Queue only. Do not add production execution, spending, upload, publication or owner-decision authority.
+2. Continue P3 by using the new source-bound reference in an offline/private preparation path that requires explicit owner review of the exact artifact. Keep Director and Queue as the only coordination path. Do not add production execution, spending, upload, publication or owner-decision authority.
 3. Research evidence remains caller-supplied and unverified; preserve source and observation fields, and do not add external calls or child-level data. Digests bind recorded bytes only and do not verify sources.
 4. Keep post-draft editorial review explicitly unverified; do not treat completion as a PASS, owner approval, production authorization or public-publishing decision. Measurement ingestion now requires the linked review result status as well as a completed Queue state.
 5. Keep owner Mac/Pi/PRIVATE transfer and upload qualification pending for supervised operation; do not replace these requirements with synthetic checks.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify that the PR description matches the head and latest checks. Continue the source-bound private-production preparation integration only within existing Queue and owner gates. Require a completed linked review result before measurement ingestion. Keep research evidence caller-supplied and unverified. Hashes bind stored bytes only; do not promote sources based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify that the PR description matches the head and latest checks. Continue using the `prepare-production-handoff` reference for offline/private preparation only after explicit owner review of the exact artifact. Require a completed linked review result before measurement ingestion. Keep research evidence caller-supplied and unverified. Hashes bind stored bytes only; do not promote sources based on their digest or label. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data; do not claim atomicity across separate databases.
 
 ## Required limits
 
