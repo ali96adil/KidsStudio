@@ -277,7 +277,11 @@ def run_first_colors_episode(
         except (AudioPresenceError, OSError, ValueError) as exc:
             raise EpisodeMuxError(
                 "Supplied narration is missing or inaudible in a story beat.") from exc
-    stage = root / (output_name.removesuffix(".mp4") + "-pilot-sources")
+    # Never reuse partial artifacts left by an interrupted run. A retry gets
+    # a fresh private workspace; the previously generated stage is preserved
+    # for diagnosis and cannot be mistaken for current media.
+    stage = root / (output_name.removesuffix(".mp4") +
+                    f"-pilot-sources-{secrets.token_hex(8)}")
     stage.mkdir(mode=0o700)
     # Synthesizing and checking six short spoken beats comes BEFORE the
     # expensive video encode. Bad/missing native Arabic voice must not waste
