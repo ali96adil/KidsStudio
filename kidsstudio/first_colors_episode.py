@@ -216,6 +216,29 @@ def _render_silent(stage: Path) -> Path:
     return movie
 
 
+def _verify_final_audio_beats(*, movie: Path, stage: Path) -> None:
+    """Decode final AAC and enforce the modest per-beat energy gate again.
+
+    Source WAV presence does not prove that muxing preserved every beat. This
+    validates energy only; it does not recognize speech or Arabic words.
+    """
+    decoded = stage / "final-aac-audio-check.wav"
+    if decoded.exists() or decoded.is_symlink():
+        raise EpisodeMuxError("Final audio check workspace is not fresh.")
+    _run([
+        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
+        "-i", str(movie), "-map", "0:a:0", "-vn", "-t", str(DURATION),
+        "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(decoded),
+    ], timeout=90)
+    if not decoded.is_file() or decoded.is_symlink() or decoded.stat().st_size > 128 * 1024**2:
+        raise EpisodeMuxError("Final MP4 audio decode is missing or oversized.")
+    os.chmod(decoded, 0o600)
+    try:
+        check_six_beat_pcm_energy(root=str(stage), relative_path=decoded.name)
+    except (AudioPresenceError, OSError, ValueError) as exc:
+        raise EpisodeMuxError("Final MP4 audio is missing energy in a story beat.") from exc
+
+
 def run_first_colors_episode(
     *, output_root: str, output_name: str = "colors_ar_01.mp4",
     execute: bool = False, voice_mode: str = "macos",
@@ -305,6 +328,7 @@ def run_first_colors_episode(
         output_root=str(root), output_name=output_name, execute=True)
     if muxed["status"] != "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED":
         raise EpisodeMuxError("Original colors video/audio mux did not complete.")
+    _verify_final_audio_beats(movie=root / output_name, stage=stage)
     result.update({
         "status": "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED",
         "render_executed": True,

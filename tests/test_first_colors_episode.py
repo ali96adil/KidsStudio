@@ -7,6 +7,7 @@ import io
 import math
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import types
 import unittest
@@ -16,18 +17,21 @@ import wave
 from PIL import Image
 
 from kidsstudio.first_colors_episode import (
-    CUES, DURATION, SECONDS_PER_SCENE, EpisodeMuxError, _arabic_voice, _render_silent,
+    CUES, DURATION, SECONDS_PER_SCENE, EpisodeMuxError, _arabic_voice,
+    _render_silent, _verify_final_audio_beats,
     _synthesize_wav, main, run_first_colors_episode, scene_image,
 )
 
 
-def write_wav(path: Path, *, seconds=24, sample_rate=16000, amplitude=0):
+def write_wav(path: Path, *, seconds=24, sample_rate=16000, amplitude=0,
+              silent_beats=()):
     with wave.open(str(path), "wb") as audio:
         audio.setnchannels(1)
         audio.setsampwidth(2)
         audio.setframerate(sample_rate)
         if amplitude:
             audio.writeframes(array("h", (
+                0 if i // (4 * sample_rate) in silent_beats else
                 int(amplitude * math.sin(2 * math.pi * 440 * i / sample_rate))
                 for i in range(sample_rate * seconds))).tobytes())
         else:
@@ -167,7 +171,8 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                     "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
                     "final_mp4_sha256": "c" * 64,
                     "final_mp4_bytes": 1234,
-                }) as mux:
+                }) as mux, patch(
+                "kidsstudio.first_colors_episode._verify_final_audio_beats") as verify:
             result = run_first_colors_episode(
                 output_root=str(self.private), voice_mode="supplied_wav",
                 narration_root=str(self.audio_root),
@@ -177,6 +182,62 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                          "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED")
         render.assert_called_once()
         mux.assert_called_once()
+        verify.assert_called_once()
+
+    def test_final_audio_gate_failure_prevents_episode_success(self):
+        write_wav(self.audio, amplitude=5000)
+        digest = hashlib.sha256(self.audio.read_bytes()).hexdigest()
+        def fake_visual(stage):
+            target = stage / "silent.mp4"
+            target.write_bytes(b"synthetic video")
+            target.chmod(0o600)
+            return target
+        with patch("kidsstudio.first_colors_episode._render_silent",
+                   side_effect=fake_visual), patch(
+                "kidsstudio.first_colors_episode.mux_episode_pilot",
+                return_value={
+                    "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+                    "final_mp4_sha256": "c" * 64,
+                    "final_mp4_bytes": 1234,
+                }), patch(
+                "kidsstudio.first_colors_episode._verify_final_audio_beats",
+                side_effect=EpisodeMuxError("Final MP4 audio is missing energy")):
+            with self.assertRaisesRegex(EpisodeMuxError, "Final MP4 audio"):
+                run_first_colors_episode(
+                    output_root=str(self.private), voice_mode="supplied_wav",
+                    narration_root=str(self.audio_root),
+                    narration_name=self.audio.name,
+                    narration_sha256=digest, execute=True)
+
+    def test_final_aac_decode_must_preserve_energy_in_each_beat(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            movie = root / "episode.mp4"
+            movie.write_bytes(b"synthetic final AAC container")
+            movie.chmod(0o600)
+            stage = root / "stage"
+            stage.mkdir(mode=0o700)
+
+            def decode_with_audio(command, **kwargs):
+                # Model the bytes FFmpeg decodes from the final AAC stream.
+                write_wav(Path(command[-1]), amplitude=5000)
+                return subprocess.CompletedProcess(command, 0)
+
+            with patch("kidsstudio.first_colors_episode._run",
+                       side_effect=decode_with_audio):
+                _verify_final_audio_beats(movie=movie, stage=stage)
+
+            def decode_with_missing_beat(command, **kwargs):
+                write_wav(Path(command[-1]), amplitude=5000, silent_beats=(3,))
+                return subprocess.CompletedProcess(command, 0)
+
+            failed_stage = root / "failed-stage"
+            failed_stage.mkdir(mode=0o700)
+            with patch("kidsstudio.first_colors_episode._run",
+                       side_effect=decode_with_missing_beat):
+                with self.assertRaisesRegex(EpisodeMuxError, "Final MP4 audio"):
+                    _verify_final_audio_beats(movie=movie, stage=failed_stage)
 
     def test_retry_after_render_failure_uses_fresh_private_stage(self):
         write_wav(self.audio, amplitude=5000)
@@ -199,7 +260,8 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                     "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
                     "final_mp4_sha256": "d" * 64,
                     "final_mp4_bytes": 1234,
-                }):
+                }), patch(
+                "kidsstudio.first_colors_episode._verify_final_audio_beats") as verify:
             with self.assertRaisesRegex(EpisodeMuxError, "interruption"):
                 run_first_colors_episode(
                     output_root=str(self.private), output_name="retry_after_render.mp4",
@@ -212,6 +274,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
 
         self.assertEqual(resumed["status"], "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED")
         self.assertEqual(attempts["count"], 2)
+        verify.assert_called_once()
         stages = list(self.private.glob("retry_after_render-pilot-sources*"))
         self.assertEqual(len(stages), 2)
         self.assertTrue(all(stage.is_dir() and stage.stat().st_mode & 0o077 == 0
@@ -372,7 +435,8 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                        "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
                        "final_mp4_sha256": "b" * 64,
                        "final_mp4_bytes": 2400,
-                   }) as mux:
+                   }) as mux, patch(
+                   "kidsstudio.first_colors_episode._verify_final_audio_beats") as verify:
             result = run_first_colors_episode(
                 output_root=str(self.private), execute=True)
         self.assertEqual(result["status"], "COLORS_EPISODE_PRIVATE_FILE_UNREVIEWED")
@@ -382,6 +446,7 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         self.assertFalse(result["voice_pronunciation_reviewed"])
         self.assertEqual(result["final_mp4_sha256"], "b" * 64)
         self.assertTrue(mux.call_args.kwargs["execute"])
+        verify.assert_called_once()
         stage = next(self.private.glob("colors_ar_01-pilot-sources-*"))
         self.assertEqual(mux.call_args.kwargs["narration_sha256"], hashlib.sha256(
             (stage / "arabic_voice.wav").read_bytes()).hexdigest())
@@ -413,12 +478,14 @@ class FirstColorsEpisodeTests(unittest.TestCase):
                        "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
                        "final_mp4_sha256": "b" * 64,
                        "final_mp4_bytes": 2400,
-                   }):
+                   }), patch(
+                   "kidsstudio.first_colors_episode._verify_final_audio_beats") as verify:
             result = run_first_colors_episode(
                 output_root=str(self.private), execute=True)
         self.assertEqual(order, ["voice", "video"])
         self.assertTrue(result["render_executed"])
         self.assertFalse(result["publication_approved"])
+        verify.assert_called_once()
 
     def test_missing_or_incomplete_native_voice_skips_visual_encode(self):
         for reason in ("silent cue", "beat too long", "cannot synthesize"):
