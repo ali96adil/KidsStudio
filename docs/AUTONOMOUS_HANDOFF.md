@@ -7,8 +7,10 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `92003a625f6fcacd21896541abb64f9b9258796e`.
-- Latest regression/test head: `92003a625f6fcacd21896541abb64f9b9258796e`.
+- Current code head: `7dcc5daa1aa2714e598282317d0b7939f7851ae2`.
+- Latest regression/test head: `7dcc5daa1aa2714e598282317d0b7939f7851ae2`.
+- Rollback before Batch 74T: `207f0e859edc8c76d0973d9b29e74de491e9bffe`.
+- Rollback before Batch 74S: `87e42cf1ce1dedfdb85deddfec3ef9faa110d590`.
 - Rollback before Batch 74R: `0ca6da65ab936dd5e40f210c0a650714c5611c41`.
 - Rollback before Batch 74Q: `8728906d455cd56f0e005861efffa1418371fa3a`.
 - Rollback before Batch 74P: `197e23cd7af83bfe0384abc45b3fec819d1086eb`.
@@ -32,6 +34,24 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74T — Keep hosted macOS smoke aligned with retry staging
+
+- The first CI run after Batch 74S exposed that the macOS synthetic-tone harness still expected a fixed staging directory. The macOS unit suite and other smoke tests passed, but the full native-mode synthetic pipeline failed at that stale path.
+- Added a resolver that requires exactly one private per-attempt workspace and fails closed if it is missing, ambiguous, symlinked, or not private. Added success, missing-directory, and ambiguous-directory regression coverage.
+- A first integration commit (`fe25db86`) was accidentally built from an older tree and dropped Batch 74S files; the failing CI exposed this. A forward-only recovery commit (`7dcc5daa`) restored Batch 74S and retained the smoke fix. No history was rewritten.
+- `python scripts/run_tests.py`: **894 tests passed**; 33 focused tests passed; compileall and `git diff --check` passed. The native-mode smoke also passed locally with a Darwin platform stub and real FFmpeg using synthetic tones only.
+- GitHub on `7dcc5daa1aa2714e598282317d0b7939f7851ae2`: Python 3.11/3.12/3.13, macOS, Godot, and original-colors/FFmpeg checks all **success**.
+- These checks qualify CI orchestration and synthetic media only; no real Arabic speech, owner Mac, Pi, model, paid API, upload, or publishing was qualified or used.
+
+### Batch 74S — Retry interrupted episode renders in a fresh staging area
+
+- Regression first exposed that a render failure left a fixed-name staging directory; retrying the same episode failed at `mkdir` before a new render could start.
+- Each render attempt now creates a fresh owner-private staging directory. Partial artifacts from earlier attempts are preserved for diagnosis, never reused or overwritten. The regression covers a failed render followed by a successful retry and verifies both isolated directories remain private.
+- This enables safe retry after a failed local render call; it does not implement persisted render-task resumption across process restarts or prove real Mac narration quality.
+- `python -m unittest tests.test_first_colors_episode -v`: **24 tests passed**; `python scripts/run_tests.py`: **893 tests passed**; compileall and `git diff --check` passed.
+- Hosted macOS later exposed the stale smoke path described in Batch 74T; the regression was corrected and all checks now pass on the recovered code head.
+- No real model, paid API, external research, Pi, OAuth, YouTube, public release, or owner device was used.
 
 ### Batch 74R — Gate Director auto-approval on requested writing script
 
@@ -274,13 +294,13 @@ Updated: 2026-11-12
 
 ## Open work and priorities
 
-1. Confirm the remaining macOS and aggregate CI runs for Batch 74R; this handoff records them as in progress until rechecked on GitHub.
+1. At session start, verify the live branch head, PR #33, and CI; current checks pass on `7dcc5daa`.
 2. Continue auditing the synthetic episode path for evidence gaps that can be qualified locally (presence is not speech; technical MP4 checks are not educational or language review). Choose a single demonstrated integration gap and add regression first.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not repeat Director retry tests without a new supported-path failure.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and confirm whether the Batch 74R macOS and aggregate CI runs have completed. Then audit the next single software-only episode integration gap with a regression-first test. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across the separate SQLite databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. Then audit the next single software-only episode integration gap with a regression-first test. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across the separate SQLite databases.
 
 ## Required limits
 
