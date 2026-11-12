@@ -40,6 +40,17 @@ class PrivateUploadGateTests(unittest.TestCase):
                             expected_sha256="0" * 64)
         self.assertEqual(result["status"], "PRIVATE_UPLOAD_BLOCKED")
 
+    def test_internal_mux_candidate_never_becomes_upload_eligible(self):
+        candidate = self.root / "verified-candidate.mp4"
+        candidate.write_bytes(self.data)
+        candidate.chmod(0o600)
+        result = check_private_upload_candidate(
+            private_root=self.root, relative_path=candidate.name,
+            expected_sha256=self.sha, owner_private_upload_authorized=True)
+        self.assertEqual(result["status"], "PRIVATE_UPLOAD_BLOCKED")
+        self.assertFalse(result["integrity_verified"])
+        self.assertFalse(result["upload_submitted"])
+
     def test_nonprivate_directory_rejected(self):
         self.root.chmod(0o755)
         with self.assertRaises(ValueError):

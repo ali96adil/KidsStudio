@@ -10,6 +10,8 @@ from pathlib import Path
 
 from .transfer_verify import verify_staged_file
 
+_INTERNAL_CANDIDATE = "verified-candidate.mp4"
+
 
 def check_private_upload_candidate(*, private_root: str | Path,
                                    relative_path: str, expected_sha256: str,
@@ -21,6 +23,18 @@ def check_private_upload_candidate(*, private_root: str | Path,
         raise ValueError("private root required")
     if root.stat().st_mode & 0o077:
         raise ValueError("private root permissions required")
+    if (isinstance(relative_path, str)
+            and _INTERNAL_CANDIDATE in relative_path.replace("\\", "/").split("/")):
+        return {
+            "schema_version": 1,
+            "status": "PRIVATE_UPLOAD_BLOCKED",
+            "integrity_verified": False,
+            "owner_private_upload_authorized": owner_private_upload_authorized,
+            "required_youtube_visibility": "private",
+            "upload_submitted": False,
+            "public_release_approved": False,
+            "publication_approved": False,
+        }
     verification = verify_staged_file(
         root=root, relative_path=relative_path, expected_sha256=expected_sha256
     )

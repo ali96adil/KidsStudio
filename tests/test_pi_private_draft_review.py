@@ -83,6 +83,19 @@ class PostPrivateDraftReviewTests(unittest.TestCase):
         self.assertFalse(report["publication_approved"])
         self.assertEqual(self.files(), [])
 
+    def test_internal_mux_candidate_cannot_become_owner_review_eligible(self):
+        candidate = self.inbox / "verified-candidate.mp4"
+        candidate.write_bytes(self.movie.read_bytes())
+        candidate.chmod(0o600)
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        self.update_journal(media_name=candidate.name, media_sha256=digest,
+                            media_bytes=candidate.stat().st_size)
+        with self.assertRaises(PrivateDraftReviewError):
+            inspect_uploaded_private_draft(
+                **self.params(relative_path=candidate.name,
+                              expected_sha256=digest))
+        self.assertEqual(self.files(), [])
+
     def test_a_pending_or_failed_private_upload_cannot_be_reviewed(self):
         for state in ("INITIATION_UNCERTAIN", "SESSION_ACTIVE",
                       "REMOTE_COMPLETED_UNVERIFIED", "failed", None):

@@ -39,6 +39,17 @@ class PrivateHandoffTests(unittest.TestCase):
                                       owner_private_upload_authorized=True)["status"],
                          "BLOCKED")
 
+    def test_internal_candidate_cannot_become_private_upload_handoff(self):
+        candidate = self.root / "verified-candidate.mp4"
+        candidate.write_bytes(self.data)
+        digest = hashlib.sha256(self.data).hexdigest()
+        report = self.prepare(relative_path=candidate.name,
+                              expected_sha256=digest,
+                              owner_private_upload_authorized=True)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertFalse(report["upload_submitted"])
+        self.assertFalse(report["publication_approved"])
+
     def test_invalid_episode_id_rejected(self):
         with self.assertRaises(ValueError):
             self.prepare(episode_id="../secret")
