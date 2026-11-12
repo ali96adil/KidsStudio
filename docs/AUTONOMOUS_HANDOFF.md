@@ -7,8 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `a3e945200869ee799b93383f654615947331623a`.
-- Latest regression/test head: `a3e945200869ee799b93383f654615947331623a`.
+- Current code head: `4270c21dce045135996c6981e7c102c19e4c0ef9`.
+- Latest regression/test head: `4270c21dce045135996c6981e7c102c19e4c0ef9`.
+- Rollback before Batch 74P: `197e23cd7af83bfe0384abc45b3fec819d1086eb`.
 - Rollback before Batch 74O: `3237ef715b017a94b19ac4f21dee528d0a8b15f7`.
 - Rollback before Batch 74N: `39c0457595c4e3750c00fb991db7b07ebe01f29c`.
 - Rollback before Batch 74M: `fefb67bcd981d171f03971be9ac4071f8fbea250`.
@@ -29,6 +30,15 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74P — Match storyboard timing to the rendered colors pilot
+
+- Regression first exposed that `colors_ar_01_pilot_cues.json` and the renderer used the same six Arabic lines but different timings: 12 seconds with two-second beats in the storyboard versus 24 seconds with four-second beats in the current pilot.
+- Updated the draft storyboard and pilot instructions to six four-second beats (24 seconds), matching the current renderer and WAV contract. Added a regression that checks episode ID, narration order, total duration, and contiguous beat boundaries so the manifest cannot silently drift from the renderer.
+- `python scripts/run_tests.py`: **889 tests passed**; `python -m compileall -q kidsstudio tests scripts`, JSON parsing, `git diff --check`, and the real FFmpeg synthetic-tone episode smoke passed.
+- GitHub on code head `4270c21dce045135996c6981e7c102c19e4c0ef9`: CI `43172239739`, macOS `43172239761`, Godot `43172239714`, and FFmpeg/colors `43172239683` all **success**.
+- Timing agreement is a technical integration check; it does not establish educational appropriateness, speech quality, Arabic pronunciation, or owner approval. The real Arabic episode on the owner's Mac remains **Pending Physical Qualification**.
+- No real model, paid API, external research, Pi, OAuth, YouTube, public release, or owner device was used.
 
 ### Batch 74O — Reject silent supplied narration before episode render
 
