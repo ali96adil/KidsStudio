@@ -92,6 +92,28 @@ class MacToPiTransferTests(unittest.TestCase):
         self.assertEqual(self.runner.calls, [])
         self.assertEqual(list(self.pi.iterdir()), [])
 
+    def test_private_episode_attempt_candidate_is_not_transferable(self):
+        attempt = self.mac / "colors_ar_01-pilot-sources-0123456789abcdef"
+        attempt.mkdir(mode=0o700)
+        candidate = attempt / "verified-candidate.mp4"
+        candidate.write_bytes(b"candidate awaiting final audio gate")
+        candidate.chmod(0o600)
+        root_candidate = self.mac / candidate.name
+        root_candidate.write_bytes(candidate.read_bytes())
+        root_candidate.chmod(0o600)
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        for path in (
+            attempt.name + "/" + candidate.name,
+            attempt.name + "\\" + candidate.name,
+            candidate.name,
+        ):
+            with self.subTest(path=path), self.assertRaises(MacPiTransferError):
+                make_transfer_plan(
+                    video_root=str(self.mac), relative_path=path,
+                    expected_sha256=digest, destination_name="candidate.mp4",
+                    pi_host="pi.local", pi_user="pi")
+        self.assertEqual(self.runner.calls, [])
+
     def test_real_stream_mocked_receiver_and_ssh_host_checks(self):
         report = self.transfer(execute=True)
         self.assertEqual(report["status"], "MAC_PI_PRIVATE_TRANSFER_VERIFIED")

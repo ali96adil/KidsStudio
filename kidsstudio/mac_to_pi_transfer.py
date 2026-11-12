@@ -26,6 +26,8 @@ _USER = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 _PYTHON = re.compile(r"(?:python3|/[A-Za-z0-9_./-]+)\Z")
 _MAX_BYTES = 20 * 1024**3
 _MAX_REPORT = 8192
+_ATTEMPT_STAGE = re.compile(r".+-pilot-sources-[0-9a-f]{16}\Z")
+_INTERNAL_CANDIDATE = "verified-candidate.mp4"
 
 
 class MacPiTransferError(ValueError):
@@ -59,6 +61,14 @@ def make_transfer_plan(
             or not isinstance(expected_sha256, str)
             or not _SHA.fullmatch(expected_sha256)):
         raise MacPiTransferError("Invalid MP4 destination or trusted digest.")
+    # The original-colors renderer keeps muxed outputs under a private
+    # per-attempt directory until its final AAC gate passes. Do not let the
+    # generic transfer entry point bypass that gate by selecting the internal
+    # candidate directly (including Windows-style separators).
+    path_parts = relative_path.replace("\\", "/").split("/")
+    if (_INTERNAL_CANDIDATE in path_parts
+            or any(_ATTEMPT_STAGE.fullmatch(part) for part in path_parts)):
+        raise MacPiTransferError("Unverified episode attempt media cannot be transferred.")
     source = private_evidence_file(video_root, relative_path, max_bytes=_MAX_BYTES)
     checked = verify_staged_file(
         root=video_root, relative_path=relative_path,
