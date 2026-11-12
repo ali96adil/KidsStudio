@@ -7,9 +7,10 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `5fb605658e69f95dd1480e81c61dfbbcaa32dc95`.
-- Latest regression/test head: `5fb605658e69f95dd1480e81c61dfbbcaa32dc95`.
-- Handoff update parent: `c7d9e2d84f4f7167ed9fa0a6fc29b89fc29d1e25`.
+- Current code head: `8d33abb13cdbf4b03244ff6635a2dda99580abb5`.
+- Latest regression/test head: `8d33abb13cdbf4b03244ff6635a2dda99580abb5`.
+- Handoff update parent: `f65df1eb2c65dd06e7b05ee38c4ec41fb42e290e`.
+- Rollback before Batch 75J: `f65df1eb2c65dd06e7b05ee38c4ec41fb42e290e`.
 - Rollback before Batch 75I: `aa191c328ca644a926bfa12eec2567716a744f32`.
 - Rollback before Batch 75H: `c7d9e2d84f4f7167ed9fa0a6fc29b89fc29d1e25`.
 - Rollback before Batch 75G: `f1b035e66eeb19c381cb11f8a25c1f20807c8138`.
@@ -45,12 +46,20 @@ Updated: 2026-11-12
 
 ## Last completed batch
 
+### Batch 75J — Bind uploader recovery to journal media anchors
+
+- Regression reproduced that, after an interrupted resumable upload, changing the private journal's `media_name` while retaining the request fingerprint still allowed retry to continue and call transport.
+- Existing-journal validation now requires the persisted media SHA, exact byte count, media name, and episode ID to match the current verified request, in addition to the request fingerprint. Mismatch is rejected before OAuth token retrieval or transport, and the conflicting journal is left untouched for diagnosis.
+- `python -m unittest tests.test_pi_youtube_private_upload -v`: **24 passed**; `python scripts/run_tests.py`: **915 passed**; compileall and `git diff --check` passed.
+- GitHub runs on code head `8d33abb13cdbf4b03244ff6635a2dda99580abb5`: CI `43241365265`, macOS `43241364653`, Godot `43241364752`, and FFmpeg `43241364712` were pending at handoff preparation. Do not infer completion.
+- Only synthetic transport/credentials were used. No real OAuth, upload, Pi, owner-device operation, publication or spending. Rollback before Batch 75J: `f65df1eb2c65dd06e7b05ee38c4ec41fb42e290e`.
+
 ### Batch 75I — Prove internal candidate stops before Pi uploader side effects
 
 - Added an end-to-end uploader regression for the reserved `verified-candidate.mp4`: even with explicit synthetic authorization and matching digest, execution stops before OAuth token retrieval, transport calls, or journal creation.
 - The existing upload gate and dry-run → handoff chain already enforced the block; no uploader production change was required.
 - Focused Pi upload/handoff/review/inbox suite: **78 passed**; `python scripts/run_tests.py`: **914 passed**; compileall and `git diff --check` passed.
-- GitHub CI, macOS, Godot, and FFmpeg runs for `5fb605658e69f95dd1480e81c61dfbbcaa32dc95` (`43220358930`, `43220358984`, `43220359028`, `43220358999`) are **in progress** at handoff preparation.
+- GitHub on code head `5fb605658e69f95dd1480e81c61dfbbcaa32dc95`: CI `43220358930`, macOS `43220358984`, Godot `43220359028`, and FFmpeg `43220358999` — **success**.
 - No real credential, network call, upload, owner device, or publication was used. Rollback before Batch 75I: `aa191c328ca644a926bfa12eec2567716a744f32`.
 
 ### Batch 75H — Qualify reserved candidate blocking in Pi review inbox
@@ -396,12 +405,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Audit Pi upload-journal recovery/resume paths for stale artifact identity and side-effect ordering; add Regression before any supported-path fix. Keep all credential/network checks synthetic.
+2. Inspect remaining uploader journal states and interruption boundaries for mismatched persisted fields or unsafe retry side effects; Regression first and use synthetic transport only.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not treat energy gates as speech/language review.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (runs `43220358930`, `43220358984`, `43220359028`, `43220358999` were pending at this handoff update). Then audit Pi upload-journal recovery/resume paths for stale artifact identity and side-effect ordering; write a regression first if a supported-path gap exists and keep credentials/network synthetic. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (runs `43241365265`, `43241364653`, `43241364752`, `43241364712` were pending at this handoff update). Then inspect remaining uploader journal states and interruption boundaries for mismatched persisted fields or unsafe retry side effects; Regression first and synthetic transport only. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
 
 ## Required limits
 
