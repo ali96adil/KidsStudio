@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+from datetime import datetime
 import hashlib
 import json
 import math
@@ -934,7 +935,11 @@ class StudioDirector:
             raise ValueError("measurement source must be an allowed caller assertion")
         observed_at = _text(observed_at, "measurement observed_at", 40)
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})?)?", observed_at):
-            raise ValueError("measurement observed_at must be an ISO date or timestamp")
+            raise ValueError("measurement observed_at must be a valid ISO date or timestamp")
+        try:
+            datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("measurement observed_at must be a valid ISO date or timestamp") from exc
         if not isinstance(metrics, dict) or not metrics or set(metrics) - _MEASUREMENT_METRICS:
             raise ValueError("metrics must contain only supported aggregate counters")
         clean_metrics = {}

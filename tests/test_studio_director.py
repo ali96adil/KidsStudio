@@ -1069,6 +1069,19 @@ class StudioDirectorTests(unittest.TestCase):
                                               "request_key": "measurement-bad-sha",
                                               "episode_version_sha256": "not-a-sha"})
 
+    def test_measurement_rejects_impossible_timestamp_and_unrecognized_source(self):
+        proposal_id = self._completed_trial("measurement-date-validation")
+        args = dict(proposal_id=proposal_id, request_key="measurement-bad-time",
+                    episode_version_sha256="e" * 64, metrics={"views": 1},
+                    source_kind="OWNER_SUPPLIED_AGGREGATE", observed_at="2026-99-99")
+        with self.assertRaisesRegex(ValueError, "valid ISO date"):
+            self.store.record_measurement(**args)
+        with self.assertRaisesRegex(ValueError, "source"):
+            self.store.record_measurement(**{**args, "request_key": "measurement-bad-source",
+                                              "observed_at": "2026-11-12",
+                                              "source_kind": "arbitrary text with private notes"})
+        self.assertEqual(self.store.list_measurements(proposal_id=proposal_id), [])
+
 
 if __name__ == "__main__":
     unittest.main()
