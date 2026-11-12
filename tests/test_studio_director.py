@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from unittest.mock import patch
 
 from kidsstudio.studio_director import StudioDirector
-from kidsstudio.studio_queue import StudioQueue
+from kidsstudio.studio_queue import QueueError, StudioQueue
 from kidsstudio.studio_director import INTERNAL_TRIAL_POLICY, _result_code
 
 
@@ -705,6 +705,53 @@ class StudioDirectorTests(unittest.TestCase):
                 self.assertEqual(recovered["status"], "RESULT_RECORDED")
                 expected = "FAILED" if change == "state" else "COMPLETED"
                 self.assertEqual(recovered["queue_state"], expected)
+
+    def test_terminal_queue_state_cannot_change_after_confirmation_read(self):
+        for mode in ("completed", "failed", "cancelled"):
+            with self.subTest(mode=mode):
+                trial = self.store.run_internal_script_trial(**self.trial_args(
+                    f"terminal-confirmed-immutable-{mode}", SyntheticRouter()))
+                queue = StudioQueue(self.queue_path)
+                lease = None
+                if mode == "completed":
+                    lease = queue.claim(worker_id="confirmed-state-worker",
+                                        capabilities=["script_draft"])
+                    queue.complete(job_id=trial["queue_job_id"], worker_id="confirmed-state-worker",
+                                   generation=lease["generation"],
+                                   result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+                elif mode == "failed":
+                    lease = queue.claim(worker_id="confirmed-state-worker",
+                                        capabilities=["script_draft"])
+                    queue.fail(job_id=trial["queue_job_id"], worker_id="confirmed-state-worker",
+                               generation=lease["generation"], error_code="SYNTHETIC_FAILURE")
+                else:
+                    queue.cancel(trial["queue_job_id"])
+
+                original_get = StudioQueue.get
+                confirmations = {"count": 0}
+
+                def attempt_terminal_mutation_after_confirmation(queue_instance, job_id):
+                    snapshot = original_get(queue_instance, job_id)
+                    confirmations["count"] += 1
+                    if confirmations["count"] == 2:
+                        if mode == "completed":
+                            with self.assertRaisesRegex(QueueError, "Terminal jobs cannot be cancelled"):
+                                queue_instance.cancel(job_id)
+                        elif mode == "failed":
+                            with self.assertRaisesRegex(QueueError, "Stale, expired or revoked"):
+                                queue_instance.fail(job_id=job_id, worker_id="confirmed-state-worker",
+                                                    generation=lease["generation"],
+                                                    error_code="LATE_FAILURE")
+                        else:
+                            self.assertEqual(queue_instance.cancel(job_id)["state"], "CANCELLED")
+                    return snapshot
+
+                with patch.object(StudioQueue, "get", new=attempt_terminal_mutation_after_confirmation):
+                    recorded = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                              queue_database=self.queue_path)
+                self.assertEqual(recorded["status"], "RESULT_RECORDED")
+                self.assertEqual(recorded["queue_state"], mode.upper())
+                self.assertEqual(queue.get(trial["queue_job_id"])["state"], mode.upper())
 
     def test_failed_independent_review_defers_without_queue(self):
         router = SyntheticRouter(verdict="REVISE")
