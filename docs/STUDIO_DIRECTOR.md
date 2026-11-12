@@ -96,6 +96,22 @@ or review text. Pending, failed, or mismatched review leaves no Director result
 row, so the aggregate measurement scaffold cannot accept a receipt for that
 trial yet.
 
+After `record-result` succeeds, `prepare-production-handoff` can print a
+source-bound preparation reference:
+
+```bash
+studio-director --db "$HOME/kidsstudio-private/control/director.sqlite" \
+  prepare-production-handoff --proposal-id PROPOSAL_ID \
+  --queue-db "$HOME/kidsstudio-private/control/queue.sqlite"
+```
+
+The reference includes the Director decision, Queue job, draft and linked
+review identifiers, provider IDs, and artifact/result digests. It does not copy
+draft or review text, expose artifact paths, enqueue production work, or
+authorize production or publication. Research and artifact source authenticity
+remain unverified; hashes bind recorded bytes only. Owner review remains
+required before any production action.
+
 ## Qualification boundary
 
 Unit tests cover validation, evidence/rationale digest binding, immutable

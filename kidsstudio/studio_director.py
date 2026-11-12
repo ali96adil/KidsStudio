@@ -982,6 +982,131 @@ class StudioDirector:
                 "queue_state": state, "result_status": result_status,
                 "result_sha256": digest, "result_content_stored": False}
 
+    def prepare_private_production_handoff(self, *, proposal_id: str,
+                                           queue_database: str | Path) -> dict:
+        """Return a no-content, owner-gated reference to an exact reviewed draft."""
+        if not isinstance(proposal_id, str) or not _ID.fullmatch(proposal_id):
+            raise ValueError("invalid proposal id")
+        with self._connection(readonly=True) as db:
+            record = db.execute(
+                "SELECT p.proposal_json,p.proposal_sha256,d.decision_id,d.outcome,"
+                "pa.policy_id,di.queue_job_id,di.decision_id AS dispatch_decision_id,"
+                "r.decision_id AS result_decision_id,r.queue_job_id AS result_queue_job_id,"
+                "r.queue_state,r.result_status,r.result_sha256 "
+                "FROM proposals p JOIN decisions d USING(proposal_id) "
+                "LEFT JOIN policy_approvals pa USING(proposal_id) "
+                "JOIN dispatches di USING(proposal_id) "
+                "JOIN results r USING(proposal_id) WHERE p.proposal_id=?",
+                (proposal_id,),
+            ).fetchone()
+        if (record is None or record["outcome"] != "ACCEPTED"
+                or record["policy_id"] != INTERNAL_TRIAL_POLICY
+                or record["decision_id"] != record["dispatch_decision_id"]
+                or record["decision_id"] != record["result_decision_id"]
+                or record["queue_job_id"] != record["result_queue_job_id"]
+                or record["queue_state"] != "COMPLETED"
+                or record["result_status"] != "DRAFT_AND_EDITORIAL_REVIEW_RECORDED"):
+            raise ValueError("private production handoff requires a recorded linked editorial review")
+        proposal = json.loads(record["proposal_json"])
+        if not isinstance(proposal, dict) or proposal.get("job_kind") != "script_draft":
+            raise ValueError("private production handoff requires a script draft")
+        queue = StudioQueue(queue_database)
+
+        def handoff_snapshot() -> tuple[dict, str]:
+            parent = queue.get(record["queue_job_id"])
+            if parent.get("job_id") != record["queue_job_id"]:
+                raise ValueError("queue job identity does not match Director result")
+            if parent.get("kind") != "script_draft" or parent.get("state") != "COMPLETED":
+                raise ValueError("source draft is not completed")
+            draft_material = parent.get("result_json")
+            if not isinstance(draft_material, str):
+                raise ValueError("source draft has no result record")
+            draft = json.loads(draft_material)
+            payload_material = parent.get("payload")
+            if not isinstance(payload_material, str):
+                raise ValueError("source draft has no Queue payload")
+            payload = json.loads(payload_material)
+            if not isinstance(draft, dict) or not isinstance(payload, dict):
+                raise ValueError("source draft Queue records must be objects")
+            review_id = draft.get("next_review_job_id")
+            draft_sha = draft.get("artifact_sha256")
+            writer = draft.get("provider_id")
+            if (draft.get("status") != "DRAFTED_UNREVIEWED"
+                    or draft.get("publication_approved") is not False
+                    or not isinstance(review_id, str) or not _ID.fullmatch(review_id)
+                    or not isinstance(draft_sha, str) or not _SHA.fullmatch(draft_sha)
+                    or not isinstance(writer, str) or not _KEY.fullmatch(writer)):
+                raise ValueError("source draft handoff provenance is invalid")
+            review_job = queue.get(review_id)
+            expected_payload = {
+                "language": payload.get("language"),
+                "source_job_id": parent["job_id"],
+                "source_answer_sha256": draft_sha,
+                "original_provider_id": writer,
+            }
+            review_payload = json.loads(review_job["payload"])
+            if (review_job.get("kind") != "editorial_review"
+                    or review_job.get("state") != "COMPLETED"
+                    or not isinstance(review_payload, dict)
+                    or review_payload != expected_payload):
+                raise ValueError("linked editorial review provenance does not match draft")
+            review_material = review_job.get("result_json")
+            if not isinstance(review_material, str):
+                raise ValueError("linked editorial review has no result record")
+            review = json.loads(review_material)
+            if not isinstance(review, dict):
+                raise ValueError("linked editorial review result must be an object")
+            reviewer = review.get("provider_id")
+            review_sha = review.get("artifact_sha256")
+            if (review.get("status") != "EDITORIAL_REVIEW_UNVERIFIED"
+                    or review.get("publication_approved") is not False
+                    or not isinstance(reviewer, str) or not _KEY.fullmatch(reviewer)
+                    or reviewer == writer
+                    or not isinstance(review_sha, str) or not _SHA.fullmatch(review_sha)):
+                raise ValueError("linked editorial review result is invalid")
+            packed = json.dumps(
+                {"draft_result": draft, "review_job_id": review_id,
+                 "review_result": review},
+                sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                allow_nan=False,
+            )
+            digest = hashlib.sha256(packed.encode("utf-8")).hexdigest()
+            return ({"review_job_id": review_id, "draft_sha256": draft_sha,
+                     "writer_provider_id": writer, "review_sha256": review_sha,
+                     "reviewer_provider_id": reviewer}, digest)
+
+        snapshot, digest = handoff_snapshot()
+        confirmed, confirmed_digest = handoff_snapshot()
+        if snapshot != confirmed or digest != confirmed_digest \
+                or digest != record["result_sha256"]:
+            raise ValueError("Queue result changed while preparing private production handoff")
+        return {
+            "schema_version": 1,
+            "status": "SOURCE_BOUND_PRIVATE_PREPARATION_PENDING_OWNER_REVIEW",
+            "proposal_id": proposal_id,
+            "proposal_sha256": record["proposal_sha256"],
+            "decision_id": record["decision_id"],
+            "queue_job_id": record["queue_job_id"],
+            "result_status": record["result_status"],
+            "director_result_sha256": record["result_sha256"],
+            "draft": {"status": "DRAFTED_UNREVIEWED",
+                      "artifact_sha256": snapshot["draft_sha256"],
+                      "provider_id": snapshot["writer_provider_id"]},
+            "editorial_review": {
+                "job_id": snapshot["review_job_id"],
+                "status": "EDITORIAL_REVIEW_UNVERIFIED",
+                "artifact_sha256": snapshot["review_sha256"],
+                "provider_id": snapshot["reviewer_provider_id"],
+            },
+            "caller_supplied_research_verified": False,
+            "source_authenticity_verified": False,
+            "owner_review_required": True,
+            "production_authorized": False,
+            "production_execution_started": False,
+            "publication_approved": False,
+            "child_level_data_collected": False,
+        }
+
     def record_measurement(self, *, proposal_id: str, request_key: str,
                            episode_version_sha256: str, metrics: object,
                            source_kind: str, observed_at: str) -> dict:
@@ -1088,6 +1213,12 @@ def main(argv: list[str] | None = None) -> int:
     result_cmd = sub.add_parser("record-result")
     result_cmd.add_argument("--proposal-id", required=True)
     result_cmd.add_argument("--queue-db", required=True)
+    production_handoff = sub.add_parser(
+        "prepare-production-handoff",
+        help="Print an owner-gated reference to a completed, linked draft review",
+    )
+    production_handoff.add_argument("--proposal-id", required=True)
+    production_handoff.add_argument("--queue-db", required=True)
     args = parser.parse_args(argv)
     try:
         store = StudioDirector(args.db)
@@ -1124,6 +1255,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "record-result":
             result = store.record_queue_result(proposal_id=args.proposal_id,
                                                queue_database=args.queue_db)
+        elif args.action == "prepare-production-handoff":
+            result = store.prepare_private_production_handoff(
+                proposal_id=args.proposal_id, queue_database=args.queue_db)
         else:
             result = store.enqueue_accepted(proposal_id=args.proposal_id,
                                             queue_database=args.queue_db)

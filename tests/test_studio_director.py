@@ -266,6 +266,52 @@ class StudioDirectorTests(unittest.TestCase):
                                                         queue_database=self.queue_path)["status"],
                          "RESULT_EXISTS")
 
+    def test_private_production_handoff_is_source_bound_and_owner_gated(self):
+        proposal_id = self._completed_trial("private-preparation-handoff")
+        before_queue = StudioQueue(self.queue_path).list_jobs()
+        before_record = self.store.get(proposal_id=proposal_id)
+        handoff = self.store.prepare_private_production_handoff(
+            proposal_id=proposal_id, queue_database=self.queue_path)
+        self.assertEqual(handoff["status"],
+                         "SOURCE_BOUND_PRIVATE_PREPARATION_PENDING_OWNER_REVIEW")
+        self.assertEqual(handoff["result_status"], "DRAFT_AND_EDITORIAL_REVIEW_RECORDED")
+        self.assertEqual(handoff["draft"], {
+            "status": "DRAFTED_UNREVIEWED", "artifact_sha256": "a" * 64,
+            "provider_id": "writer-local",
+        })
+        review_job = next(job for job in before_queue
+                          if job["job_id"] == handoff["editorial_review"]["job_id"])
+        self.assertEqual(review_job["kind"], "editorial_review")
+        self.assertEqual(json.loads(review_job["payload"])["source_job_id"],
+                         handoff["queue_job_id"])
+        self.assertEqual(handoff["editorial_review"], {
+            "job_id": review_job["job_id"],
+            "status": "EDITORIAL_REVIEW_UNVERIFIED", "artifact_sha256": "b" * 64,
+            "provider_id": "reviewer-local",
+        })
+        self.assertNotEqual(handoff["draft"]["provider_id"],
+                            handoff["editorial_review"]["provider_id"])
+        self.assertFalse(handoff["caller_supplied_research_verified"])
+        self.assertFalse(handoff["source_authenticity_verified"])
+        self.assertTrue(handoff["owner_review_required"])
+        self.assertFalse(handoff["production_authorized"])
+        self.assertFalse(handoff["production_execution_started"])
+        self.assertFalse(handoff["publication_approved"])
+        packed = json.dumps(handoff)
+        self.assertNotIn("script_text", packed)
+        self.assertNotIn("artifact_manifest", packed)
+        self.assertNotIn("answer.txt", packed)
+        self.assertEqual(StudioQueue(self.queue_path).list_jobs(), before_queue)
+        self.assertEqual(self.store.get(proposal_id=proposal_id), before_record)
+
+    def test_private_production_handoff_requires_recorded_review_result(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "private-preparation-before-review", SyntheticRouter()))
+        with self.assertRaisesRegex(ValueError, "recorded linked editorial review"):
+            self.store.prepare_private_production_handoff(
+                proposal_id=trial["proposal_id"], queue_database=self.queue_path)
+        self.assertIsNone(self.store.get(proposal_id=trial["proposal_id"])["result"])
+
     def test_result_record_recovers_after_commit_before_caller_observes_success(self):
         router = SyntheticRouter()
         args = self.trial_args("crash-after-result", router)
