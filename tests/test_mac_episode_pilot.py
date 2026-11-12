@@ -5,12 +5,15 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 import wave
 
-from kidsstudio.mac_episode_pilot import run_mac_episode_pilot, main
+from kidsstudio.mac_episode_pilot import (
+    _verify_final_audio_beats, run_mac_episode_pilot, main,
+)
 from kidsstudio.mac_episode_audio import EpisodeMuxError
 
 
@@ -66,25 +69,177 @@ class MacEpisodePilotTests(unittest.TestCase):
             "status": "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW",
             "mp4_sha256": "a" * 64,
         }
-        fake_final = {
-            "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
-            "final_mp4_sha256": "b" * 64,
-            "final_mp4_bytes": 1050,
-        }
+        def fake_renderer(_project, render_dir):
+            render_dir.mkdir(mode=0o700)
+            return fake_native
+
+        def fake_mux(**kwargs):
+            candidate = Path(kwargs["output_root"]) / kwargs["output_name"]
+            candidate.write_bytes(b"synthetic candidate")
+            candidate.chmod(0o600)
+            return {
+                "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+                "final_mp4_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
+                "final_mp4_bytes": candidate.stat().st_size,
+            }
+
         with patch("kidsstudio.mac_episode_pilot.render_godot_project",
-                   return_value=fake_native) as renderer, \
+                   side_effect=fake_renderer) as renderer, \
              patch("kidsstudio.mac_episode_pilot.mux_episode_pilot",
-                   return_value=fake_final) as mux:
+                   side_effect=fake_mux) as mux, \
+             patch("kidsstudio.mac_episode_pilot._verify_final_audio_beats") as verify:
             result = run_mac_episode_pilot(**self.params(execute=True))
         self.assertEqual(result["status"], "MAC_PILOT_FINAL_MP4_PRIVATE_UNREVIEWED")
-        self.assertEqual(result["final_mp4_sha256"], "b" * 64)
         self.assertTrue(result["narration_mixed"])
         self.assertFalse(result["publication_approved"])
+        self.assertEqual(result["final_mp4_sha256"], hashlib.sha256(
+            (self.out / "colors_ar_01.mp4").read_bytes()).hexdigest())
         renderer.assert_called_once()
         mux.assert_called_once()
         self.assertTrue(mux.call_args.kwargs["execute"])
         self.assertEqual(mux.call_args.kwargs["video_sha256"], "a" * 64)
         self.assertEqual(mux.call_args.kwargs["narration_sha256"], self.digest)
+        self.assertEqual(mux.call_args.kwargs["output_root"], str(
+            self.out / "colors_ar_01-godot-render"))
+        self.assertEqual(mux.call_args.kwargs["output_name"], "verified-candidate.mp4")
+        verify.assert_called_once_with(
+            movie=self.out / "colors_ar_01-godot-render" / "verified-candidate.mp4",
+            stage=self.out / "colors_ar_01-godot-render", beat_durations=[4])
+
+    def test_failed_post_mux_aac_gate_does_not_publish_final_name(self):
+        fake_native = {
+            "status": "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW",
+            "mp4_sha256": "a" * 64,
+        }
+
+        def fake_renderer(_project, render_dir):
+            render_dir.mkdir(mode=0o700)
+            return fake_native
+
+        def fake_mux(**kwargs):
+            candidate = Path(kwargs["output_root"]) / kwargs["output_name"]
+            candidate.write_bytes(b"muxed synthetic candidate")
+            candidate.chmod(0o600)
+            return {
+                "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+                "final_mp4_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
+                "final_mp4_bytes": candidate.stat().st_size,
+            }
+
+        with patch("kidsstudio.mac_episode_pilot.render_godot_project",
+                   side_effect=fake_renderer), patch(
+                "kidsstudio.mac_episode_pilot.mux_episode_pilot",
+                side_effect=fake_mux), patch(
+                "kidsstudio.mac_episode_pilot._verify_final_audio_beats",
+                side_effect=EpisodeMuxError("Final AAC beat is silent"),
+                create=True):
+            with self.assertRaisesRegex(EpisodeMuxError, "Final AAC"):
+                run_mac_episode_pilot(**self.params(execute=True))
+
+        self.assertFalse((self.out / "colors_ar_01.mp4").exists())
+
+    def test_verified_candidate_is_promoted_without_overwrite(self):
+        fake_native = {
+            "status": "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW",
+            "mp4_sha256": "a" * 64,
+        }
+
+        def fake_renderer(_project, render_dir):
+            render_dir.mkdir(mode=0o700)
+            return fake_native
+
+        def fake_mux(**kwargs):
+            candidate = Path(kwargs["output_root"]) / kwargs["output_name"]
+            candidate.write_bytes(b"verified synthetic candidate")
+            candidate.chmod(0o600)
+            return {
+                "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+                "final_mp4_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
+                "final_mp4_bytes": candidate.stat().st_size,
+            }
+
+        with patch("kidsstudio.mac_episode_pilot.render_godot_project",
+                   side_effect=fake_renderer), patch(
+                "kidsstudio.mac_episode_pilot.mux_episode_pilot",
+                side_effect=fake_mux), patch(
+                "kidsstudio.mac_episode_pilot._verify_final_audio_beats",
+                create=True) as verify:
+            result = run_mac_episode_pilot(**self.params(execute=True))
+
+        final = self.out / "colors_ar_01.mp4"
+        candidate = self.out / "colors_ar_01-godot-render" / "verified-candidate.mp4"
+        self.assertEqual(result["status"], "MAC_PILOT_FINAL_MP4_PRIVATE_UNREVIEWED")
+        self.assertTrue(final.is_file())
+        self.assertEqual(final.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(final.read_bytes(), candidate.read_bytes())
+        self.assertEqual(result["final_mp4_sha256"], hashlib.sha256(final.read_bytes()).hexdigest())
+        self.assertEqual(result["final_mp4_bytes"], final.stat().st_size)
+        verify.assert_called_once()
+
+    def test_final_aac_energy_gate_checks_each_scene_beat(self):
+        def decode_with(samples_by_beat):
+            def fake_ffmpeg(command, **_kwargs):
+                target = Path(command[-1])
+                with wave.open(str(target), "wb") as handle:
+                    handle.setnchannels(1)
+                    handle.setsampwidth(2)
+                    handle.setframerate(16000)
+                    for samples in samples_by_beat:
+                        handle.writeframes(samples)
+                return subprocess.CompletedProcess(command, 0, b"", b"")
+            return fake_ffmpeg
+
+        active = (2000).to_bytes(2, "little", signed=True) * 16000
+        silent = b"\0\0" * 16000
+        with patch("kidsstudio.mac_episode_pilot.subprocess.run",
+                   side_effect=decode_with([active, active])):
+            _verify_final_audio_beats(
+                movie=self.wav, stage=self.out, beat_durations=[1, 1])
+
+        for decoded in self.out.iterdir():
+            decoded.unlink()
+        with patch("kidsstudio.mac_episode_pilot.subprocess.run",
+                   side_effect=decode_with([active, silent])):
+            with self.assertRaisesRegex(EpisodeMuxError, "story beat"):
+                _verify_final_audio_beats(
+                    movie=self.wav, stage=self.out, beat_durations=[1, 1])
+
+    def test_final_publish_race_preserves_existing_file(self):
+        fake_native = {
+            "status": "VIDEO_RENDERED_PENDING_FINAL_VISUAL_REVIEW",
+            "mp4_sha256": "a" * 64,
+        }
+
+        def fake_renderer(_project, render_dir):
+            render_dir.mkdir(mode=0o700)
+            return fake_native
+
+        def fake_mux(**kwargs):
+            candidate = Path(kwargs["output_root"]) / kwargs["output_name"]
+            candidate.write_bytes(b"candidate")
+            candidate.chmod(0o600)
+            return {
+                "status": "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED",
+                "final_mp4_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
+                "final_mp4_bytes": candidate.stat().st_size,
+            }
+
+        final = self.out / "colors_ar_01.mp4"
+
+        def race_create_final(**_kwargs):
+            final.write_bytes(b"another completed private result")
+            final.chmod(0o600)
+
+        with patch("kidsstudio.mac_episode_pilot.render_godot_project",
+                   side_effect=fake_renderer), patch(
+                "kidsstudio.mac_episode_pilot.mux_episode_pilot",
+                side_effect=fake_mux), patch(
+                "kidsstudio.mac_episode_pilot._verify_final_audio_beats",
+                side_effect=race_create_final):
+            with self.assertRaises(FileExistsError):
+                run_mac_episode_pilot(**self.params(execute=True))
+
+        self.assertEqual(final.read_bytes(), b"another completed private result")
 
     def test_silent_narration_is_rejected_before_godot_render(self):
         with wave.open(str(self.wav), "wb") as handle:

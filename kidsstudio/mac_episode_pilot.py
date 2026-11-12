@@ -6,9 +6,12 @@ Godot/FFmpeg only. No model, paid API, SSH, YouTube, or publishing.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
 
 from .audio_pcm_energy import AudioPresenceError, check_pcm_timeline_energy
 from .godot_export import GodotExportError, load_scene_spec
@@ -21,6 +24,40 @@ from .transfer_verify import verify_staged_file
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,158}\.mp4\Z")
 _SHA = re.compile(r"[a-fA-F0-9]{64}\Z")
+
+
+def _file_sha256(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def _verify_final_audio_beats(*, movie: Path, stage: Path,
+                              beat_durations: list[float]) -> None:
+    """Decode final AAC and require signal energy in every validated scene beat."""
+    decoded = stage / "final-aac-audio-check.wav"
+    if decoded.exists() or decoded.is_symlink():
+        raise EpisodeMuxError("Final AAC check workspace is not fresh.")
+    duration = sum(beat_durations)
+    command = [
+        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
+        "-i", str(movie), "-map", "0:a:0", "-vn", "-t", f"{duration:.3f}",
+        "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(decoded),
+    ]
+    try:
+        done = subprocess.run(command, capture_output=True, timeout=90, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise EpisodeMuxError("Final MP4 AAC decode failed.") from exc
+    if (done.returncode != 0 or not decoded.is_file() or decoded.is_symlink()
+            or decoded.stat().st_size > 128 * 1024**2):
+        raise EpisodeMuxError("Final MP4 AAC decode is missing or oversized.")
+    os.chmod(decoded, 0o600)
+    try:
+        check_pcm_timeline_energy(
+            root=str(stage), relative_path=decoded.name,
+            beat_durations=beat_durations)
+    except (AudioPresenceError, OSError, ValueError) as exc:
+        raise EpisodeMuxError(
+            "Final MP4 audio is missing energy in a story beat.") from exc
 
 
 def run_mac_episode_pilot(
@@ -103,11 +140,26 @@ def run_mac_episode_pilot(
         video_sha256=native["mp4_sha256"],
         narration_root=narration_root, narration_name=narration_name,
         narration_sha256=narration_sha256,
-        output_root=str(output), output_name=output_name,
+        output_root=str(render_dir), output_name="verified-candidate.mp4",
         execute=True,
     )
     if result.get("status") != "MAC_EPISODE_MUXED_PRIVATE_UNREVIEWED":
         raise EpisodeMuxError("Audio/video finalization failed.")
+    candidate = render_dir / "verified-candidate.mp4"
+    beats = [beat["end"] - beat["start"] for beat in scene["beats"]]
+    _verify_final_audio_beats(
+        movie=candidate, stage=render_dir, beat_durations=beats)
+    if (candidate.is_symlink() or not candidate.is_file()
+            or candidate.stat().st_mode & 0o077
+            or candidate.stat().st_size != result.get("final_mp4_bytes")
+            or _file_sha256(candidate) != result.get("final_mp4_sha256")):
+        raise EpisodeMuxError("Final MP4 changed during independent audio verification.")
+    os.link(candidate, finished, follow_symlinks=False)
+    dirfd = os.open(output, os.O_RDONLY)
+    try:
+        os.fsync(dirfd)
+    finally:
+        os.close(dirfd)
     preliminary.update({
         "status": "MAC_PILOT_FINAL_MP4_PRIVATE_UNREVIEWED",
         "render_executed": True,
