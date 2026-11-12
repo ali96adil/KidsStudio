@@ -7,8 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `ef09fb59f21e1ea8026173bb96c26a3524942a4d`.
-- Latest regression/test head: `ef09fb59f21e1ea8026173bb96c26a3524942a4d`.
+- Current code head: `f37fe02281855dfad8de1171ccd176911204ab9b`.
+- Latest regression/test head: `f37fe02281855dfad8de1171ccd176911204ab9b`.
+- Rollback before Batch 75C: `34e895fae3249e6414dfeff1f49b407bf8b32b48`.
 - Rollback before Batch 75B: `1b347f395c5f6fd6e0cc5775c60d723b7bad7b37`.
 - Rollback before Batch 75A: `c0ef2d1c03b43c434122af6242c3610547667ab2`.
 - Rollback before Batch 74T: `207f0e859edc8c76d0973d9b29e74de491e9bffe`.
@@ -36,6 +37,16 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 75C — Gate Godot pilot narration against the scene timeline
+
+- Regression first proved that `run_mac_episode_pilot` accepted a fully silent SHA-pinned WAV and proceeded into Godot rendering. The same path could accept a WAV with one silent scene beat.
+- Added a reusable PCM energy checker for validated scene beat durations. In execute mode the Godot pilot now checks each segment before rendering; silent or partial-beat silence blocks Godot and mux. Preview mode remains read-only and does not require audible audio.
+- The established six-beat colors gate now delegates to the shared timeline checker without changing its report contract. Checks remain signal-energy heuristics; they do not verify speech, language, words, clipping, educational correctness or owner review.
+- `python -m unittest tests.test_audio_pcm_energy tests.test_mac_episode_pilot -v`: **25 tests passed**; `python scripts/run_tests.py`: **902 tests passed**; compileall and `git diff --check` passed.
+- GitHub on code head `f37fe02281855dfad8de1171ccd176911204ab9b`: CI `43200187015`, macOS `43200187067`, Godot `43200187151`, and FFmpeg/original-colors `43200187217` all **success**. macOS used hosted synthetic tones and did not qualify the owner's device or Arabic voice.
+- Rollback before Batch 75C: `34e895fae3249e6414dfeff1f49b407bf8b32b48`. No actual Mac/Pi deployment, model, paid API, upload, publication or spending was used.
+
 
 ### Batch 75B — Block direct transfer of unverified episode candidates
 
@@ -329,7 +340,7 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Audit `run_mac_episode_pilot` (Godot renderer path) for a missing per-beat audio presence gate; add a regression first and only repair if the silent/partial-WAV case is accepted.
+2. Audit final AAC energy and no-overwrite promotion in `run_mac_episode_pilot`; add a Regression first because the original-colors path now gates post-mux AAC but the Godot path only gates source PCM. Keep the check tied to the actual scene timeline.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not repeat Director retry tests without a new supported-path failure.
 
 ## First action next session
