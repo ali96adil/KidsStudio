@@ -287,6 +287,13 @@ class StudioDirectorTests(unittest.TestCase):
                     queue.cancel(trial["queue_job_id"])
                     expected_state = "CANCELLED"
                 queue_events_before = queue.events(trial["queue_job_id"])
+                expected_event = {
+                    "COMPLETED": "COMPLETED",
+                    "FAILED": "FAILED",
+                    "CANCELLED": "CANCELLED",
+                }[expected_state]
+                self.assertEqual(sum(event["event_type"] == expected_event
+                                     for event in queue_events_before), 1)
 
                 original_connection = self.store._connection
 
