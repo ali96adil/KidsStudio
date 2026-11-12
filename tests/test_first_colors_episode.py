@@ -16,7 +16,7 @@ import wave
 from PIL import Image
 
 from kidsstudio.first_colors_episode import (
-    CUES, DURATION, EpisodeMuxError, _arabic_voice, _render_silent,
+    CUES, DURATION, SECONDS_PER_SCENE, EpisodeMuxError, _arabic_voice, _render_silent,
     _synthesize_wav, main, run_first_colors_episode, scene_image,
 )
 
@@ -61,6 +61,21 @@ class FirstColorsEpisodeTests(unittest.TestCase):
         self.assertIn("التفاحة", CUES[2][1])
         self.assertIn("الشمس", CUES[3][1])
         self.assertIn("السماء", CUES[4][1])
+
+    def test_storyboard_text_and_timing_match_rendered_episode(self):
+        manifest = json.loads((Path(__file__).resolve().parents[1] /
+                               "examples/colors_ar_01_pilot_cues.json"
+                               ).read_text(encoding="utf-8"))
+        beats = manifest["beats"]
+        self.assertEqual(manifest["episode_id"], "colors_ar_01")
+        self.assertEqual(manifest["scene_duration_seconds"], DURATION)
+        self.assertEqual(tuple(beat["narration"] for beat in beats),
+                         tuple(text for _, text in CUES))
+        self.assertEqual(len(beats), len(CUES))
+        for index, beat in enumerate(beats):
+            with self.subTest(beat=index):
+                self.assertEqual(beat["start"], index * SECONDS_PER_SCENE)
+                self.assertEqual(beat["end"], (index + 1) * SECONDS_PER_SCENE)
 
     def test_out_of_bounds_scene_rejected(self):
         for number in (-1, 6, "2", True):

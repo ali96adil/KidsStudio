@@ -6,7 +6,7 @@ This pilot closes a practical gap between the existing **silent Godot 1280×720 
 
 ### First episode content
 
-`examples/colors_ar_01_pilot_cues.json` provides an original **12-second** Arabic colors concept with six two-second speech/visual beats. It is **a draft storyboard**, not an actual audio recording or color animation. **The existing bunny_scene.json only animates a character and does not render the needed colored objects.** Either make original visual assets matching the script, or revise the storyboard to correspond to the actual animation. Never claim visual educational correctness from the voice alone.
+`examples/colors_ar_01_pilot_cues.json` provides an original **24-second** Arabic colors concept with six four-second speech/visual beats, matching the current `first_colors_episode` pilot timing and narration. It is **a draft storyboard**, not an actual audio recording or an owner-qualified episode. Never assume the fixed beat length suits a real narrator: retime storyboard, scene and narration together. Never claim educational correctness from the voice alone.
 
 ### Required private sources (on the real Mac)
 

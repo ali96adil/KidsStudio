@@ -4,41 +4,41 @@
   "language": "ar",
   "working_title": "هيا نتعرف على الألوان",
   "status": "SCRIPT_PILOT_DRAFT_NEEDS_AUDIO_VISUAL_REVIEW",
-  "scene_duration_seconds": 12,
+  "scene_duration_seconds": 24,
   "beats": [
     {
       "start": 0,
-      "end": 2,
+      "end": 4,
       "narration": "أهلاً يا أصدقائي!",
       "visual_direction": "الشخصية ترحب بالأطفال بحركة بسيطة"
     },
     {
-      "start": 2,
-      "end": 4,
+      "start": 4,
+      "end": 8,
       "narration": "هيا نتعلم الألوان.",
       "visual_direction": "تظهر ثلاث بطاقات ألوان أصلية من إنتاجنا"
     },
     {
-      "start": 4,
-      "end": 6,
+      "start": 8,
+      "end": 12,
       "narration": "الأحمر مثل التفاحة.",
       "visual_direction": "تظهر تفاحة حمراء برسوم أصلية"
     },
     {
-      "start": 6,
-      "end": 8,
+      "start": 12,
+      "end": 16,
       "narration": "الأصفر مثل الشمس.",
       "visual_direction": "تظهر شمس صفراء برسوم أصلية"
     },
     {
-      "start": 8,
-      "end": 10,
+      "start": 16,
+      "end": 20,
       "narration": "الأزرق مثل السماء.",
       "visual_direction": "تظهر سماء زرقاء برسوم أصلية"
     },
     {
-      "start": 10,
-      "end": 12,
+      "start": 20,
+      "end": 24,
       "narration": "رائع! تعلمنا ثلاثة ألوان.",
       "visual_direction": "تظهر الألوان الثلاثة معاً"
     }
@@ -46,7 +46,7 @@
   "requirements": [
     "Synchronize each spoken color word with an accurate original color illustration; the current bunny Godot demonstration alone does not do this.",
     "Record or synthesize an actual Arabic WAV 16-bit PCM; verify natural child-friendly voice and exact duration before mux.",
-    "Do not assume fixed 2-second beats suit the final voice; retime both scene_spec.json and narration together when necessary.",
+    "Do not assume fixed 4-second beats suit the final voice; retime the storyboard, scene_spec.json and narration together when necessary.",
     "Avoid licensed music and third-party images; all art must be original or rights-cleared.",
     "No public release is permitted by this script or any offline check."
   ],
