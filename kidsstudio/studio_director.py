@@ -19,6 +19,7 @@ import stat
 import time
 from typing import Iterator
 
+from .production_evals import evaluate_script
 from .studio_queue import KINDS, QueueError, StudioQueue
 
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,159}\Z")
@@ -597,6 +598,12 @@ class StudioDirector:
             proposal = json.loads(proposal_row["proposal_json"])
             if proposal["job_kind"] != "script_draft":
                 raise ValueError("internal trial policy permits script drafts only")
+            requested_language = proposal["job_payload"].get("language")
+            objective_eval = evaluate_script(
+                proposal["learning_objective"], language=requested_language,
+                min_chars=1, max_chars=1000,
+            )
+            objective_script_matches = objective_eval.checks["language_script"]
             binding = db.execute("SELECT request_sha256 FROM request_bindings WHERE proposal_id=?",
                                  (proposal_id,)).fetchone()
             eligible = (
@@ -605,6 +612,7 @@ class StudioDirector:
                 and pipeline["review_verdict"] == "PASS"
                 and bool(pipeline["evidence_supported"])
                 and not json.loads(pipeline["blocking_issues_json"] or "[]")
+                and objective_script_matches
                 and any(item["verification"] == "LOCAL_CONTENT_HASH_VERIFIED"
                         for item in proposal["evidence"])
                 and proposal["effort_estimate"]["hours"] is not None
@@ -613,9 +621,11 @@ class StudioDirector:
             outcome = "ACCEPTED" if eligible else "DEFERRED"
             rationale = (
                 f"Accepted under {INTERNAL_TRIAL_POLICY}; independent local-free PASS, "
-                "source excerpt hash-bound, script_draft only, no paid or external actions."
+                "source excerpt hash-bound, requested writing-script heuristic passed, "
+                "script_draft only, no paid or external actions."
                 if eligible else
-                "Deferred: independent review, evidence verification or bounded-effort gate failed."
+                "Deferred: independent review, evidence verification, requested writing-script "
+                "heuristic or bounded-effort gate failed."
             )
             old = db.execute("SELECT * FROM decisions WHERE proposal_id=?", (proposal_id,)).fetchone()
             evidence_sha = hashlib.sha256(_pack({"evidence": proposal["evidence"]},

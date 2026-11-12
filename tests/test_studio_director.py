@@ -16,8 +16,9 @@ from kidsstudio.studio_director import INTERNAL_TRIAL_POLICY, _result_code
 
 class SyntheticRouter:
     """Deterministic provider double; never opens a model/API connection."""
-    def __init__(self, verdict="PASS"):
+    def __init__(self, verdict="PASS", writer_language=None):
         self.verdict = verdict
+        self.writer_language = writer_language
         self.calls = []
 
     def local_free_provider_ids(self, *, role):
@@ -27,13 +28,22 @@ class SyntheticRouter:
         self.calls.append(kwargs)
         role = kwargs["role"]
         if role == "script_draft":
+            language = self.writer_language or json.loads(kwargs["user_prompt"])["language"]
+            arabic = language == "ar"
             answer = json.dumps({
-                "title": "ألوان الحديقة", "summary": "قصة تميّز اللونين الأحمر والأزرق.",
-                "learning_objective": "أن يميز الطفل الأحمر والأزرق.",
+                "title": "ألوان الحديقة" if arabic else "Garden colors",
+                "summary": "قصة تميّز اللونين الأحمر والأزرق." if arabic else
+                           "A story distinguishes red and blue.",
+                "learning_objective": "أن يميز الطفل الأحمر والأزرق." if arabic else
+                                      "Identify red and blue objects.",
                 "evidence_ids": ["note1"],
                 "alternatives": [
-                    {"option": "قصة حوارية", "rationale": "تربط اللون بأمثلة يومية."},
-                    {"option": "لعبة مطابقة", "rationale": "تدعم الاسترجاع النشط."},
+                    {"option": "قصة حوارية" if arabic else "Story",
+                     "rationale": "تربط اللون بأمثلة يومية." if arabic else
+                                  "Connects colors with everyday examples."},
+                    {"option": "لعبة مطابقة" if arabic else "Matching game",
+                     "rationale": "تدعم الاسترجاع النشط." if arabic else
+                                  "Supports active recall."},
                 ],
                 "effort_estimate": {"hours": 2, "basis": "تقدير اصطناعي للاختبار."},
                 "risks": ["يحتاج النص لمراجعة عربية قبل الإنتاج."],
@@ -776,6 +786,16 @@ class StudioDirectorTests(unittest.TestCase):
                        "claim": content, "content": content}])
         self.assertEqual(result["status"], "TRIAL_DEFERRED")
         self.assertEqual(result["outcome"], "DEFERRED")
+        self.assertEqual(StudioQueue(self.queue_path).list_jobs(), [])
+
+    def test_internal_trial_defers_when_objective_script_mismatches_request(self):
+        # Deliberately return Arabic while trial_args requests English.
+        router = SyntheticRouter(verdict="PASS", writer_language="ar")
+        result = self.store.run_internal_script_trial(**self.trial_args(
+            "wrong-language-objective", router))
+        self.assertEqual(result["outcome"], "DEFERRED")
+        self.assertEqual(result["status"], "TRIAL_DEFERRED")
+        self.assertIsNone(result["queue_job_id"])
         self.assertEqual(StudioQueue(self.queue_path).list_jobs(), [])
 
     def test_remote_or_unverified_evidence_cannot_auto_approve(self):
