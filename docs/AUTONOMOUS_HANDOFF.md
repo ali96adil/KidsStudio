@@ -7,7 +7,9 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code/test head: `1ae29f751ab9bcc4030373f95c89076398a292e0`.
+- Current code head: `bf57d0d066bf09be98813903677512ad49d2e828`.
+- Latest regression/test head: `1ae29f751ab9bcc4030373f95c89076398a292e0`.
+- Rollback before Batch 74K: `6c7fff7d9c6621e7025b0b3c6e5675ed283cf15f`.
 - Rollback before Batch 74J: `dce5b3e59572f62f5f50e880f0afab5ced6e2734`.
 - Rollback before Batch 74I: `68fbb4ffc486a79eef8fa669c88fca40915f6624`.
 - Rollback before Batch 74H: `64021e00f85c5213571aac5252a3d1f6e30690f5`.
@@ -23,6 +25,14 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74K — Audit supported terminal queue writers
+
+- Audited every production `UPDATE jobs` path. State-changing terminal transitions are guarded by a live `LEASED` generation, expiry reaping only changes expired `LEASED` jobs, and cancellation rejects `COMPLETED`/`FAILED` while repeated `CANCELLED` is idempotent.
+- Added a deterministic test that attempts a state change after Director's confirming queue read for COMPLETED, FAILED, and CANCELLED. Supported APIs prevent mutation or preserve the same terminal state; Director records the confirmed outcome.
+- No additional production-code change was justified. Direct edits to the queue SQLite file remain outside the supported API and cannot be made atomic with the separate Director database.
+- `python scripts/run_tests.py`: **885 tests passed**; compileall and `git diff --check` passed.
+- No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74J — Qualify terminal-state immutability after queue confirmation
 
@@ -182,12 +192,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Review whether any supported operation can mutate terminal queue state outside `StudioQueue`; raw direct database edits are not protected by cross-database atomicity.
+2. Continue reviewing retry observability and recovery for supported queue/Director paths; retain fail-closed snapshots and avoid claiming cross-database atomicity.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then audit supported writers of terminal queue state and test whether any can change a result after confirmation. Keep direct SQLite edits outside the atomicity guarantee; make no production change unless a supported-path regression proves a gap.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then review retry observability/recovery in supported queue and Director paths for a concrete gap. Add Regression coverage before any production change; do not claim atomicity across the separate SQLite databases.
 
 ## Required limits
 
