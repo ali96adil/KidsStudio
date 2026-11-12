@@ -7,9 +7,10 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `2c3c88c679b1e6412c05349dd7023962309cbf91`.
-- Latest regression/test head: `2c3c88c679b1e6412c05349dd7023962309cbf91`.
-- Previous Handoff commit: `885efc729910597458b30031563f9969c960965b`.
+- Current code head: `ef5e82bdb31fa4889de0730f71441704234c20df`.
+- Latest regression/test head: `ef5e82bdb31fa4889de0730f71441704234c20df`.
+- Previous Handoff commit: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
+- Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 - Rollback before Batch 75P: `a9191d642c21f301e999eefdfa995340f8fc2ae4`.
 - Rollback before Batch 75O: `139a8dfc0d25b8454983be0cb1649b8b91fdfd1c`.
@@ -53,13 +54,21 @@ Updated: 2026-11-12
 
 ## Last completed batch
 
+### Batch 76B — Validate measurement calendar dates
+
+- A regression showed the first measurement validator accepted impossible calendar values such as `2026-99-99`: the format regex checked shape but not calendar validity.
+- Measurement ingestion now parses the date/timestamp with Python's ISO datetime parser after the shape check and rejects invalid calendar values before persistence. The test also checks an unrecognized source kind remains rejected and confirms no row is written on failure.
+- `tests.test_studio_director`: **49 passed**; `python scripts/run_tests.py`: **929 passed**; `python -m compileall -q kidsstudio tests` and `git diff --check` passed.
+- GitHub checks on code head `ef5e82bdb31fa4889de0730f71441704234c20df`: CI `43294426534`, macOS `43294426331`, Godot `43294426311`, and FFmpeg `43294426299` were **in progress** at handoff update; do not treat these as passes until completed.
+- Rollback before Batch 76B: `6b1e6f9bbcc488824c17536d4c1912ad8a779afd`.
+
 ### Batch 76A — Add privacy-safe aggregate measurement receipts
 
 - Added an append-only local measurement table to the existing Studio Director ledger. A record requires an accepted proposal with a completed queue result, a caller-provided episode-version SHA, a stable idempotency key, an ISO date/timestamp and a bounded allowlisted aggregate metric set.
 - Only aggregate counters/durations are supported; child IDs, demographic rows, comments, free-text metric keys, booleans, negative, non-finite and out-of-range values are rejected. Reusing a key with different measurement material fails closed.
 - Every row is labeled `CALLER_SUPPLIED_UNVERIFIED`; source kinds are caller assertions only. No analytics service connection, source verification, child-level collection, profit calculation, spending decision or publication action exists. A hash binds stored bytes; it does not prove source truth or episode identity.
 - `tests.test_studio_director`: **48 passed**; `python scripts/run_tests.py`: **928 passed**; compileall and `git diff --check` passed.
-- On code head `2c3c88c679b1e6412c05349dd7023962309cbf91`, CI `43293699134`, Godot `43293699220`, and FFmpeg `43293699184` were in progress; macOS `43293699231` was queued at handoff preparation.
+- On code head `2c3c88c679b1e6412c05349dd7023962309cbf91`, CI `43293699134`, Godot `43293699220`, FFmpeg `43293699184`, and macOS `43293699231` all completed successfully.
 - Rollback before Batch 76A: `885efc729910597458b30031563f9969c960965b`.
 
 ### Batch 75P — Recover after losing the final upload response
@@ -376,9 +385,11 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **886 tests passed** on Batch 74N test head.
+- Local `python scripts/run_tests.py`: **929 tests passed** on Batch 76B code head `ef5e82bdb31fa4889de0730f71441704234c20df`.
+- `tests.test_studio_director`: **49 passed** on Batch 76B.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
+- Batch 76B GitHub CI, macOS, Godot and FFmpeg runs were still in progress at Handoff update: `43294426534`, `43294426331`, `43294426311`, `43294426299` respectively.
 - GitHub checks on Batch 74N head `269aaeb23943375621d58142150fab623afe1322` all completed successfully:
   - CI run `43164779987` — success.
   - macOS run `43164779979` — success.
@@ -473,7 +484,7 @@ Updated: 2026-11-12
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision (Batch 76A runs `43293699134`, `43293699220`, `43293699231`, `43293699184` were in progress or queued at handoff preparation). Batch 75P runs `43292096183`, `43292096247`, `43292096180`, and `43292096143` have all passed. Continue P4 by defining how new verified evidence can support proposal reassessment; measurement receipts currently remain caller-supplied and unverified. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data or unverified analytics; do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, then verify Batch 76B runs `43294426534`, `43294426331`, `43294426311`, and `43294426299` on code head `ef5e82bdb31fa4889de0730f71441704234c20df`; they were in progress at the latest update. If any failed, inspect its logs before another code change. Continue P4 by reviewing evidence provenance and decision reassessment using only the existing proposal ledger; caller-supplied measurements remain unverified and must never be promoted to verified by hash or label alone. Keep actual owner-Mac Arabic narration/render/listening Pending Physical Qualification. No child-level data or unverified analytics; do not claim atomicity across separate databases.
 
 ## Required limits
 
