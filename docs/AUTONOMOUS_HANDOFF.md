@@ -7,8 +7,10 @@ Updated: 2026-11-12
 - Repository: `ali96adil/KidsStudio`
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
-- Current code head: `b0a2f3c79e672b46a23856ec2c4c102676615650`.
-- Latest regression/test head: `b0a2f3c79e672b46a23856ec2c4c102676615650`.
+- Current code head: `837aed7273a45563c425bfb60be1d414cb165ee5`.
+- Latest regression/test head: `837aed7273a45563c425bfb60be1d414cb165ee5`.
+- Rollback before Batch 75F: `9b69cabe016f0d739e99eaad967465d1d515b22a`.
+- Rollback before Batch 75E: `ba64db7117a8c4161626300654ad9292ea003ca9`.
 - Rollback before Batch 75D: `ce72200af66b21aa05a04bf62d39fbae5cfa41c4`.
 - Rollback before Batch 75C: `34e895fae3249e6414dfeff1f49b407bf8b32b48`.
 - Rollback before Batch 75B: `1b347f395c5f6fd6e0cc5775c60d723b7bad7b37`.
@@ -38,6 +40,22 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 75F — Exclude internal mux candidates from review history
+
+- Regression proved the generic episode review history accepted `verified-candidate.mp4` as `ACCEPTED_PRIVATE`, allowing the internal staging artifact to appear in the episode's review freshness summary.
+- The shared review-receipt builder now rejects the reserved candidate name, including nested and Windows-style paths. This also blocks persistence through `VideoReviewHistory`; publication approval remains false.
+- `python -m unittest tests.test_video_review_history tests.test_video_review_receipt tests.test_episode_review_overview tests.test_dashboard_reviews tests.test_reviewed_mac_pi_handoff tests.test_mac_pilot_evidence tests.test_mac_pilot_review_shortcut -v`: **103 passed**; `python scripts/run_tests.py`: **909 passed**; compileall and `git diff --check` passed.
+- GitHub on code head `837aed7273a45563c425bfb60be1d414cb165ee5`: CI runs `43215288581` and `43215281657` — **success**; macOS `43215288729` — **success**; Godot `43215288588` — **success**; FFmpeg `43215288908` — **success**.
+- Rollback before Batch 75F: `9b69cabe016f0d739e99eaad967465d1d515b22a`. macOS used synthetic audio and the repository suite; owner Mac/Arabic episode qualification remains pending.
+
+### Batch 75E — Keep internal mux candidates out of owner review choices
+
+- Regression showed the Mac review-choice list accepted a manually supplied sidecar for `verified-candidate.mp4`, even though the later Mac→Pi transfer guard rejected that file. The candidate could therefore be selected as an episode before transfer failed.
+- Evidence collection and the review-choice validator now both reject the internal mux-candidate name. The transfer guard remains unchanged.
+- `python -m unittest tests.test_mac_pilot_evidence tests.test_mac_pilot_review_shortcut tests.test_reviewed_mac_pi_handoff tests.test_mac_to_pi_transfer -v`: **83 passed**; `python scripts/run_tests.py`: **908 passed**; compileall and `git diff --check` passed.
+- GitHub on code head `9b69cabe016f0d739e99eaad967465d1d515b22a`: CI runs `43214622547` and `43214613520` — **success**; macOS `43214622685` — **success**; Godot `43214622661` — **success**; FFmpeg `43214622506` — **success**.
+- Rollback before Batch 75E: `ba64db7117a8c4161626300654ad9292ea003ca9`. No Mac/Pi, model, API, spending, publication or upload was used.
 
 ### Batch 75D — Gate Godot pilot on final AAC energy
 
@@ -350,12 +368,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. Verify the live branch head, PR #33, and CI before every batch.
-2. Audit downstream episode consumers for candidate/final artifact confusion, and add Regression before any fix to a supported transfer, review, or report path.
+2. Audit remaining production handoff and episode lifecycle consumers for stale review or artifact-name mismatches, adding Regression before any fix to a supported path.
 3. Keep real Arabic narration, visual/educational correctness, owner listening, Mac/Pi transfer, PRIVATE upload, and restore as separate pending qualifications; do not treat energy gates as speech/language review.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. Then audit downstream episode consumers for candidate/final artifact confusion and write a regression first if a supported-path gap exists. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
+Read this handoff, fetch the live branch head and PR #33 state, and verify checks on that exact revision. Then audit remaining production handoff and episode lifecycle consumers for stale review or artifact-name mismatches and write a regression first if a supported-path gap exists. Keep owner-Mac narration/render/listening Pending Physical Qualification; energy gates do not establish speech or language quality. Do not claim atomicity across separate databases.
 
 ## Required limits
 
