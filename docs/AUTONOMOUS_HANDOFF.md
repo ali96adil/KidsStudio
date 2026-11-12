@@ -8,7 +8,8 @@ Updated: 2026-11-12
 - Branch: `feature/production-intelligence-safe-integration`
 - Draft PR: #33 — open, draft, not merged.
 - Current code head: `bf57d0d066bf09be98813903677512ad49d2e828`.
-- Latest regression/test head: `8d1e3649f238a6e31e4e48be3bcabb447dd757cb`.
+- Latest regression/test head: `93a689693934fa7d2448b802f5746be625a38a24`.
+- Rollback before Batch 74M: `fefb67bcd981d171f03971be9ac4071f8fbea250`.
 - Rollback before Batch 74L: `05e29ed502ce7f17eae390e00f1bcb9e5907fa59`.
 - Rollback before Batch 74K: `6c7fff7d9c6621e7025b0b3c6e5675ed283cf15f`.
 - Rollback before Batch 74J: `dce5b3e59572f62f5f50e880f0afab5ced6e2734`.
@@ -26,6 +27,14 @@ Updated: 2026-11-12
 - Earlier regression qualification reference: `0f5c7140efb4020db39bb2df6e742d6203d559bb`.
 
 ## Last completed batch
+
+### Batch 74M — Keep queue events stable across Director result retries
+
+- Extended the COMPLETED/FAILED/CANCELLED pre-commit interruption regression to snapshot queue events before Director result recording.
+- After Director rollback, recovery, and an idempotent retry, the queue event stream remains byte-for-byte equivalent at the decoded record level; no event is duplicated or rewritten by Director.
+- Queue state transitions and their events are committed together in the queue database. Director result persistence remains a separate ledger transaction; no cross-database atomicity is claimed.
+- `python scripts/run_tests.py`: **886 tests passed**; compileall and `git diff --check` passed.
+- No production-code change was needed. No model/API, external research, owner hardware, spending, or publishing action was used.
 
 ### Batch 74L — Verify lease reaping preserves terminal queue results
 
@@ -124,9 +133,14 @@ Updated: 2026-11-12
 
 ## Verification
 
-- Local `python scripts/run_tests.py`: **886 tests passed** on Batch 74L test head.
+- Local `python scripts/run_tests.py`: **886 tests passed** on Batch 74M test head.
 - `python -m compileall -q kidsstudio tests`: passed.
 - `git diff --check`: passed.
+- GitHub checks on Batch 74M head `93a689693934fa7d2448b802f5746be625a38a24` all completed successfully:
+  - CI run `43160166238` — success.
+  - macOS run `43160166268` — success.
+  - Godot run `43160166306` — success.
+  - FFmpeg run `43160166149` — success.
 - GitHub checks on Batch 74L head `8d1e3649f238a6e31e4e48be3bcabb447dd757cb` all completed successfully:
   - CI run `43159012585` — success.
   - macOS run `43159012460` — success.
@@ -206,12 +220,12 @@ Updated: 2026-11-12
 ## Open work and priorities
 
 1. At session start, fetch the live branch head/PR and verify checks for that exact revision before selecting work.
-2. Review retry audit/event consistency and recovery for supported queue/Director paths; retain fail-closed snapshots and avoid claiming cross-database atomicity.
+2. Review consistency checks for queue events versus result snapshots on supported retry paths; retain fail-closed behavior and avoid claiming cross-database atomicity.
 3. Advance the smallest safe step toward the complete Arabic episode qualification; if it requires the owner's Mac, keep it Pending Physical Qualification and proceed with independent local software work.
 
 ## First action next session
 
-Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then review audit/event consistency when queue results are recorded or retried, adding regression coverage for any concrete gap. Do not claim atomicity across the separate SQLite databases.
+Read this handoff, fetch the live branch head and PR #33 state, and inspect completed GitHub Actions for that exact head. Then review whether Director should validate terminal queue event evidence before recording a result. Add Regression coverage first and only change production behavior if the supported queue API can produce a mismatch. Do not claim atomicity across the separate SQLite databases.
 
 ## Required limits
 
