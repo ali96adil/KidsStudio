@@ -141,6 +141,11 @@ class MacPilotEvidenceTests(unittest.TestCase):
                 collect_mac_pilot_evidence(**self.collect_args)
         self.assertEqual(list(self.evidence_root.iterdir()), [])
 
+    def test_internal_mux_candidate_cannot_receive_pilot_evidence(self):
+        with self.assertRaises(MacPilotEvidenceError):
+            self.collect(video_name="verified-candidate.mp4")
+        self.assertEqual(list(self.evidence_root.iterdir()), [])
+
     def test_dirty_or_missing_source_blocks(self):
         for host in (self.host(clean=False),
                      self.host(revision=None),

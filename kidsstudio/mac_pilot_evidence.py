@@ -28,6 +28,7 @@ _MP4_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,150}\.mp4\Z")
 _SHA = re.compile(r"[0-9a-fA-F]{64}\Z")
 _COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 _MAX_REPORT = 64 * 1024
+_INTERNAL_CANDIDATE = "verified-candidate.mp4"
 
 
 class MacPilotEvidenceError(ValueError):
@@ -100,9 +101,10 @@ def _write_new_evidence(root: str, name: str, obj: dict) -> None:
 
 def _video_inputs(video_name: str, expected_sha256: str) -> None:
     if (not isinstance(video_name, str) or not _MP4_NAME.fullmatch(video_name)
+            or video_name == _INTERNAL_CANDIDATE
             or not isinstance(expected_sha256, str)
             or not _SHA.fullmatch(expected_sha256)):
-        raise MacPilotEvidenceError("Exact private MP4 name and SHA256 required.")
+        raise MacPilotEvidenceError("Final private MP4 name and SHA256 required.")
 
 
 def collect_mac_pilot_evidence(

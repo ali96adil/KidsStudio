@@ -13,7 +13,9 @@ from pathlib import Path
 import re
 import sys
 
-from .mac_pilot_evidence import record_mac_pilot_review, _private_evidence_dir
+from .mac_pilot_evidence import (
+    _INTERNAL_CANDIDATE, _private_evidence_dir, record_mac_pilot_review,
+)
 from .optional_tool_evidence import read_private_json, private_evidence_file
 from .transfer_verify import verify_staged_file
 
@@ -41,6 +43,7 @@ def _validate_bound_pilot(*, evidence_root: str, evidence_name: str,
             or item.get("status") != "MAC_PILOT_EVIDENCE_RECORDED_REVIEW_PENDING"
             or item.get("episode_id") != "colors_ar_01"
             or not isinstance(name, str) or not _VIDEO.fullmatch(name)
+            or name == _INTERNAL_CANDIDATE
             or not isinstance(digest, str) or not _SHA.fullmatch(digest)
             or item.get("source_checkout_clean") is not True
             or not isinstance(item.get("source_commit"), str)

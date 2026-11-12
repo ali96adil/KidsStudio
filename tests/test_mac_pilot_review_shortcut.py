@@ -78,6 +78,22 @@ class MacPilotShortcutTests(unittest.TestCase):
         self.assertFalse(result["publication_approved"])
         self.assertEqual(before, list(self.proof.iterdir()))
 
+    def test_internal_mux_candidate_is_not_offered_for_owner_review(self):
+        old_movie = self.movie
+        self.movie = self.videos / "verified-candidate.mp4"
+        old_movie.rename(self.movie)
+        self.sha = hashlib.sha256(self.movie.read_bytes()).hexdigest()
+        self.name = "verified-candidate.evidence.json"
+        self.payload.update({
+            "video_name": self.movie.name,
+            "video_sha256": self.sha,
+            "video_bytes": self.movie.stat().st_size,
+        })
+        (self.proof / "colors_ar_01_test_001.evidence.json").unlink()
+        self.save()
+
+        self.assertEqual(self.list()["pilots"], [])
+
     def test_revision_required_creates_append_only_private_review(self):
         result = self.record(reviewer_notes="نطق الأزرق غير صحيح")
         self.assertEqual(result["review_outcome"], "REVISION_REQUIRED")
