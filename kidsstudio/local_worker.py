@@ -15,6 +15,7 @@ import re
 from typing import Any
 
 from .ai_router import AIConfig, ChatRouter, AIRouterError
+from .studio_director import INTERNAL_TRIAL_POLICY
 from .studio_queue import StudioQueue, QueueError
 
 
@@ -140,14 +141,27 @@ class LocalAIWorker:
             if role == "script_draft" and type(payload.get("auto_review", False)) is not bool:
                 raise WorkerError("auto_review must be a boolean.")
             system, prompt, different_from = _prompts(role, payload)
+            trial = payload.get("studio_no_paid", False)
+            if type(trial) is not bool:
+                raise WorkerError("studio_no_paid must be a boolean.")
+            allowed_providers = None
+            allow_paid = self.allow_paid
+            if trial:
+                if payload.get("studio_trial_policy") != INTERNAL_TRIAL_POLICY:
+                    raise WorkerError("Unknown internal trial policy.")
+                allowed_providers = self.router.local_free_provider_ids(role=role)
+                if not allowed_providers:
+                    raise WorkerError("Internal trial requires an explicitly free loopback provider.")
+                allow_paid = False
             # Write once per generation. A completed artifact from a stale
             # generation remains immutable, never adopted without matching role.
             if job_dir.exists():
                 raise WorkerError("Job attempt directory already exists; manual triage.")
             result = self.router.complete(
                 role=role, system_prompt=system, user_prompt=prompt,
-                different_from=different_from, allow_paid=self.allow_paid,
+                different_from=different_from, allow_paid=allow_paid,
                 allow_fallback=False, max_output_tokens=1200,
+                allowed_providers=allowed_providers,
             )
             self.queue.heartbeat(job_id=job_id, worker_id=self.worker_id,
                                  generation=generation, lease_seconds=600)

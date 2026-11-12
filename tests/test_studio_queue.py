@@ -138,6 +138,37 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(after["state"], "FAILED")
         self.assertEqual(after["error_code"], "LEASE_EXHAUSTED")
 
+    def test_claim_reaper_never_reopens_or_changes_terminal_jobs(self):
+        completed = self.add("terminal-reaper-completed")
+        completed_lease = self.claim()
+        self.q.complete(job_id=completed["job_id"], worker_id="Mac-01",
+                        generation=completed_lease["generation"],
+                        result={"status": "DRAFT_READY"})
+
+        failed = self.add("terminal-reaper-failed")
+        failed_lease = self.claim()
+        self.q.fail(job_id=failed["job_id"], worker_id="Mac-01",
+                    generation=failed_lease["generation"], error_code="RENDER_FAILED")
+
+        cancelled = self.add("terminal-reaper-cancelled")
+        self.q.cancel(cancelled["job_id"])
+        terminal = {
+            completed["job_id"]: ("COMPLETED", '{"status":"DRAFT_READY"}', None),
+            failed["job_id"]: ("FAILED", None, "RENDER_FAILED"),
+            cancelled["job_id"]: ("CANCELLED", None, None),
+        }
+        events_before = {job_id: self.q.events(job_id) for job_id in terminal}
+
+        self.clock.tick(10_000)
+        self.assertIsNone(self.claim(worker="reaper-check"))
+        for job_id, (state, result_json, error_code) in terminal.items():
+            with self.subTest(state=state):
+                row = self.q.get(job_id)
+                self.assertEqual(row["state"], state)
+                self.assertEqual(row["result_json"], result_json)
+                self.assertEqual(row["error_code"], error_code)
+                self.assertEqual(self.q.events(job_id), events_before[job_id])
+
     def test_heartbeat_extends_owned_lease(self):
         job = self.add()
         leased = self.claim(lease=10)

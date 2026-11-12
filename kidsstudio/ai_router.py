@@ -112,10 +112,23 @@ class ChatRouter:
             request.ProxyHandler({}), NoRedirect()
         )
 
+    def local_free_provider_ids(self, *, role: str) -> frozenset[str]:
+        """Return explicitly free loopback providers configured for one role."""
+        if role not in self.config.routes:
+            raise AIRouterError("No approved provider route for this role.")
+        return frozenset(
+            provider_id for provider_id in self.config.routes[role]
+            if self.config.providers[provider_id]["billing"] == "free"
+            and urlparse(self.config.providers[provider_id]["endpoint"]).hostname
+            in {"localhost", "127.0.0.1"}
+            and self.config.providers[provider_id]["api_key_env"] is None
+        )
+
     def complete(
         self, *, role: str, system_prompt: str, user_prompt: str,
         allow_paid: bool = False, allow_fallback: bool = False,
         different_from: str | None = None, max_output_tokens: int = 800,
+        allowed_providers: set[str] | frozenset[str] | None = None,
     ) -> dict[str, Any]:
         if role not in self.config.routes:
             raise AIRouterError("No approved provider route for this role.")
@@ -123,6 +136,12 @@ class ChatRouter:
             raise AIRouterError("Explicit paid/fallback settings must be boolean.")
         if type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 4096:
             raise AIRouterError("Invalid max output tokens.")
+        if allowed_providers is not None and (
+            not isinstance(allowed_providers, (set, frozenset))
+            or any(not isinstance(item, str) or item not in self.config.providers
+                   for item in allowed_providers)
+        ):
+            raise AIRouterError("Provider allowlist contains an unknown provider.")
         for prompt in (system_prompt, user_prompt):
             if not isinstance(prompt, str) or not 1 <= len(prompt) <= 12_000:
                 raise AIRouterError("Prompt must contain 1..12000 characters.")
@@ -130,6 +149,7 @@ class ChatRouter:
             self.config.providers[choice]
             for choice in self.config.routes[role]
             if choice != different_from
+            and (allowed_providers is None or choice in allowed_providers)
             and (allow_paid or self.config.providers[choice]["billing"] == "free")
         ]
         if not providers:
