@@ -846,8 +846,18 @@ class StudioDirector:
                     and row["result_sha256"] == digest)
 
         if prior:
-            if not matches_saved_result(prior, dispatch):
-                raise ValueError("result record is immutable and conflicts with queue state")
+            with self._connection() as db:
+                current_dispatch = db.execute("SELECT queue_job_id,decision_id FROM dispatches "
+                                              "WHERE proposal_id=?", (proposal_id,)).fetchone()
+                if (current_dispatch is None
+                        or current_dispatch["decision_id"] != dispatch["decision_id"]
+                        or current_dispatch["queue_job_id"] != dispatch["queue_job_id"]):
+                    raise ValueError("dispatch changed during result retry")
+                current_prior = db.execute("SELECT * FROM results WHERE proposal_id=?",
+                                           (proposal_id,)).fetchone()
+                if (current_prior is None
+                        or not matches_saved_result(current_prior, current_dispatch)):
+                    raise ValueError("result record is immutable and conflicts with queue state")
             return {"status": "RESULT_EXISTS", "queue_job_id": queue_job["job_id"],
                     "queue_state": state, "result_sha256": digest}
         with self._connection() as db:

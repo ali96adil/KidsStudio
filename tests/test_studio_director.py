@@ -243,6 +243,25 @@ class StudioDirectorTests(unittest.TestCase):
         resumed = self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                                  queue_database=self.queue_path)
         self.assertEqual(resumed["status"], "RESULT_EXISTS")
+
+        original_connection = self.store._connection
+        interrupted = {"pending": True}
+
+        @contextmanager
+        def interrupt_after_retry_check(*, readonly=False):
+            with original_connection(readonly=readonly) as db:
+                yield db
+            if not readonly and interrupted["pending"]:
+                interrupted["pending"] = False
+                raise RuntimeError("simulated interruption after saved-result check")
+
+        with patch.object(self.store, "_connection", new=interrupt_after_retry_check):
+            with self.assertRaisesRegex(RuntimeError, "after saved-result check"):
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+        recovered = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                   queue_database=self.queue_path)
+        self.assertEqual(recovered["status"], "RESULT_EXISTS")
         self.assertEqual(resumed["queue_job_id"], trial["queue_job_id"])
         record = self.store.get(proposal_id=trial["proposal_id"])
         self.assertEqual(record["result"]["queue_state"], "COMPLETED")
@@ -591,6 +610,65 @@ class StudioDirectorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "immutable and conflicts"):
             self.store.record_queue_result(proposal_id=trial["proposal_id"],
                                            queue_database=self.queue_path)
+
+    def test_saved_result_retry_rechecks_dispatch_after_queue_snapshot(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "saved-result-stale-dispatch", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="stale-dispatch-worker", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="stale-dispatch-worker", generation=1,
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                       queue_database=self.queue_path)
+        original_get = StudioQueue.get
+
+        def relink_after_snapshot(queue_instance, job_id):
+            result = original_get(queue_instance, job_id)
+            with self.store._connection() as db:
+                db.execute("UPDATE dispatches SET queue_job_id=? WHERE proposal_id=?",
+                           ("concurrent-relinked-job", trial["proposal_id"]))
+            return result
+
+        with patch.object(StudioQueue, "get", new=relink_after_snapshot):
+            with self.assertRaisesRegex(ValueError, "dispatch changed during result retry"):
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+
+        with self.store._connection() as db:
+            db.execute("UPDATE dispatches SET queue_job_id=? WHERE proposal_id=?",
+                       (trial["queue_job_id"], trial["proposal_id"]))
+        resumed = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                 queue_database=self.queue_path)
+        self.assertEqual(resumed["status"], "RESULT_EXISTS")
+
+    def test_dispatch_snapshot_change_before_write_rolls_back_and_recovers(self):
+        trial = self.store.run_internal_script_trial(**self.trial_args(
+            "write-result-stale-dispatch", SyntheticRouter()))
+        queue = StudioQueue(self.queue_path)
+        queue.claim(worker_id="write-stale-dispatch-worker", capabilities=["script_draft"])
+        queue.complete(job_id=trial["queue_job_id"], worker_id="write-stale-dispatch-worker", generation=1,
+                       result={"status": "SYNTHETIC_DRAFT_COMPLETED"})
+        original_get = StudioQueue.get
+
+        def relink_after_snapshot(queue_instance, job_id):
+            result = original_get(queue_instance, job_id)
+            with self.store._connection() as db:
+                db.execute("UPDATE dispatches SET queue_job_id=? WHERE proposal_id=?",
+                           ("concurrent-relinked-job", trial["proposal_id"]))
+            return result
+
+        with patch.object(StudioQueue, "get", new=relink_after_snapshot):
+            with self.assertRaisesRegex(ValueError, "dispatch changed during result recording"):
+                self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                               queue_database=self.queue_path)
+        self.assertIsNone(self.store.get(proposal_id=trial["proposal_id"])["result"])
+
+        with self.store._connection() as db:
+            db.execute("UPDATE dispatches SET queue_job_id=? WHERE proposal_id=?",
+                       (trial["queue_job_id"], trial["proposal_id"]))
+        resumed = self.store.record_queue_result(proposal_id=trial["proposal_id"],
+                                                 queue_database=self.queue_path)
+        self.assertEqual(resumed["status"], "RESULT_RECORDED")
 
     def test_failed_independent_review_defers_without_queue(self):
         router = SyntheticRouter(verdict="REVISE")
