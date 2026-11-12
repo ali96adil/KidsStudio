@@ -86,6 +86,27 @@ class PrivateDraftInboxTests(unittest.TestCase):
         self.assertFalse(result["publication_approved"])
         self.assertEqual(list(self.reviews.iterdir()), [])
 
+    def test_internal_mux_candidate_is_blocked_in_review_inbox(self):
+        candidate = self.inbox / "verified-candidate.mp4"
+        candidate.write_bytes(self.movie.read_bytes())
+        candidate.chmod(0o600)
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        _save_journal(self.journal, {
+            **self.upload_state,
+            "media_name": candidate.name,
+            "media_sha256": digest,
+            "media_bytes": candidate.stat().st_size,
+        })
+        result = self.report(show_video_ids=True)
+        item = result["items"][0]
+        self.assertEqual(item["status"], "BLOCKED_LOCAL_EVIDENCE")
+        self.assertIsNone(item["episode_id"])
+        self.assertIsNone(item["video_name"])
+        self.assertIsNone(item["youtube_video_id"])
+        self.assertFalse(item["local_video_sha_verified"])
+        self.assertEqual(result["counts"]["NEEDS_OWNER_REVIEW_PRIVATE"], 0)
+        self.assertFalse(result["publication_approved"])
+
     def test_explicit_video_id_display_for_owner_only(self):
         result = self.report(show_video_ids=True)
         self.assertEqual(result["items"][0]["youtube_video_id"], self.video_id)
